@@ -150,12 +150,22 @@ async def delete_model(session: AsyncSession, model_id: int) -> None:
     for d in deployments:
         if d.litellm_model_id:
             litellm_model_name = _get_litellm_model_name(model, d.credential)
-            await litellm_client.update_model(
-                litellm_model_id=d.litellm_model_id,
-                model_name=litellm_model_name,
-                litellm_params=_convert_cost_for_litellm(d.litellm_params),
-                model_info={**(d.model_info or {}), "active": False},
-            )
+            try:
+                await litellm_client.update_model(
+                    litellm_model_id=d.litellm_model_id,
+                    model_name=litellm_model_name,
+                    litellm_params=_convert_cost_for_litellm(d.litellm_params),
+                    model_info={**(d.model_info or {}), "active": False},
+                )
+            except litellm_client.LiteLLMError as e:
+                if "404" in str(e):
+                    logger.warning(
+                        "litellm model already gone during delete_model, deployment %s: %s",
+                        d.id, e,
+                    )
+                else:
+                    logger.error("litellm disable model failed for deployment %s: %s", d.id, e)
+                    raise ConflictError("LiteLLM 侧禁用失败，请稍后重试")
         d.is_active = False
 
     model.is_active = False
@@ -360,8 +370,14 @@ async def delete_deployment(session: AsyncSession, deployment_id: int) -> None:
                 model_info={**(deployment.model_info or {}), "active": False},
             )
         except litellm_client.LiteLLMError as e:
-            logger.error("litellm disable model failed for deployment %s: %s", deployment_id, e)
-            raise ConflictError("LiteLLM 侧禁用失败，请稍后重试")
+            if "404" in str(e):
+                logger.warning(
+                    "litellm model already gone during delete_deployment %s: %s",
+                    deployment_id, e,
+                )
+            else:
+                logger.error("litellm disable model failed for deployment %s: %s", deployment_id, e)
+                raise ConflictError("LiteLLM 侧禁用失败，请稍后重试")
 
     await session.delete(deployment)
     await session.commit()
