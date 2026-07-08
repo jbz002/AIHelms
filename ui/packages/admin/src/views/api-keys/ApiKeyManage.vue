@@ -286,10 +286,10 @@ onMounted(loadKeys)
     <!-- 创建弹窗 -->
     <div
       v-if="createDialogOpen"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
       @click.self="createDialogOpen = false"
     >
-      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white/95 p-6 shadow-xl backdrop-blur-xl">
+      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">新建 API Key</h3>
         <div class="space-y-4">
           <div>

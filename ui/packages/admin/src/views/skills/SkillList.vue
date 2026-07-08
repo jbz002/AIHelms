@@ -396,9 +396,9 @@ onMounted(loadData)
 
     <div
       v-if="showCategoryForm"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
     >
-      <div class="w-full max-w-sm rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+      <div class="w-full max-w-sm rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">新建分类</h3>
         <div class="mb-3">
           <label class="mb-1 block text-sm font-medium text-slate-700">名称</label>

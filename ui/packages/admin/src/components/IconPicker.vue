@@ -92,7 +92,7 @@ function handleClear() {
     <Teleport to="body">
       <div
         v-if="showPicker"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 backdrop-blur-sm"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/20"
         @click.self="showPicker = false"
       >
         <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-5 shadow-xl">

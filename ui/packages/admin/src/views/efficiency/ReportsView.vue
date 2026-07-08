@@ -141,7 +141,7 @@ onMounted(loadReports)
     <div class="grid grid-cols-[300px_1fr] gap-4">
       <!-- 左侧：周期 + 列表 -->
       <div class="space-y-3">
-        <div class="rounded-xl border border-white/80 bg-white/60 p-1 shadow-sm backdrop-blur-xl">
+        <div class="rounded-xl border border-slate-200/60 bg-white p-1 shadow-sm">
           <div class="flex gap-0.5">
             <button
               v-for="p in PERIODS"
@@ -199,7 +199,7 @@ onMounted(loadReports)
 
       <!-- 右侧：报告详情 -->
       <div class="space-y-3">
-        <div v-if="!detail" class="flex h-96 items-center justify-center rounded-xl border border-white/80 bg-white/60 shadow-sm backdrop-blur-xl">
+        <div v-if="!detail" class="flex h-96 items-center justify-center rounded-xl border border-slate-200/60 bg-white shadow-sm">
           <div class="text-center">
             <FileText class="mx-auto h-10 w-10 text-slate-300" />
             <p class="mt-2 text-sm text-slate-500">从左侧选择一份报告查看详情</p>
@@ -275,7 +275,7 @@ onMounted(loadReports)
     </div>
 
     <!-- 创建报告弹窗 -->
-    <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm">
+    <div v-if="showCreateModal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
       <div class="w-full max-w-md rounded-xl border border-white/80 bg-white p-6 shadow-2xl">
         <div class="mb-4 flex items-center justify-between">
           <h3 class="text-base font-semibold text-slate-900">生成新报告</h3>

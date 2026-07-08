@@ -387,10 +387,10 @@ onMounted(() => {
 
     <div
       v-if="reviewing"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
     >
       <div
-        class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl"
+        class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl"
       >
         <h3 class="mb-4 text-lg font-semibold text-slate-900">
           {{ reviewAction === 'approve' ? '批准申请' : '拒绝申请' }}
@@ -441,10 +441,10 @@ onMounted(() => {
 
     <div
       v-if="batchAction"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
     >
       <div
-        class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl"
+        class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl"
       >
         <h3 class="mb-4 text-lg font-semibold text-slate-900">
           {{ batchAction === 'approve' ? '批量批准申请' : '批量拒绝申请' }}

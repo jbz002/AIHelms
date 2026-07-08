@@ -359,7 +359,7 @@ onMounted(() => {
 <template>
   <div class="flex h-full gap-4 overflow-hidden">
     <!-- 左侧：供应商列表 -->
-    <div class="w-80 shrink-0 overflow-hidden rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm backdrop-blur-xl">
+    <div class="w-80 shrink-0 overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm">
       <div class="flex h-12 items-center justify-between border-b border-slate-200/60 px-4">
         <h3 class="text-sm font-semibold text-slate-900">供应商</h3>
         <button
@@ -400,7 +400,7 @@ onMounted(() => {
     </div>
 
     <!-- 右侧：凭证管理 -->
-    <div class="flex-1 overflow-hidden rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm backdrop-blur-xl">
+    <div class="flex-1 overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm">
       <template v-if="selectedProvider">
         <!-- 供应商信息头 -->
         <div class="flex h-12 items-center justify-between border-b border-slate-200/60 px-4">
@@ -521,8 +521,8 @@ onMounted(() => {
     </div>
 
     <!-- 供应商表单弹窗 -->
-    <div v-if="showProviderForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showProviderForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">{{ isEditingProvider ? '编辑供应商' : '新建供应商' }}</h3>
         <form @submit.prevent="handleSubmitProvider">
           <div class="mb-3">
@@ -569,8 +569,8 @@ onMounted(() => {
     </div>
 
     <!-- 凭证表单弹窗 -->
-    <div v-if="showCredForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showCredForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">{{ isEditingCred ? '编辑凭证' : '新建凭证' }}</h3>
         <form @submit.prevent="handleSubmitCred">
           <div class="mb-3">

@@ -272,7 +272,7 @@ onMounted(loadData)
 <template>
   <div class="space-y-4">
     <ExportTaskNotice v-if="exportNotice" />
-    <div class="flex flex-wrap items-center gap-3 rounded-xl border border-white/80 bg-white/60 px-4 py-2.5 shadow-sm backdrop-blur-xl">
+    <div class="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200/60 bg-white px-4 py-2.5 shadow-sm">
       <span class="text-xs text-slate-500">时间</span>
       <PresetTabs :model-value="timePreset" :presets="TIME_PRESETS" @update:model-value="changePreset" />
       <div class="flex items-center gap-1.5 text-xs text-slate-500">

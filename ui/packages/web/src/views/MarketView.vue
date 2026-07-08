@@ -246,7 +246,7 @@ onMounted(loadData)
     <div class="space-y-4">
       <!-- Type filter + Search -->
       <div class="flex items-center gap-4">
-        <div class="flex items-center gap-1 rounded-xl bg-white/70 p-1 backdrop-blur border border-slate-200/60">
+        <div class="flex items-center gap-1 rounded-xl bg-white p-1 border border-slate-200/60">
           <button
             v-for="opt in [{ key: 'all', label: '全部' }, { key: 'skill', label: 'Skill' }, { key: 'mcp', label: 'MCP' }]"
             :key="opt.key"
@@ -265,7 +265,7 @@ onMounted(loadData)
             v-model="search"
             type="text"
             placeholder="搜索名称或描述..."
-            class="w-full rounded-xl border border-slate-200/60 bg-white/70 py-2 pl-9 pr-4 text-sm backdrop-blur placeholder:text-slate-400 focus:border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+            class="w-full rounded-xl border border-slate-200/60 bg-white py-2 pl-9 pr-4 text-sm placeholder:text-slate-400 focus:border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
           />
         </div>
       </div>
@@ -309,7 +309,7 @@ onMounted(loadData)
       <div
         v-for="item in filtered"
         :key="`${item._type}-${item.id}`"
-        class="group relative flex min-h-[200px] flex-col rounded-2xl border border-slate-200/60 bg-white/70 p-5 backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-purple-500/5"
+        class="group relative flex min-h-[200px] flex-col rounded-2xl border border-slate-200/60 bg-white p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-purple-500/5"
       >
         <!-- Icon + Type badge -->
         <div class="mb-3 flex items-start justify-between">
@@ -389,8 +389,8 @@ onMounted(loadData)
 
     <!-- Apply Dialog -->
     <Teleport to="body">
-      <div v-if="showApplyDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" @click.self="showApplyDialog = false">
-        <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur">
+      <div v-if="showApplyDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30" @click.self="showApplyDialog = false">
+        <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
           <div class="mb-4 flex items-center justify-between">
             <h3 class="text-lg font-semibold text-slate-800">申请使用</h3>
             <button class="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" @click="showApplyDialog = false">
@@ -404,7 +404,7 @@ onMounted(loadData)
             v-model="applyReason"
             rows="4"
             placeholder="请描述使用场景和理由..."
-            class="w-full rounded-xl border border-slate-200/60 bg-white/70 px-4 py-3 text-sm backdrop-blur placeholder:text-slate-400 focus:border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+            class="w-full rounded-xl border border-slate-200/60 bg-white px-4 py-3 text-sm placeholder:text-slate-400 focus:border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
           />
           <div class="mt-4 flex justify-end gap-3">
             <button
@@ -427,8 +427,8 @@ onMounted(loadData)
 
     <!-- MCP Access Dialog -->
     <Teleport to="body">
-      <div v-if="showMcpAccessDialog && mcpTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" @click.self="showMcpAccessDialog = false">
-        <div class="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200/60 bg-white/90 shadow-xl backdrop-blur">
+      <div v-if="showMcpAccessDialog && mcpTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30" @click.self="showMcpAccessDialog = false">
+        <div class="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200/60 bg-white shadow-xl">
             <div class="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
               <div class="flex min-w-0 items-center gap-2">
                 <h3 class="truncate text-lg font-semibold text-slate-800">{{ mcpTarget.name }}</h3>
@@ -496,8 +496,8 @@ onMounted(loadData)
 
     <!-- Skill Install Dialog -->
     <Teleport to="body">
-      <div v-if="showSkillInstallDialog && skillTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" @click.self="showSkillInstallDialog = false">
-        <div class="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200/60 bg-white/90 shadow-xl backdrop-blur">
+      <div v-if="showSkillInstallDialog && skillTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30" @click.self="showSkillInstallDialog = false">
+        <div class="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200/60 bg-white shadow-xl">
             <div class="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
               <div class="flex min-w-0 items-center gap-2">
                 <h3 class="truncate text-lg font-semibold text-slate-800">{{ skillTarget.name }}</h3>

@@ -209,7 +209,7 @@ onMounted(fetchProjects)
 <template>
   <div class="flex h-full gap-4">
     <!-- 左侧：项目列表 -->
-    <div class="w-72 shrink-0 overflow-hidden rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm backdrop-blur-xl">
+    <div class="w-72 shrink-0 overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm">
       <div class="flex h-12 items-center justify-between border-b border-slate-200/60 px-4">
         <h3 class="text-sm font-semibold text-slate-900">项目</h3>
         <button
@@ -237,7 +237,7 @@ onMounted(fetchProjects)
     </div>
 
     <!-- 右侧：成员管理 -->
-    <div class="flex-1 overflow-hidden rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm backdrop-blur-xl">
+    <div class="flex-1 overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm">
       <template v-if="selectedProject">
         <div class="flex h-12 items-center justify-between border-b border-slate-200/60 px-4">
           <div class="flex items-center gap-3">
@@ -310,8 +310,8 @@ onMounted(fetchProjects)
     </div>
 
     <!-- 新建/编辑项目弹窗 -->
-    <div v-if="showCreateForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showCreateForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">{{ isEditing ? '编辑项目' : '新建项目' }}</h3>
         <form @submit.prevent="handleSubmit">
           <div class="mb-4">
@@ -340,8 +340,8 @@ onMounted(fetchProjects)
     </div>
 
     <!-- 添加成员弹窗 - 穿梭框 -->
-    <div v-if="showAddMember" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="w-full max-w-2xl rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showAddMember" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="w-full max-w-2xl rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">添加成员</h3>
         <div class="flex gap-4">
           <!-- 左侧：搜索候选 -->

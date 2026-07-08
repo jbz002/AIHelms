@@ -132,7 +132,7 @@ onMounted(fetchData)
       </button>
     </div>
 
-    <div class="overflow-hidden rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm backdrop-blur-xl">
+    <div class="overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm">
       <table class="w-full text-left text-sm">
         <thead class="border-b border-slate-200/60 bg-slate-50/50">
           <tr>
@@ -189,8 +189,8 @@ onMounted(fetchData)
     </div>
 
     <!-- 新建/编辑角色弹窗 -->
-    <div v-if="showForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">{{ isEditing ? '编辑角色' : '新建角色' }}</h3>
         <form @submit.prevent="handleSubmit">
           <div v-if="!isEditing" class="mb-4">
@@ -237,8 +237,8 @@ onMounted(fetchData)
     </div>
 
     <!-- 编辑权限弹窗 -->
-    <div v-if="showPermissionEditor" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="w-full max-w-lg rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showPermissionEditor" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="w-full max-w-lg rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">
           编辑权限 - {{ selectedRole?.display_name }}
         </h3>

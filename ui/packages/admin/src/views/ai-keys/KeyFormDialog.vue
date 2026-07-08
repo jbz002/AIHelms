@@ -1,7 +1,7 @@
 <template>
   <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center">
-    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="handleClose" />
-    <div class="relative w-[720px] max-h-[85vh] overflow-y-auto bg-white/90 backdrop-blur-xl border border-slate-200/60 rounded-2xl shadow-xl p-6">
+    <div class="absolute inset-0 bg-black/40" @click="handleClose" />
+    <div class="relative w-[720px] max-h-[85vh] overflow-y-auto bg-white border border-slate-200/60 rounded-2xl shadow-xl p-6">
       <h2 class="text-lg font-semibold text-slate-800 mb-5">{{ isEdit ? '编辑 Key' : '创建 Key' }}</h2>
 
       <!-- Scenario -->
@@ -158,7 +158,7 @@
     <!-- User Transfer Picker -->
     <div v-if="showUserPicker" class="fixed inset-0 z-[60] flex items-center justify-center">
       <div class="absolute inset-0 bg-black/30" @click="showUserPicker = false" />
-      <div class="relative w-[600px] max-h-[70vh] bg-white/95 backdrop-blur-xl border border-slate-200/60 rounded-2xl shadow-xl p-5">
+      <div class="relative w-[600px] max-h-[70vh] bg-white/95  border border-slate-200/60 rounded-2xl shadow-xl p-5">
         <h3 class="text-sm font-semibold text-slate-800 mb-3">选择用户</h3>
         <div class="grid grid-cols-2 gap-4">
           <div class="border border-slate-200/60 rounded-lg p-3">

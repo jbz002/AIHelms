@@ -204,7 +204,7 @@ onMounted(fetchData)
 
 <template>
   <div class="flex h-full items-start justify-center py-6">
-    <div class="w-full max-w-2xl rounded-2xl border border-slate-200/60 bg-white/70 p-8 shadow-sm backdrop-blur-xl">
+    <div class="w-full max-w-2xl rounded-2xl border border-slate-200/60 bg-white p-8 shadow-sm">
       <h2 class="mb-6 text-xl font-semibold text-slate-900">
         {{ isEdit ? '编辑用户' : '新建用户' }}
       </h2>
@@ -372,8 +372,8 @@ onMounted(fetchData)
     </div>
 
     <!-- 部门穿梭框弹窗 -->
-    <div v-if="showDeptPicker" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="w-full max-w-xl rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showDeptPicker" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="w-full max-w-xl rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">选择部门</h3>
         <div class="flex gap-4">
           <!-- 左侧：部门树 -->

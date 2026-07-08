@@ -25,7 +25,7 @@ const headerClass = computed(() =>
 
 <template>
   <div
-    class="rounded-xl border border-white/80 bg-white/70 shadow-sm backdrop-blur-xl"
+    class="rounded-xl border border-slate-200/60 bg-white shadow-sm"
     :class="padding"
   >
     <div

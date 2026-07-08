@@ -180,7 +180,7 @@ onMounted(async () => {
 
     <template v-else>
       <!-- AI 身份证 -->
-      <section class="rounded-[24px] border border-white/80 bg-white/35 p-2.5 shadow-[0_20px_60px_rgba(20,30,60,.08)] backdrop-blur-xl">
+      <section class="rounded-[24px] border border-white/80 bg-white p-2.5 shadow-[0_20px_60px_rgba(20,30,60,.08)]">
         <div class="relative min-h-[280px] overflow-hidden rounded-[18px] bg-gradient-to-br from-white to-[#f6f4ff]">
           <!-- 右侧区域：用户头像或紫色背景 -->
           <div v-if="currentUser?.avatar" class="absolute right-0 top-0 h-full w-[30%] overflow-hidden" style="clip-path: polygon(30% 0, 100% 0, 100% 100%, 0 100%)">
@@ -222,7 +222,7 @@ onMounted(async () => {
             </div>
 
             <!-- Key 区域 -->
-            <div v-if="mainKey" class="mt-5 rounded-2xl border border-purple-500/[.12] bg-white/80 px-5 py-4 backdrop-blur-[10px]">
+            <div v-if="mainKey" class="mt-5 rounded-2xl border border-purple-500/[.12] bg-white px-5 py-4">
               <div class="flex items-center justify-between">
                 <div class="flex-1">
                   <div class="text-[11px] font-bold tracking-[1px] text-[#7B61FF]">API KEY</div>
@@ -272,7 +272,7 @@ onMounted(async () => {
 
       <!-- 我的资源 -->
       <section v-if="mainKey" class="mt-6 space-y-4">
-        <div class="rounded-2xl border border-slate-200/60 bg-white/70 p-5 backdrop-blur">
+        <div class="rounded-2xl border border-slate-200/60 bg-white p-5">
           <div class="mb-3 flex items-center gap-2">
             <Cpu class="h-4 w-4 text-purple-600" />
             <span class="text-sm font-medium text-slate-900">模型</span>
@@ -288,7 +288,7 @@ onMounted(async () => {
           <p v-else class="text-xs text-slate-400">暂无，前往模型广场申请</p>
         </div>
 
-        <div class="rounded-2xl border border-slate-200/60 bg-white/70 p-5 backdrop-blur">
+        <div class="rounded-2xl border border-slate-200/60 bg-white p-5">
           <div class="mb-3 flex items-center gap-2">
             <Server class="h-4 w-4 text-emerald-600" />
             <span class="text-sm font-medium text-slate-900">MCP</span>
@@ -301,7 +301,7 @@ onMounted(async () => {
           <p v-else class="text-xs text-slate-400">暂无，前往 AI 市场申请</p>
         </div>
 
-        <div class="rounded-2xl border border-slate-200/60 bg-white/70 p-5 backdrop-blur">
+        <div class="rounded-2xl border border-slate-200/60 bg-white p-5">
           <div class="mb-3 flex items-center gap-2">
             <Sparkles class="h-4 w-4 text-amber-500" />
             <span class="text-sm font-medium text-slate-900">Skill</span>
@@ -316,7 +316,7 @@ onMounted(async () => {
       </section>
 
       <!-- 用量概览 -->
-      <section v-if="kpi" class="mt-6 rounded-2xl border border-slate-200/60 bg-white/70 p-5 backdrop-blur">
+      <section v-if="kpi" class="mt-6 rounded-2xl border border-slate-200/60 bg-white p-5">
         <h2 class="mb-4 text-sm font-medium text-slate-900">本月概览</h2>
         <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div class="rounded-xl bg-slate-50/80 px-4 py-3">
@@ -356,7 +356,7 @@ onMounted(async () => {
       </section>
 
       <!-- 我的申请 -->
-      <section v-if="applications.length" class="mt-6 rounded-2xl border border-slate-200/60 bg-white/70 p-5 backdrop-blur">
+      <section v-if="applications.length" class="mt-6 rounded-2xl border border-slate-200/60 bg-white p-5">
         <h2 class="mb-4 text-sm font-medium text-slate-900">我的申请</h2>
         <div class="space-y-2">
           <div v-for="app in applications" :key="app.id"

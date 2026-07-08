@@ -213,10 +213,10 @@ function effectiveBilling(tool: McpTool): { type: string; internal: number; exte
     <!-- Tool billing dialog -->
     <div
       v-if="editingTool"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
     >
       <div
-        class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl"
+        class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl"
       >
         <h3 class="mb-4 text-lg font-semibold text-slate-900">
           {{ editingTool.tool_name }} - 计费配置

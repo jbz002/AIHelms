@@ -37,20 +37,9 @@ async function handleLogin(): Promise<void> {
 
 <template>
   <div class="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-50">
-    <!-- 渐变色块动画背景 -->
-    <div
-      class="absolute -left-40 -top-40 h-[500px] w-[500px] animate-blob rounded-full bg-purple-300/40 blur-[120px]"
-    />
-    <div
-      class="absolute -bottom-40 -right-40 h-[500px] w-[500px] animate-blob-reverse rounded-full bg-blue-300/40 blur-[120px]"
-    />
-    <div
-      class="absolute left-1/2 top-1/2 h-[400px] w-[400px] -translate-x-1/2 -translate-y-1/2 animate-blob-slow rounded-full bg-indigo-200/30 blur-[100px]"
-    />
-
     <!-- 毛玻璃卡片 -->
     <div
-      class="relative z-10 w-full max-w-[420px] rounded-2xl border border-slate-200/60 bg-white/70 p-8 shadow-xl backdrop-blur-xl"
+      class="relative z-10 w-full max-w-[420px] rounded-2xl border border-slate-200/60 bg-white p-8 shadow-xl"
     >
       <!-- Logo + 欢迎语 -->
       <div class="mb-8 space-y-3 text-center">

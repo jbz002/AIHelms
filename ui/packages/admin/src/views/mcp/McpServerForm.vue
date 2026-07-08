@@ -162,10 +162,10 @@ async function handleSubmit(): Promise<void> {
 <template>
   <div
     v-if="visible"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
   >
     <div
-      class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl"
+      class="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl"
     >
       <h3 class="mb-4 text-lg font-semibold text-slate-900">
         {{ editing ? '编辑 MCP Server' : '新建 MCP Server' }}

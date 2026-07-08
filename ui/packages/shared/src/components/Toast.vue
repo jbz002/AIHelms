@@ -80,7 +80,7 @@ const iconPaths: Record<ToastItem['type'], string> = {
           v-for="toast in toasts"
           :key="toast.id"
           :class="[
-            'pointer-events-auto flex items-center gap-2 rounded-lg border px-4 py-3 shadow-lg backdrop-blur-sm max-w-sm',
+            'pointer-events-auto flex items-center gap-2 rounded-lg border px-4 py-3 shadow-lg max-w-sm',
             typeClasses[toast.type],
           ]"
         >

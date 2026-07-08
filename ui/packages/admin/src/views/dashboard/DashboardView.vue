@@ -189,8 +189,8 @@ onMounted(loadData)
 
 <template>
   <div class="space-y-5">
-    <div class="overflow-hidden rounded-xl border border-slate-200/70 bg-white/80 shadow-sm backdrop-blur-xl">
-      <div class="border-b border-slate-200/70 px-5 py-4">
+    <div class="overflow-hidden rounded-xl border border-slate-200/60 bg-white shadow-sm">
+      <div class="border-b border-slate-200/60 px-5 py-4">
         <div class="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 class="text-2xl font-semibold tracking-tight text-slate-900">Dashboard</h1>

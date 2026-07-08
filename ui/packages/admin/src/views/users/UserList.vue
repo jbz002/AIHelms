@@ -128,7 +128,7 @@ onMounted(fetchUsers)
       </button>
     </div>
 
-    <div class="overflow-hidden rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm backdrop-blur-xl">
+    <div class="overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm">
       <table class="w-full text-left text-sm">
         <thead class="border-b border-slate-200/60 bg-slate-50/50">
           <tr>

@@ -191,7 +191,7 @@ onMounted(loadData)
     <div class="flex flex-1 gap-4 overflow-hidden">
       <!-- 左侧：分类导航 + Server 列表 -->
       <div
-        class="w-80 shrink-0 overflow-hidden rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm backdrop-blur-xl"
+        class="w-80 shrink-0 overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm"
       >
         <div class="flex h-12 items-center justify-between border-b border-slate-200/60 px-4">
           <h3 class="text-sm font-semibold text-slate-900">MCP Server</h3>
@@ -293,7 +293,7 @@ onMounted(loadData)
 
       <!-- 右侧：详情 + 工具管理 -->
       <div
-        class="flex-1 overflow-hidden rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm backdrop-blur-xl"
+        class="flex-1 overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm"
       >
         <template v-if="selectedServer">
           <div class="flex h-12 items-center justify-between border-b border-slate-200/60 px-4">
@@ -442,9 +442,9 @@ onMounted(loadData)
     <!-- 新建分类 -->
     <div
       v-if="showCategoryForm"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
     >
-      <div class="w-full max-w-sm rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+      <div class="w-full max-w-sm rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">新建分类</h3>
         <div class="mb-3">
           <label class="mb-1 block text-sm font-medium text-slate-700">名称</label>

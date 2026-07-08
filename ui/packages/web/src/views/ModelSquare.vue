@@ -135,7 +135,7 @@ onMounted(async () => {
       <div class="relative">
         <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input v-model="search" type="text" placeholder="搜索模型名称、ID..."
-          class="h-10 w-full max-w-md rounded-lg border border-slate-200/60 bg-white/70 pl-9 pr-3 text-sm backdrop-blur placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
+          class="h-10 w-full max-w-md rounded-lg border border-slate-200/60 bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
       </div>
       <div class="flex flex-wrap gap-2">
         <button @click="categoryFilter = ''"
@@ -168,13 +168,13 @@ onMounted(async () => {
     <div v-if="isLoading" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <div v-for="i in 6" :key="i" class="h-56 animate-pulse rounded-2xl bg-white/70" />
     </div>
-    <div v-else-if="!filtered.length" class="rounded-2xl border border-slate-200/60 bg-white/70 p-12 text-center backdrop-blur">
+    <div v-else-if="!filtered.length" class="rounded-2xl border border-slate-200/60 bg-white p-12 text-center">
       <Cpu class="mx-auto h-10 w-10 text-slate-300" />
       <p class="mt-3 text-sm text-slate-400">没有匹配的模型</p>
     </div>
     <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <div v-for="model in filtered" :key="model.id"
-        class="group flex min-h-[220px] flex-col rounded-2xl border border-slate-200/60 bg-white/70 p-5 backdrop-blur transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-500/5">
+        class="group flex min-h-[220px] flex-col rounded-2xl border border-slate-200/60 bg-white p-5 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-500/5">
         <!-- 头部 -->
         <div class="flex items-center gap-3">
           <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-50 to-blue-50">
@@ -217,7 +217,7 @@ onMounted(async () => {
     </div>
 
     <!-- 接入信息弹窗 -->
-    <div v-if="showAccessDialog && activeModel" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" @click.self="showAccessDialog = false">
+    <div v-if="showAccessDialog && activeModel" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30" @click.self="showAccessDialog = false">
       <div class="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200/60 bg-white shadow-2xl">
         <div class="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <div class="flex items-center gap-3">
@@ -284,7 +284,7 @@ onMounted(async () => {
     </div>
 
     <!-- 申请弹窗 -->
-    <div v-if="showApplyDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm">
+    <div v-if="showApplyDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
       <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-2xl">
         <div class="flex items-center justify-between">
           <h3 class="text-base font-semibold text-slate-900">申请使用：{{ activeModel?.name }}</h3>

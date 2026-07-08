@@ -67,7 +67,7 @@ const changeLabel = computed(() => {
 </script>
 
 <template>
-  <div class="relative rounded-xl border border-white/80 bg-white/70 px-5 py-4 shadow-sm backdrop-blur-xl">
+  <div class="relative rounded-xl border border-slate-200/60 bg-white px-5 py-4 shadow-sm">
     <div class="flex items-center gap-1 text-xs text-slate-500">
       <span>{{ label }}</span>
       <TooltipIcon v-if="tooltip" :text="tooltip" />

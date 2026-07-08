@@ -4,7 +4,7 @@
       <h1 class="text-2xl font-bold text-slate-800">AI 身份管理</h1>
       <div class="flex items-center gap-3">
         <button
-          class="rounded-xl border border-slate-200/60 bg-white/70 px-4 py-2.5 text-sm font-medium text-slate-600 backdrop-blur-xl transition hover:bg-white/90"
+          class="rounded-xl border border-slate-200/60 bg-white px-4 py-2.5 text-sm font-medium text-slate-600  transition hover:bg-white/90"
           @click="showScenarioDialog = true"
         >场景管理</button>
         <button
@@ -14,7 +14,7 @@
       </div>
     </div>
 
-    <div class="flex gap-1 rounded-xl bg-white/50 p-1 backdrop-blur-sm">
+    <div class="flex gap-1 rounded-xl bg-white/50 p-1">
       <button
         v-for="tab in tabs"
         :key="tab.value"
@@ -30,13 +30,13 @@
         v-model="keyword"
         type="text"
         placeholder="搜索..."
-        class="w-64 rounded-xl border border-slate-200/60 bg-white/70 px-4 py-2 text-sm backdrop-blur-xl focus:outline-none focus:ring-2 focus:ring-purple-400/50"
+        class="w-64 rounded-xl border border-slate-200/60 bg-white px-4 py-2 text-sm  focus:outline-none focus:ring-2 focus:ring-purple-400/50"
         @keyup.enter="handleSearch"
       />
-      <button class="rounded-xl border border-slate-200/60 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 backdrop-blur-xl transition hover:bg-white/90" @click="handleSearch">搜索</button>
+      <button class="rounded-xl border border-slate-200/60 bg-white px-4 py-2 text-sm font-medium text-slate-600  transition hover:bg-white/90" @click="handleSearch">搜索</button>
     </div>
 
-    <div class="rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm backdrop-blur-xl">
+    <div class="rounded-2xl border border-slate-200/60 bg-white shadow-sm">
       <div v-if="isLoading" class="flex items-center justify-center py-20">
         <div class="h-6 w-6 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
       </div>
@@ -445,8 +445,8 @@
     />
 
     <div v-if="showScenarioDialog" class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="showScenarioDialog = false" />
-      <div class="relative w-[600px] max-h-[80vh] overflow-y-auto bg-white/90 backdrop-blur-xl border border-slate-200/60 rounded-2xl shadow-xl p-6">
+      <div class="absolute inset-0 bg-black/40" @click="showScenarioDialog = false" />
+      <div class="relative w-[600px] max-h-[80vh] overflow-y-auto bg-white border border-slate-200/60 rounded-2xl shadow-xl p-6">
         <div class="flex items-center justify-between mb-4">
           <h3 class="text-lg font-semibold text-slate-800">使用场景管理</h3>
           <button class="text-slate-400 hover:text-slate-600" @click="showScenarioDialog = false">

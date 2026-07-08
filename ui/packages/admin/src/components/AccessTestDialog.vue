@@ -167,8 +167,8 @@ function setAccessErrorFromStream(payload: string): void {
 </script>
 
 <template>
-  <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-    <div class="flex w-full max-w-2xl flex-col rounded-2xl border border-slate-200/60 bg-white/95 shadow-xl backdrop-blur-xl" style="max-height: 80vh;">
+  <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+    <div class="flex w-full max-w-2xl flex-col rounded-2xl border border-slate-200/60 bg-white shadow-xl" style="max-height: 80vh;">
       <!-- Header -->
       <div class="flex items-center justify-between border-b border-slate-100 px-6 py-4">
         <h3 class="text-lg font-semibold text-slate-900">访问测试</h3>

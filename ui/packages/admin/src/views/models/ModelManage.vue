@@ -900,7 +900,7 @@ onMounted(() => {
     <!-- 模型管理（主视图） -->
     <div class="flex flex-1 gap-4 overflow-hidden">
     <!-- 左侧：分组导航 + 模型列表 -->
-    <div class="w-80 shrink-0 overflow-hidden rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm backdrop-blur-xl">
+    <div class="w-80 shrink-0 overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm">
       <div class="flex h-12 items-center justify-between border-b border-slate-200/60 px-4">
         <h3 class="text-sm font-semibold text-slate-900">模型</h3>
         <button
@@ -989,7 +989,7 @@ onMounted(() => {
     </div>
 
     <!-- 右侧：部署管理 -->
-    <div class="flex-1 overflow-hidden rounded-2xl border border-slate-200/60 bg-white/70 shadow-sm backdrop-blur-xl">
+    <div class="flex-1 overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm">
       <template v-if="selectedModel">
         <div class="flex h-12 items-center justify-between border-b border-slate-200/60 px-4">
           <div class="flex items-center gap-3">
@@ -1126,8 +1126,8 @@ onMounted(() => {
     </div>
 
     <!-- 路由配置弹窗 -->
-    <div v-if="showRouterForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showRouterForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">路由配置</h3>
         <p class="mb-4 text-xs text-slate-400">全局路由策略，同步到 LiteLLM router_settings</p>
 
@@ -1203,8 +1203,8 @@ onMounted(() => {
     </div>
 
     <!-- 分组表单弹窗 -->
-    <div v-if="showGroupForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showGroupForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">{{ isEditingGroup ? '编辑分组' : '新建分组' }}</h3>
         <form @submit.prevent="handleSubmitGroup">
           <div class="mb-3">
@@ -1245,8 +1245,8 @@ onMounted(() => {
     </div>
 
     <!-- 新建/编辑模型弹窗 -->
-    <div v-if="showModelForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showModelForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">{{ isEditingModel ? '编辑模型' : '新建模型' }}</h3>
         <form @submit.prevent="handleSubmitModel">
           <div class="mb-3">
@@ -1316,7 +1316,7 @@ onMounted(() => {
     <Teleport to="body">
       <div
         v-if="showLogoOptions"
-        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 backdrop-blur-sm"
+        class="fixed inset-0 z-[60] flex items-center justify-center bg-black/20"
         @click.self="handleCloseLogoPicker"
       >
         <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-5 shadow-xl">
@@ -1360,8 +1360,8 @@ onMounted(() => {
     </Teleport>
 
     <!-- 添加/编辑凭证弹窗 -->
-    <div v-if="showDeployForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showDeployForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">{{ isEditingDeploy ? '编辑凭证' : '添加凭证' }}</h3>
         <form @submit.prevent="handleSubmitDeployment">
           <!-- 核心配置 -->
@@ -1580,8 +1580,8 @@ onMounted(() => {
     />
 
     <!-- 发布设置弹窗 -->
-    <div v-if="showPublishDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showPublishDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">发布设置</h3>
         <p class="mb-4 text-xs text-slate-400">设置模型在用户端的可见性，权限落在用户身上，部门选择用于批量操作</p>
 

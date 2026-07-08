@@ -109,7 +109,7 @@ onMounted(async () => {
       <div class="relative">
         <Search class="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
         <input v-model="search" type="text" placeholder="搜索智能体..."
-          class="h-10 w-full max-w-md rounded-lg border border-slate-200/60 bg-white/70 pl-9 pr-3 text-sm backdrop-blur placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
+          class="h-10 w-full max-w-md rounded-lg border border-slate-200/60 bg-white pl-9 pr-3 text-sm placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
       </div>
       <div class="flex flex-wrap gap-2">
         <button @click="categoryFilter = ''"
@@ -142,13 +142,13 @@ onMounted(async () => {
     <div v-if="isLoading" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <div v-for="i in 6" :key="i" class="h-48 animate-pulse rounded-2xl bg-white/70" />
     </div>
-    <div v-else-if="!filtered.length" class="rounded-2xl border border-slate-200/60 bg-white/70 p-12 text-center backdrop-blur">
+    <div v-else-if="!filtered.length" class="rounded-2xl border border-slate-200/60 bg-white p-12 text-center">
       <Bot class="mx-auto h-10 w-10 text-slate-300" />
       <p class="mt-3 text-sm text-slate-400">暂无智能体</p>
     </div>
     <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <div v-for="agent in filtered" :key="agent.id"
-        class="group flex min-h-[180px] cursor-pointer flex-col rounded-2xl border border-slate-200/60 bg-white/70 p-5 backdrop-blur transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-500/5"
+        class="group flex min-h-[180px] cursor-pointer flex-col rounded-2xl border border-slate-200/60 bg-white p-5 transition-all hover:-translate-y-0.5 hover:shadow-lg hover:shadow-purple-500/5"
         @click="handleOpen(agent)"
       >
         <div class="flex items-center gap-3">
@@ -191,7 +191,7 @@ onMounted(async () => {
 
     <!-- 申请对话框 -->
     <Teleport to="body">
-      <div v-if="showApplyDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-sm" @click.self="showApplyDialog = false">
+      <div v-if="showApplyDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30" @click.self="showApplyDialog = false">
         <div class="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
           <h3 class="text-lg font-semibold text-slate-900">申请使用智能体</h3>
           <p class="mt-1 text-sm text-slate-500">{{ applyTarget?.name }}</p>

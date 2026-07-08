@@ -275,7 +275,7 @@ onMounted(loadData)
 
     <template v-else-if="aiKey">
       <!-- Title -->
-      <div class="mb-5 rounded-2xl border border-slate-200/60 bg-white/70 p-5 shadow-sm backdrop-blur-xl">
+      <div class="mb-5 rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm">
         <div class="mb-1 flex items-center gap-3">
           <h1 class="text-lg font-bold text-slate-900">{{ aiKey.name }}</h1>
           <span class="rounded-full bg-purple-50 px-2.5 py-0.5 text-xs font-medium text-purple-700">
@@ -287,7 +287,7 @@ onMounted(loadData)
       </div>
 
       <!-- Basic Info -->
-      <div class="mb-5 rounded-2xl border border-slate-200/60 bg-white/70 p-5 shadow-sm backdrop-blur-xl">
+      <div class="mb-5 rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm">
         <h2 class="mb-4 text-sm font-semibold text-slate-900">基本信息</h2>
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -319,7 +319,7 @@ onMounted(loadData)
       </div>
 
       <!-- Resource & Budget (full width) -->
-      <div class="mb-5 rounded-2xl border border-slate-200/60 bg-white/70 p-5 shadow-sm backdrop-blur-xl">
+      <div class="mb-5 rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm">
         <h2 class="mb-4 text-sm font-semibold text-slate-900">资源与预算</h2>
         <KeyResourceBudget
           :models="models"
@@ -364,7 +364,7 @@ onMounted(loadData)
       </div>
 
       <!-- Rate Limiting -->
-      <div class="mb-5 rounded-2xl border border-slate-200/60 bg-white/70 p-5 shadow-sm backdrop-blur-xl">
+      <div class="mb-5 rounded-2xl border border-slate-200/60 bg-white p-5 shadow-sm">
         <h2 class="mb-3 text-sm font-semibold text-slate-900">AI 身份限流</h2>
         <div class="mb-3 grid grid-cols-3 gap-2">
           <button

@@ -134,8 +134,8 @@ onMounted(fetchData)
     <div v-if="!isLoading && scenarios.length === 0" class="py-12 text-center text-sm text-slate-400">暂无使用场景</div>
 
     <!-- Create/Edit Dialog -->
-    <div v-if="showForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm">
-      <div class="w-full max-w-sm rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+    <div v-if="showForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+      <div class="w-full max-w-sm rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">{{ editingId ? '编辑场景' : '新建场景' }}</h3>
         <form @submit.prevent="handleSubmit">
           <div class="mb-3">

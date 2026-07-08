@@ -113,11 +113,6 @@ async function handleChangePassword(): Promise<void> {
 
 <template>
   <div class="relative flex min-h-screen flex-col overflow-hidden bg-slate-50">
-    <!-- 背景渐变色块 -->
-    <div class="pointer-events-none absolute -left-60 -top-60 h-[600px] w-[600px] animate-blob rounded-full bg-purple-200/30 blur-[140px]" />
-    <div class="pointer-events-none absolute -bottom-60 -right-60 h-[600px] w-[600px] animate-blob-reverse rounded-full bg-blue-200/30 blur-[140px]" />
-    <div class="pointer-events-none absolute left-1/2 top-1/3 h-[400px] w-[400px] -translate-x-1/2 animate-blob-slow rounded-full bg-indigo-100/20 blur-[120px]" />
-
     <!-- 顶部导航 -->
     <header class="relative z-30 grid h-[60px] grid-cols-3 items-center border-b border-slate-200/60 bg-white/70 px-6 backdrop-blur-xl">
       <!-- 左：Logo -->

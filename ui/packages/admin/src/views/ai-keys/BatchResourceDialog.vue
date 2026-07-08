@@ -294,8 +294,8 @@ async function handleSubmit(): Promise<void> {
 
 <template>
   <div v-if="visible" class="fixed inset-0 z-50 flex items-center justify-center">
-    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="emit('close')" />
-    <div class="relative flex h-[85vh] w-[900px] flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white/95 shadow-xl backdrop-blur-xl">
+    <div class="absolute inset-0 bg-black/40" @click="emit('close')" />
+    <div class="relative flex h-[85vh] w-[900px] flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-xl">
       <!-- Header -->
       <div class="flex items-center justify-between border-b border-slate-200/60 px-6 py-4">
         <div class="flex items-center gap-3">
@@ -319,7 +319,7 @@ async function handleSubmit(): Promise<void> {
               v-model="userSearch"
               type="text"
               placeholder="搜索用户..."
-              class="w-64 rounded-xl border border-slate-200/60 bg-white/70 px-4 py-2 text-sm backdrop-blur-xl focus:outline-none focus:ring-2 focus:ring-purple-400/50"
+              class="w-64 rounded-xl border border-slate-200/60 bg-white px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-purple-400/50"
               @keyup.enter="handleUserSearch"
             />
             <button class="rounded-xl border border-slate-200/60 bg-white/70 px-4 py-2 text-sm font-medium text-slate-600 transition hover:bg-white/90" @click="handleUserSearch">搜索</button>

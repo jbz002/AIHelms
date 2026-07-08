@@ -167,7 +167,7 @@ onMounted(fetchData)
       </button>
     </div>
 
-    <div class="overflow-hidden rounded-xl border border-slate-200/60 bg-white/60 backdrop-blur-xl">
+    <div class="overflow-hidden rounded-xl border border-slate-200/60 bg-white">
       <table class="w-full text-left text-sm">
         <thead class="border-b border-slate-200/60 bg-slate-50/50">
           <tr>
@@ -238,9 +238,9 @@ onMounted(fetchData)
     <!-- Create/Edit Dialog -->
     <div
       v-if="showForm"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
     >
-      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white/90 p-6 shadow-xl backdrop-blur-xl">
+      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">
           {{ isEditing ? '编辑业务场景' : '新建业务场景' }}
         </h3>
