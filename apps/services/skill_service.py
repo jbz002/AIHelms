@@ -120,7 +120,10 @@ async def create_skill(
     # 发布且不需要审批时，自动同步到所有主 Key
     if is_published and not requires_approval:
         from services import ai_key_service
-        await ai_key_service.sync_public_resource_to_all_keys(session, "skills", skill.id)
+
+        await ai_key_service.sync_public_resource_to_all_keys(
+            session, "skills", skill.id
+        )
 
     await session.commit()
     await session.refresh(skill)
@@ -158,10 +161,19 @@ async def update_skill(
         if zip_filename:
             skill.zip_filename = zip_filename
 
-    # 发布且不需要审批时，自动同步到所有主 Key
+    # 发布且不需要审批时同步到所有主 Key，否则从主 Key 中移除
     if skill.is_published and not skill.requires_approval:
         from services import ai_key_service
-        await ai_key_service.sync_public_resource_to_all_keys(session, "skills", skill.id)
+
+        await ai_key_service.sync_public_resource_to_all_keys(
+            session, "skills", skill.id
+        )
+    else:
+        from services import ai_key_service
+
+        await ai_key_service.remove_public_resource_from_all_keys(
+            session, "skills", skill.id
+        )
 
     await session.commit()
     await session.refresh(skill)
@@ -177,11 +189,18 @@ async def delete_skill(session: AsyncSession, skill_id: int) -> None:
             os.remove(skill.zip_path)
         except OSError:
             logger.warning("failed to remove zip file: %s", skill.zip_path)
+    from services import ai_key_service
+
+    await ai_key_service.remove_public_resource_from_all_keys(
+        session, "skills", skill_id
+    )
     await skill_repo.delete(session, skill_id)
     await session.commit()
 
 
-async def get_skill_zip(session: AsyncSession, skill_id: int, require_published: bool = False) -> tuple[str, str, int]:
+async def get_skill_zip(
+    session: AsyncSession, skill_id: int, require_published: bool = False
+) -> tuple[str, str, int]:
     """返回 (zip_path, zip_filename, zip_size)。同时增加下载计数。"""
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
@@ -214,6 +233,7 @@ async def get_install_info(
 
     if user_id:
         from repositories import ai_key_repo
+
         main_key = await ai_key_repo.find_personal_main(session, user_id)
         if main_key and main_key.litellm_key_id:
             download_url = f"{download_url}?token={main_key.litellm_key_id}"
@@ -236,7 +256,12 @@ async def get_install_info(
 async def list_categories(session: AsyncSession) -> list[dict]:
     cats = await skill_repo.list_categories(session)
     return [
-        {"id": c.id, "name": c.name, "description": c.description, "sort_order": c.sort_order}
+        {
+            "id": c.id,
+            "name": c.name,
+            "description": c.description,
+            "sort_order": c.sort_order,
+        }
         for c in cats
     ]
 
@@ -250,7 +275,12 @@ async def create_category(
     cat = SkillCategory(name=name, description=description, sort_order=sort_order)
     cat = await skill_repo.create_category(session, cat)
     await session.commit()
-    return {"id": cat.id, "name": cat.name, "description": cat.description, "sort_order": cat.sort_order}
+    return {
+        "id": cat.id,
+        "name": cat.name,
+        "description": cat.description,
+        "sort_order": cat.sort_order,
+    }
 
 
 async def delete_category(session: AsyncSession, category_id: int) -> None:

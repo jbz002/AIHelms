@@ -173,11 +173,17 @@ async def update_server(
         if hasattr(server, key) and value is not None:
             setattr(server, key, value)
 
-    # 发布且不需要审批时，自动同步到所有主 Key
+    # 发布且不需要审批时同步到所有主 Key，否则从主 Key 中移除
     if server.is_published and not server.requires_approval:
         from services import ai_key_service
 
         await ai_key_service.sync_public_resource_to_all_keys(
+            session, "mcps", server.id
+        )
+    else:
+        from services import ai_key_service
+
+        await ai_key_service.remove_public_resource_from_all_keys(
             session, "mcps", server.id
         )
 
@@ -202,6 +208,11 @@ async def delete_server(session: AsyncSession, server_id: int) -> None:
         raise NotFoundError("mcp_server", server_id)
 
     litellm_server_id = server.server_id
+    from services import ai_key_service
+
+    await ai_key_service.remove_public_resource_from_all_keys(
+        session, "mcps", server_id
+    )
     await mcp_repo.delete_server(session, server_id)
     await session.commit()
 
