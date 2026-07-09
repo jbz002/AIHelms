@@ -223,17 +223,16 @@ MCP（Model Context Protocol）是 Anthropic 提出的工具调用协议。平�
   "mcpServers": {
     "github": {
       "type": "http",
-      "url": "{{LITELLM_URL}}/mcp",
+      "url": "{{LITELLM_URL}}/github/mcp",
       "headers": {
-        "Authorization": "Bearer <你的主 Key>",
-        "x-mcp-servers": "github"
+        "x-litellm-api-key": "Bearer <你的主 Key>"
       }
     }
   }
 }
 ```
 
-`x-mcp-servers` 头里填你要使用的 MCP Server 名称，多个用逗号分隔（如 `github,postgres`）。
+URL 中的 `github` 替换为目标 MCP Server 的 `server_name`（在 MCP Server 详情页可查看），多个 MCP Server 分别配置不同条目即可。
 
 ## 调试
 

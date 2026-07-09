@@ -227,6 +227,7 @@ async def get_connect_config(
     config = {
         "mcpServers": {
             server_name: {
+                "type": "http",
                 "url": mcp_url,
                 "description": server_data.get("description", ""),
                 "isActive": True,

@@ -1,0 +1,33 @@
+# docs-mcp-server —— 作为 AIHelms 的外部 MCP server 独立部署
+#
+# standalone 单容器模式：MCP(/sse + /mcp) + Web UI + 内嵌 worker 一体
+# 加入 aihelms_default 网络，使 LiteLLM 容器可用「容器名」访问
+#
+# 启动：  docker compose -f docker/docs-mcp-server.yml up -d
+# 停止：  docker compose -f docker/docs-mcp-server.yml down
+# 日志：  docker compose -f docker/docs-mcp-server.yml logs -f
+services:
+  docs-mcp-server:
+    image: ghcr.io/arabold/docs-mcp-server:latest
+    container_name: docs-mcp-server
+    restart: unless-stopped
+    # 必须显式 --protocol http：容器内 stdin 非 TTY 会触发 stdio 自动检测，
+    # 导致进程不监听 HTTP 端口（参见 docs-mcp-server 的 Protocol Auto-Detection）
+    command: ["--protocol", "http", "--host", "0.0.0.0", "--port", "6280"]
+    ports:
+      - "6280:6280" # 宿主机浏览器访问 Web UI（管理文档索引）
+    volumes:
+      - docs-mcp-data:/data # 索引数据持久化
+      - docs-mcp-config:/config # 配置持久化
+    networks:
+      - aihelms_default
+
+volumes:
+  docs-mcp-data:
+    name: docs-mcp-data
+  docs-mcp-config:
+    name: docs-mcp-config
+
+networks:
+  aihelms_default:
+    external: true
