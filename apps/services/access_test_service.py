@@ -132,7 +132,7 @@ async def test_rerank(
 ) -> dict:
     """Test rerank model via LiteLLM /rerank endpoint."""
     try:
-        async with httpx.AsyncClient(timeout=30) as http_client:
+        async with httpx.AsyncClient(timeout=30, trust_env=False) as http_client:
             response = await http_client.post(
                 f"{settings.litellm_url}/rerank",
                 headers={

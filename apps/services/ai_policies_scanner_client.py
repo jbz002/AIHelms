@@ -16,7 +16,7 @@ async def scan_skill_zip(target: str) -> dict:
     payload = {"target": target, "output_format": "json"}
     timeout = httpx.Timeout(settings.ai_policies_timeout_seconds + 10)
     try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
+        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
             response = await client.post(url, json=payload)
     except httpx.HTTPError as exc:
         logger.warning("AI Policies scanner request failed: %s", exc)
