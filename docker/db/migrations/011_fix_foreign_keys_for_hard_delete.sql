@@ -5,12 +5,14 @@
 
 -- 1. usage_logs.user_id — 历史调用日志，用户删除后保留日志但置 NULL
 ALTER TABLE aihelms.usage_logs
+    ALTER COLUMN user_id DROP NOT NULL,
     DROP CONSTRAINT IF EXISTS usage_logs_user_id_fkey,
     ADD CONSTRAINT usage_logs_user_id_fkey
         FOREIGN KEY (user_id) REFERENCES aihelms.users(id) ON DELETE SET NULL;
 
 -- 2. resource_applications.user_id — 资源申请记录，用户删除后保留记录但置 NULL
 ALTER TABLE aihelms.resource_applications
+    ALTER COLUMN user_id DROP NOT NULL,
     DROP CONSTRAINT IF EXISTS resource_applications_user_id_fkey,
     ADD CONSTRAINT resource_applications_user_id_fkey
         FOREIGN KEY (user_id) REFERENCES aihelms.users(id) ON DELETE SET NULL;
@@ -23,6 +25,7 @@ ALTER TABLE aihelms.resource_applications
 
 -- 4. agent_usage_logs.user_id — 智能体使用日志，用户删除后保留日志但置 NULL
 ALTER TABLE aihelms.agent_usage_logs
+    ALTER COLUMN user_id DROP NOT NULL,
     DROP CONSTRAINT IF EXISTS agent_usage_logs_user_id_fkey,
     ADD CONSTRAINT agent_usage_logs_user_id_fkey
         FOREIGN KEY (user_id) REFERENCES aihelms.users(id) ON DELETE SET NULL;

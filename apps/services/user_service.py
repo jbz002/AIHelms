@@ -115,6 +115,25 @@ async def delete_user(session: AsyncSession, user_id: int) -> None:
     if user.is_admin:
         raise ConflictError("不能删除管理员账户")
 
+    # 检查用户是否创建了不可转移的资源（RESTRICT FK）
+    from sqlalchemy import func, select
+
+    from models.db import Agent, AiKey, ApiKey, McpServer, Skill
+
+    resource_checks = [
+        (ApiKey, "API Key"),
+        (AiKey, "AI Key"),
+        (McpServer, "MCP Server"),
+        (Skill, "Skill"),
+        (Agent, "Agent"),
+    ]
+    for model, label in resource_checks:
+        count = await session.scalar(
+            select(func.count()).select_from(model).where(model.created_by == user_id)
+        )
+        if count:
+            raise ConflictError(f"该用户创建了 {label}，请先转移资源所有权后再删除")
+
     # 硬删除前，先禁用名下所有 AI Key（LiteLLM 侧预算置 0）
     await ai_key_service.sync_user_keys_active(session, user_id, False)
     await session.delete(user)

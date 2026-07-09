@@ -81,7 +81,10 @@ async def delete_project(session: AsyncSession, project_id: int) -> None:
         raise ConflictError("该项目下有成员，请先移除成员")
 
     if project.litellm_team_id:
-        await litellm_client.block_team(project.litellm_team_id)
+        try:
+            await litellm_client.block_team(project.litellm_team_id)
+        except Exception as e:
+            logger.warning("LiteLLM block_team failed for project %s: %s", project_id, e)
 
     await session.delete(project)
     await session.commit()

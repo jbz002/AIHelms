@@ -597,7 +597,9 @@ class ResourceApplication(Base):
     __table_args__ = {"schema": "aihelms"}
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("aihelms.users.id"))
+    user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL")
+    )
     resource_type: Mapped[str] = mapped_column(String(20), nullable=False)
     resource_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     reason: Mapped[str] = mapped_column(Text, default="")
@@ -607,7 +609,7 @@ class ResourceApplication(Base):
     cancel_requested: Mapped[bool] = mapped_column(Boolean, default=False)
     retry_of_task_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     reviewed_by: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("aihelms.users.id"), nullable=True
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
     )
     reviewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     review_notes: Mapped[str] = mapped_column(Text, default="")
@@ -946,7 +948,9 @@ class AgentUsageLog(Base):
     agent_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("aihelms.agents.id", ondelete="CASCADE")
     )
-    user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("aihelms.users.id"))
+    user_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL")
+    )
     session_id: Mapped[str] = mapped_column(String(100), default="")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
