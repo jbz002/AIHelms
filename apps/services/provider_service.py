@@ -2,14 +2,16 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from exceptions import NotFoundError, ConflictError
+from exceptions import ConflictError, NotFoundError
 from models.db import Provider
-from repositories import provider_repo, credential_repo
+from repositories import credential_repo, provider_repo
 
 logger = logging.getLogger(__name__)
 
 
-async def list_providers(session: AsyncSession, page: int = 1, page_size: int = 50) -> dict:
+async def list_providers(
+    session: AsyncSession, page: int = 1, page_size: int = 50
+) -> dict:
     total = await provider_repo.count_all(session)
     items = await provider_repo.find_all(session, page, page_size)
     return {
@@ -94,7 +96,7 @@ async def delete_provider(session: AsyncSession, provider_id: int) -> None:
     if credentials:
         raise ConflictError("该供应商下有凭证，请先删除或迁移凭证")
 
-    provider.is_active = False
+    await session.delete(provider)
     await session.commit()
 
 
@@ -104,7 +106,9 @@ def _serialize(provider: Provider) -> dict:
         "name": provider.name,
         "provider_type": provider.provider_type,
         "billing_type": provider.billing_type,
-        "monthly_budget": str(provider.monthly_budget) if provider.monthly_budget else None,
+        "monthly_budget": (
+            str(provider.monthly_budget) if provider.monthly_budget else None
+        ),
         "monthly_used": str(provider.monthly_used) if provider.monthly_used else "0",
         "is_active": provider.is_active,
         "description": provider.description,

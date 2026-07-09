@@ -2,10 +2,9 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from exceptions import NotFoundError, ConflictError
+from exceptions import ConflictError, NotFoundError
 from models.db import Department
-from repositories import department_repo
-from repositories import user_repo
+from repositories import department_repo, user_repo
 from services import litellm_client
 
 logger = logging.getLogger(__name__)
@@ -23,11 +22,19 @@ async def get_department_by_id(session: AsyncSession, dept_id: int) -> dict:
         raise NotFoundError("department", dept_id)
     data = _serialize_dept(dept)
     managers = await department_repo.find_managers(session, dept_id)
-    data["managers"] = [{"id": m.id, "username": m.username, "display_name": m.display_name} for m in managers]
+    data["managers"] = [
+        {"id": m.id, "username": m.username, "display_name": m.display_name}
+        for m in managers
+    ]
     return data
 
 
-async def create_department(session: AsyncSession, name: str, parent_id: int | None = None, description: str = "") -> dict:
+async def create_department(
+    session: AsyncSession,
+    name: str,
+    parent_id: int | None = None,
+    description: str = "",
+) -> dict:
     # 前端以 0 表示顶级部门，归一成 None，避免外键约束违反
     if not parent_id or parent_id <= 0:
         parent_id = None
@@ -45,7 +52,14 @@ async def create_department(session: AsyncSession, name: str, parent_id: int | N
     return data
 
 
-async def update_department(session: AsyncSession, dept_id: int, name: str | None = None, description: str | None = None, sort_order: int | None = None, is_active: bool | None = None) -> dict:
+async def update_department(
+    session: AsyncSession,
+    dept_id: int,
+    name: str | None = None,
+    description: str | None = None,
+    sort_order: int | None = None,
+    is_active: bool | None = None,
+) -> dict:
     dept = await department_repo.find_by_id(session, dept_id)
     if not dept:
         raise NotFoundError("department", dept_id)
@@ -81,7 +95,7 @@ async def delete_department(session: AsyncSession, dept_id: int) -> None:
     if members > 0:
         raise ConflictError("该部门下有成员，请先移除成员")
 
-    dept.is_active = False
+    await session.delete(dept)
     await session.commit()
 
 
@@ -107,7 +121,9 @@ async def get_department_members(session: AsyncSession, dept_id: int) -> list[di
     ]
 
 
-async def add_department_member(session: AsyncSession, dept_id: int, user_id: int) -> None:
+async def add_department_member(
+    session: AsyncSession, dept_id: int, user_id: int
+) -> None:
     dept = await department_repo.find_by_id(session, dept_id)
     if not dept or not dept.is_active:
         raise NotFoundError("department", dept_id)
@@ -124,7 +140,9 @@ async def add_department_member(session: AsyncSession, dept_id: int, user_id: in
     await session.commit()
 
 
-async def remove_department_member(session: AsyncSession, dept_id: int, user_id: int) -> None:
+async def remove_department_member(
+    session: AsyncSession, dept_id: int, user_id: int
+) -> None:
     dept = await department_repo.find_by_id(session, dept_id)
     if not dept:
         raise NotFoundError("department", dept_id)
@@ -137,7 +155,9 @@ async def remove_department_member(session: AsyncSession, dept_id: int, user_id:
     await session.commit()
 
 
-async def update_department_managers(session: AsyncSession, dept_id: int, manager_user_ids: list[int]) -> None:
+async def update_department_managers(
+    session: AsyncSession, dept_id: int, manager_user_ids: list[int]
+) -> None:
     dept = await department_repo.find_by_id(session, dept_id)
     if not dept:
         raise NotFoundError("department", dept_id)

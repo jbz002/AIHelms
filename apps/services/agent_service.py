@@ -4,7 +4,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from exceptions import NotFoundError, ConflictError
+from exceptions import ConflictError, NotFoundError
 from models.db import Agent, AgentCategory, AgentPlatform, AgentUsageLog, AiKey
 from repositories import agent_repo
 
@@ -131,7 +131,7 @@ async def delete_agent(session: AsyncSession, agent_id: int) -> None:
     await ai_key_service.remove_public_resource_from_all_keys(
         session, "agents", agent_id
     )
-    agent.is_active = False
+    await session.delete(agent)
     await session.commit()
 
 

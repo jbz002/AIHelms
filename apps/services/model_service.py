@@ -4,18 +4,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from exceptions import NotFoundError, ConflictError
+from exceptions import ConflictError, NotFoundError
 from models.db import (
     Model,
-    ModelDeployment,
     ModelAccessGroup,
-    RouterSettings,
-    ModelDepartmentVisibility,
-    ModelUserVisibility,
+    ModelDeployment,
     Provider,
     ProviderPrefixMap,
+    RouterSettings,
 )
-from repositories import model_repo, credential_repo, ai_key_repo
+from repositories import ai_key_repo, credential_repo, model_repo
 from services import litellm_client
 from services.litellm_credential_payload import (
     build_litellm_credential_values_for_credential,
@@ -161,6 +159,7 @@ async def delete_model(session: AsyncSession, model_id: int) -> None:
     if not model:
         raise NotFoundError("model", model_id)
 
+    # 在级联删除前，先在 LiteLLM 侧禁用所有部署
     deployments = await model_repo.find_deployments_by_model(session, model_id)
     for d in deployments:
         if d.litellm_model_id:
@@ -184,9 +183,6 @@ async def delete_model(session: AsyncSession, model_id: int) -> None:
                         "litellm disable model failed for deployment %s: %s", d.id, e
                     )
                     raise ConflictError("LiteLLM 侧禁用失败，请稍后重试")
-        d.is_active = False
-
-    model.is_active = False
 
     # 从所有主 Key 中移除该模型
     if model.model_id:
@@ -196,6 +192,12 @@ async def delete_model(session: AsyncSession, model_id: int) -> None:
             session, "models", model.model_id
         )
 
+    # 硬删除 — 用 Core-level DELETE 绕过 ORM 关系处理，
+    # 避免 selectin 加载的 deployments 被 SQLAlchemy 尝试 SET NULL FK
+    from sqlalchemy import delete as sa_delete
+
+    session.expunge(model)
+    await session.execute(sa_delete(Model).where(Model.id == model_id))
     await session.commit()
 
 

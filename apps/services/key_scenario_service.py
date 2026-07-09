@@ -2,7 +2,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from exceptions import NotFoundError, ConflictError
+from exceptions import ConflictError, NotFoundError
 from models.db import KeyScenario
 from repositories import key_scenario_repo
 
@@ -81,7 +81,17 @@ async def delete_scenario(session: AsyncSession, scenario_id: int) -> None:
     if not scenario:
         raise NotFoundError("scenario", scenario_id)
 
-    scenario.is_active = False
+    from sqlalchemy import select
+
+    from models.db import AiKey
+
+    ref = await session.execute(
+        select(AiKey.id).where(AiKey.scenario_id == scenario_id).limit(1)
+    )
+    if ref.first():
+        raise ConflictError("该场景被 AI Key 引用，请先移除引用")
+
+    await session.delete(scenario)
     await session.commit()
 
 

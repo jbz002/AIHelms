@@ -3,16 +3,17 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.security import get_password_hash
-from exceptions import NotFoundError, ConflictError
+from exceptions import ConflictError, NotFoundError
 from models.db import User
 from repositories import user_repo
-from services import litellm_client
-from services import ai_key_service
+from services import ai_key_service, litellm_client
 
 logger = logging.getLogger(__name__)
 
 
-async def list_users(session: AsyncSession, page: int = 1, page_size: int = 20, keyword: str = "") -> dict:
+async def list_users(
+    session: AsyncSession, page: int = 1, page_size: int = 20, keyword: str = ""
+) -> dict:
     total = await user_repo.count_users(session, keyword)
     users = await user_repo.find_users(session, page, page_size, keyword)
     items = [_serialize_user(u) for u in users]
@@ -113,13 +114,16 @@ async def delete_user(session: AsyncSession, user_id: int) -> None:
         raise NotFoundError("user", user_id)
     if user.is_admin:
         raise ConflictError("不能删除管理员账户")
-    user.is_active = False
-    # 软删除用户时，同步卡住其名下所有 AI Key（LiteLLM 侧预算置 0）
+
+    # 硬删除前，先禁用名下所有 AI Key（LiteLLM 侧预算置 0）
     await ai_key_service.sync_user_keys_active(session, user_id, False)
+    await session.delete(user)
     await session.commit()
 
 
-async def reset_password(session: AsyncSession, user_id: int, new_password: str) -> None:
+async def reset_password(
+    session: AsyncSession, user_id: int, new_password: str
+) -> None:
     user = await user_repo.find_user_by_id(session, user_id)
     if not user:
         raise NotFoundError("user", user_id)
@@ -127,18 +131,20 @@ async def reset_password(session: AsyncSession, user_id: int, new_password: str)
     await session.commit()
 
 
-async def update_user_roles(session: AsyncSession, user_id: int, role_ids: list[int]) -> None:
+async def update_user_roles(
+    session: AsyncSession, user_id: int, role_ids: list[int]
+) -> None:
     user = await user_repo.find_user_by_id(session, user_id)
     if not user:
         raise NotFoundError("user", user_id)
 
     # super_admin 角色不可通过后台分配
-    from models.db import Role
     from sqlalchemy import select
+
+    from models.db import Role
+
     if role_ids:
-        result = await session.execute(
-            select(Role).where(Role.id.in_(role_ids))
-        )
+        result = await session.execute(select(Role).where(Role.id.in_(role_ids)))
         roles = list(result.scalars().all())
         assigned_role_names = {r.name for r in roles}
         if "super_admin" in assigned_role_names:
@@ -151,7 +157,9 @@ async def update_user_roles(session: AsyncSession, user_id: int, role_ids: list[
     await session.commit()
 
 
-async def update_user_departments(session: AsyncSession, user_id: int, department_ids: list[int]) -> None:
+async def update_user_departments(
+    session: AsyncSession, user_id: int, department_ids: list[int]
+) -> None:
     user = await user_repo.find_user_by_id(session, user_id)
     if not user:
         raise NotFoundError("user", user_id)
@@ -159,7 +167,9 @@ async def update_user_departments(session: AsyncSession, user_id: int, departmen
     await session.commit()
 
 
-async def update_user_projects(session: AsyncSession, user_id: int, project_ids: list[int]) -> None:
+async def update_user_projects(
+    session: AsyncSession, user_id: int, project_ids: list[int]
+) -> None:
     user = await user_repo.find_user_by_id(session, user_id)
     if not user:
         raise NotFoundError("user", user_id)
@@ -178,9 +188,25 @@ def _serialize_user(user: User) -> dict:
         "is_active": user.is_active,
         "is_admin": user.is_admin,
         "created_at": user.created_at.isoformat() if user.created_at else None,
-        "roles": [{"id": ur.role.id, "name": ur.role.name, "display_name": ur.role.display_name} for ur in user.roles],
-        "departments": [{"id": ud.department.id, "name": ud.department.name, "is_manager": ud.is_manager} for ud in user.departments],
-        "projects": [{"id": up.project.id, "name": up.project.name} for up in user.projects],
+        "roles": [
+            {
+                "id": ur.role.id,
+                "name": ur.role.name,
+                "display_name": ur.role.display_name,
+            }
+            for ur in user.roles
+        ],
+        "departments": [
+            {
+                "id": ud.department.id,
+                "name": ud.department.name,
+                "is_manager": ud.is_manager,
+            }
+            for ud in user.departments
+        ],
+        "projects": [
+            {"id": up.project.id, "name": up.project.name} for up in user.projects
+        ],
     }
 
 

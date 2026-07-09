@@ -46,7 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_api_keys_key_hash ON aihelms.api_keys(key_hash);
 -- 用量记录表
 CREATE TABLE IF NOT EXISTS aihelms.usage_logs (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES aihelms.users(id),
+    user_id BIGINT NOT NULL REFERENCES aihelms.users(id) ON DELETE SET NULL,
     model VARCHAR(128) NOT NULL,
     input_tokens INTEGER DEFAULT 0,
     output_tokens INTEGER DEFAULT 0,
@@ -473,7 +473,7 @@ CREATE TABLE IF NOT EXISTS aihelms.mcp_tools (
 -- 统一 AI 资源申请审批表
 CREATE TABLE IF NOT EXISTS aihelms.resource_applications (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES aihelms.users(id),
+    user_id BIGINT NOT NULL REFERENCES aihelms.users(id) ON DELETE SET NULL,
     resource_type VARCHAR(20) NOT NULL,
     resource_id BIGINT NOT NULL,
     reason TEXT DEFAULT '',
@@ -482,7 +482,7 @@ CREATE TABLE IF NOT EXISTS aihelms.resource_applications (
     celery_task_id VARCHAR(100) DEFAULT '',
     cancel_requested BOOLEAN DEFAULT FALSE,
     retry_of_task_id BIGINT,
-    reviewed_by BIGINT REFERENCES aihelms.users(id),
+    reviewed_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
     reviewed_at TIMESTAMPTZ,
     review_notes TEXT DEFAULT '',
     approval_config JSONB DEFAULT '{}',
@@ -806,7 +806,7 @@ CREATE INDEX IF NOT EXISTS idx_agents_department ON aihelms.agents(department_id
 CREATE TABLE IF NOT EXISTS aihelms.agent_usage_logs (
     id BIGSERIAL PRIMARY KEY,
     agent_id BIGINT NOT NULL REFERENCES aihelms.agents(id) ON DELETE CASCADE,
-    user_id BIGINT NOT NULL REFERENCES aihelms.users(id),
+    user_id BIGINT NOT NULL REFERENCES aihelms.users(id) ON DELETE SET NULL,
     session_id VARCHAR(100) DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT NOW()
 );

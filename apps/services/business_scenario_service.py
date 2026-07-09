@@ -2,7 +2,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from exceptions import NotFoundError, ConflictError
+from exceptions import ConflictError, NotFoundError
 from models.db import BusinessScenario
 from repositories import business_scenario_repo
 
@@ -98,7 +98,24 @@ async def delete_scenario(session: AsyncSession, scenario_id: int) -> None:
     if not scenario:
         raise NotFoundError("business_scenario", scenario_id)
 
-    scenario.is_active = False
+    from sqlalchemy import or_, select
+
+    from models.db import Agent, McpServer, Model, Skill
+
+    has_refs = await session.execute(
+        select(
+            or_(
+                Model.business_scenario_id == scenario_id,
+                McpServer.business_scenario_id == scenario_id,
+                Skill.business_scenario_id == scenario_id,
+                Agent.business_scenario_id == scenario_id,
+            )
+        ).limit(1)
+    )
+    if has_refs.scalar():
+        raise ConflictError("该业务场景被模型/MCP/Skill/Agent 引用，请先移除引用")
+
+    await session.delete(scenario)
     await session.commit()
 
 
