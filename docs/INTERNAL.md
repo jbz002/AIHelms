@@ -62,10 +62,8 @@ git clone <repo-url> && cd AIHelms
 cp docker/middleware.env.example docker/middleware.env
 cp apps/.env.example apps/.env  # 如果存在
 
-# 2) 安装 Python 依赖（建议使用 conda 虚拟环境）
-conda create -n aihelms python=3.11
-conda activate aihelms
-cd apps && pip install -e ".[dev]"
+# 2) 安装 Python 依赖（uv 管理，需先安装 uv）
+cd apps && uv sync
 
 # 3) 安装前端依赖
 cd ui && npm install
@@ -333,7 +331,7 @@ docker compose -f docker-compose.middleware.yaml -p aihelms up -d
 
 | 变更 | 操作 |
 |------|------|
-| Python 依赖（pyproject.toml） | `cd apps && pip install -e ".[dev]"` |
+| Python 依赖（pyproject.toml） | `cd apps && uv sync` |
 | 前端依赖（package.json） | `cd ui && npm install` |
 | 中间件版本 | 修改 `docker-compose.middleware.yaml` 中的 image tag |
 

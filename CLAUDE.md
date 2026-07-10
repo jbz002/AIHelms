@@ -55,10 +55,10 @@ Dev mode: Docker runs middleware only, application code runs on host.
 
 ```bash
 # Backend tests (requires middleware running)
-cd apps && python -m pytest -v
+cd apps && uv run python -m pytest -v
 
 # Backend lint
-cd apps && black . && ruff check .
+cd apps && uv run black . && uv run ruff check .
 
 # Frontend test/lint
 cd ui && npm test
@@ -93,7 +93,7 @@ docker compose up -d
 ## Testing Rules
 
 - Backend tests run on host, require middleware running (`./dev/start-docker-compose`)
-- Run with `cd apps && python -m pytest -v`
+- Run with `cd apps && uv run python -m pytest -v`
 - Frontend tests run independently (no backend dependency)
 
 ## Docker/Env Rules

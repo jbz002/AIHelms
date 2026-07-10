@@ -15,8 +15,6 @@ build/
 .venv/
 venv/
 env/
-.python-version
-uv.lock
 .pytest_cache/
 .coverage
 htmlcov/

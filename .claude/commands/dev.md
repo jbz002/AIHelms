@@ -6,7 +6,7 @@ Standard flow to start the AIHelms local development environment.
 
 1. Docker is running
 2. `.env` file exists (copy from `.env.example` if not)
-3. Python environment activated (conda activate aihelms)
+3. uv installed (dependencies installed via `./dev/setup`)
 4. Node.js and npm available
 
 ## Startup Flow
@@ -20,7 +20,7 @@ Standard flow to start the AIHelms local development environment.
 Or manually:
 ```bash
 cp .env.example .env
-cd apps && pip install -e ".[dev]"
+cd apps && uv sync
 cd ui && npm install
 ```
 

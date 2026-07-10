@@ -15,19 +15,19 @@ No cross-layer calls: Router must not operate database directly. Service must no
 
 ```bash
 # Start dev server (hot reload)
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 # Format
-black .
+uv run black .
 
 # Lint (with auto-fix)
-ruff check --fix .
+uv run ruff check --fix .
 
 # Test
-python -m pytest -v
+uv run python -m pytest -v
 
 # Targeted test
-python -m pytest tests/test_auth.py -v
+uv run python -m pytest tests/test_auth.py -v
 ```
 
 ## Coding Style

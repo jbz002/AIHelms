@@ -11,10 +11,6 @@ build/
 .venv/
 venv/
 env/
-.python-version
-
-# uv
-uv.lock
 
 # Testing
 .pytest_cache/

@@ -6,17 +6,4 @@ ROOT="$(dirname "$SCRIPT_DIR")"
 
 cd "$ROOT/apps"
 
-# 激活虚拟环境（优先 .venv，回退 conda）
-if [ -f "$ROOT/.venv/Scripts/activate" ]; then
-  source "$ROOT/.venv/Scripts/activate"
-elif [ -f "$ROOT/.venv/bin/activate" ]; then
-  source "$ROOT/.venv/bin/activate"
-elif command -v conda &> /dev/null; then
-  eval "$(conda shell.bash hook)"
-  conda activate aihelms
-else
-  echo "错误: 未找到 .venv 虚拟环境且未安装 conda，请先运行 ./dev/setup" >&2
-  exit 1
-fi
-
-python -m core.migrate
+uv run python -m core.migrate

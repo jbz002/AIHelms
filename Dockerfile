@@ -35,16 +35,25 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /uvx /bin/
 
 WORKDIR /app
 
-# Install Python dependencies + supervisor
-COPY apps/pyproject.toml ./apps/
-RUN sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
+ENV UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1 \
+    UV_PYTHON_DOWNLOADS=0 \
+    UV_INDEX_URL=${PIP_INDEX} \
+    PATH="/app/apps/.venv/bin:$PATH"
+
+# Install Python dependencies from lockfile (uv project mode, no dev group)
+COPY apps/pyproject.toml apps/uv.lock apps/.python-version ./apps/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    sed -i "s|deb.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources \
     && apt-get update && apt-get install -y --no-install-recommends gcc libffi-dev \
-    && cd apps && uv pip install --system --index-url ${PIP_INDEX} -e . \
-    && uv pip install --system --index-url ${PIP_INDEX} supervisor \
+    && cd apps && uv sync --frozen --no-install-project --no-dev --group deploy \
     && apt-get purge -y gcc libffi-dev && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
-# Copy backend source
+# Copy backend source and verify environment against lockfile
 COPY apps/ ./apps/
+RUN --mount=type=cache,target=/root/.cache/uv \
+    cd apps && uv sync --frozen --no-dev --group deploy
+
 COPY docker/db/migrations/ ./docker/db/migrations/
 
 # Copy built frontend from stage 1
