@@ -103,6 +103,14 @@ docker compose up -d
 - Backend reads config via `core/config.py`, never use `os.getenv()`
 - Internal container ports are fixed and not configurable (aihelms:8000, litellm:4000)
 
+## Git 推送策略
+
+- origin 是用户自己的 fork（jbz002/AIHelms），upstream 是原作者仓库（beizhu-1209/AIHelms）
+- 当前项目为**二开版本**，本地代码是主版本，不主动跟进 upstream 的更改
+- 推送目标仅为 origin，禁止主动从 upstream 拉取或合并，除非用户明确要求
+- 若 origin 推送被拒（fork 被同步过 upstream），先告知用户，由用户决定是否 force push
+- 解决冲突时，默认保留本地版本（HEAD），不得自动接受 upstream 的更改
+
 ## Subdirectory Guides
 
 - Backend coding standards with examples → `apps/CLAUDE.md`
