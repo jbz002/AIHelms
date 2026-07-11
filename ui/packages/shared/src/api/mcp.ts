@@ -8,6 +8,9 @@ import type {
   UpdateMcpServerParams,
   UpdateToolBillingParams,
   CreateMcpCategoryParams,
+  McpServerVersion,
+  CreateMcpVersionParams,
+  DeprecateMcpVersionParams,
 } from '../types/mcp'
 
 export function getMcpServers(
@@ -71,4 +74,46 @@ export function createMcpCategory(params: CreateMcpCategoryParams): Promise<McpC
 
 export function deleteMcpCategory(id: number): Promise<null> {
   return request<null>(`/api/v1/mcp/categories/${id}`, { method: 'DELETE' })
+}
+
+// ─── MCP 版本管理 ────────────────────────────────────────────────────────────
+
+export function getMcpServerVersions(
+  serverId: number,
+  includeDeprecated = true,
+): Promise<McpServerVersion[]> {
+  return request<McpServerVersion[]>(`/api/v1/mcp/servers/${serverId}/versions`, {
+    params: { include_deprecated: includeDeprecated },
+  })
+}
+
+export function createMcpServerVersion(
+  serverId: number,
+  params: CreateMcpVersionParams,
+): Promise<McpServerVersion> {
+  return request<McpServerVersion>(`/api/v1/mcp/servers/${serverId}/versions`, {
+    method: 'POST',
+    body: params,
+  })
+}
+
+export function activateMcpServerVersion(
+  serverId: number,
+  versionId: number,
+): Promise<McpServer> {
+  return request<McpServer>(
+    `/api/v1/mcp/servers/${serverId}/versions/${versionId}/activate`,
+    { method: 'POST' },
+  )
+}
+
+export function deprecateMcpServerVersion(
+  serverId: number,
+  versionId: number,
+  params: DeprecateMcpVersionParams = {},
+): Promise<McpServerVersion> {
+  return request<McpServerVersion>(
+    `/api/v1/mcp/servers/${serverId}/versions/${versionId}/deprecate`,
+    { method: 'POST', body: params },
+  )
 }

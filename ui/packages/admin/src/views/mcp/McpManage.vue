@@ -15,6 +15,7 @@ import { Activity, RefreshCw, CheckCircle2, XCircle, HelpCircle, Eye as EyeIcon,
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import McpServerForm from './McpServerForm.vue'
 import McpToolPanel from './McpToolPanel.vue'
+import McpVersionPanel from './McpVersionPanel.vue'
 
 const { hasPermission } = usePermission()
 
@@ -85,6 +86,12 @@ function openEdit(): void {
 async function handleSaved(): Promise<void> {
   showForm.value = false
   await loadData()
+}
+
+function handleVersionActivated(server: McpServer): void {
+  const idx = servers.value.findIndex((s) => s.id === server.id)
+  if (idx >= 0) servers.value[idx] = server
+  if (selectedServer.value?.id === server.id) selectedServer.value = server
 }
 
 async function confirmDelete(): Promise<void> {
@@ -396,6 +403,13 @@ onMounted(loadData)
                 <span class="text-slate-700">{{ selectedServer.description }}</span>
               </div>
             </div>
+
+            <!-- 版本管理 -->
+            <McpVersionPanel
+              :server-id="selectedServer.id"
+              :active-version="selectedServer.active_version"
+              @activated="handleVersionActivated"
+            />
 
             <!-- 工具列表 -->
             <McpToolPanel

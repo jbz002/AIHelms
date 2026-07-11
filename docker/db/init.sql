@@ -470,6 +470,35 @@ CREATE TABLE IF NOT EXISTS aihelms.mcp_tools (
     UNIQUE(server_id, tool_name)
 );
 
+-- MCP 版本表：每个 MCP Server 的多版本运行时快照 + 版本元信息
+CREATE TABLE IF NOT EXISTS aihelms.mcp_server_versions (
+    id BIGSERIAL PRIMARY KEY,
+    server_id BIGINT NOT NULL REFERENCES aihelms.mcp_servers(id) ON DELETE CASCADE,
+    version VARCHAR(64) NOT NULL,
+    version_label VARCHAR(128) NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT false,
+    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'inactive',
+    sunset_date TIMESTAMPTZ,
+    source VARCHAR(20) NOT NULL DEFAULT 'manual',
+    url TEXT NOT NULL,
+    transport VARCHAR(20) NOT NULL,
+    auth_type VARCHAR(30) NOT NULL DEFAULT 'none',
+    credentials JSONB NOT NULL DEFAULT '{}',
+    mcp_info JSONB NOT NULL DEFAULT '{}',
+    allowed_tools JSONB NOT NULL DEFAULT '[]',
+    extra_headers TEXT[] NOT NULL DEFAULT '{}',
+    instructions TEXT NOT NULL DEFAULT '',
+    auto_discovered_version VARCHAR(64) NOT NULL DEFAULT '',
+    change_log TEXT NOT NULL DEFAULT '',
+    created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(server_id, version)
+);
+-- mcp_servers.current_version_id：指向当前 active 版本（表已存在，FK 内联）
+ALTER TABLE aihelms.mcp_servers
+    ADD COLUMN IF NOT EXISTS current_version_id BIGINT
+    REFERENCES aihelms.mcp_server_versions(id) ON DELETE SET NULL;
+
 -- 统一 AI 资源申请审批表
 CREATE TABLE IF NOT EXISTS aihelms.resource_applications (
     id BIGSERIAL PRIMARY KEY,
@@ -585,6 +614,9 @@ CREATE INDEX IF NOT EXISTS idx_mcp_servers_is_published ON aihelms.mcp_servers(i
 CREATE INDEX IF NOT EXISTS idx_mcp_servers_business_scenario ON aihelms.mcp_servers(business_scenario_id);
 CREATE INDEX IF NOT EXISTS idx_mcp_tools_server ON aihelms.mcp_tools(server_id);
 CREATE INDEX IF NOT EXISTS idx_mcp_tools_namespaced ON aihelms.mcp_tools(namespaced_name);
+CREATE INDEX IF NOT EXISTS idx_mcp_server_versions_server ON aihelms.mcp_server_versions(server_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mcp_server_versions_active
+    ON aihelms.mcp_server_versions(server_id) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS idx_mcp_call_logs_user ON aihelms.mcp_call_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_mcp_call_logs_server ON aihelms.mcp_call_logs(server_id);
 CREATE INDEX IF NOT EXISTS idx_mcp_call_logs_called_at ON aihelms.mcp_call_logs(called_at);

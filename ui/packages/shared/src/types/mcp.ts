@@ -47,10 +47,50 @@ export interface McpServer {
   health_check_error: string | null
   litellm_synced: boolean
   litellm_sync_error: string | null
+  current_version_id: number | null
+  active_version: McpServerVersion | null
   created_by: number | null
   created_at: string | null
   updated_at: string | null
   tools?: McpTool[]
+}
+
+export type McpVersionLifecycle = 'inactive' | 'active' | 'deprecated'
+
+export interface McpServerVersion {
+  id: number
+  server_id: number
+  version: string
+  version_label: string
+  is_active: boolean
+  lifecycle_status: McpVersionLifecycle
+  sunset_date: string | null
+  source: 'manual' | 'auto_discovered'
+  url: string
+  transport: string
+  auth_type: string
+  change_log: string
+  auto_discovered_version: string
+  created_by: number | null
+  created_at: string | null
+}
+
+export interface CreateMcpVersionParams {
+  version: string
+  version_label?: string
+  url: string
+  transport: string
+  auth_type?: string
+  credentials?: Record<string, unknown>
+  mcp_info?: Record<string, unknown>
+  allowed_tools?: string[]
+  extra_headers?: string[]
+  instructions?: string
+  change_log?: string
+}
+
+export interface DeprecateMcpVersionParams {
+  sunset_date?: string | null
 }
 
 export interface McpTool {

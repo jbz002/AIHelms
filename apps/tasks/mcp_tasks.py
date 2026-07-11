@@ -8,6 +8,7 @@ from models.db import McpCallLog, McpServer, McpTool
 from repositories import mcp_repo
 from services import litellm_client
 from services.litellm_client import LiteLLMError
+from services.mcp_service import to_litellm_transport
 
 logger = logging.getLogger(__name__)
 
@@ -75,14 +76,18 @@ async def _sync_call_logs():
                     continue
 
                 server_name = (
-                    namespaced_tool.split("/")[0] if "/" in namespaced_tool
-                    else namespaced_tool.split("_")[0] if "_" in namespaced_tool
-                    else ""
+                    namespaced_tool.split("/")[0]
+                    if "/" in namespaced_tool
+                    else namespaced_tool.split("_")[0] if "_" in namespaced_tool else ""
                 )
                 tool_name = (
-                    namespaced_tool.split("/", 1)[1] if "/" in namespaced_tool
-                    else namespaced_tool.split("_", 1)[1] if "_" in namespaced_tool
-                    else namespaced_tool
+                    namespaced_tool.split("/", 1)[1]
+                    if "/" in namespaced_tool
+                    else (
+                        namespaced_tool.split("_", 1)[1]
+                        if "_" in namespaced_tool
+                        else namespaced_tool
+                    )
                 )
 
                 if server_name not in servers_cache:
@@ -100,6 +105,7 @@ async def _sync_call_logs():
                 key_alias = mcp_metadata_full.get("user_api_key_alias") or ""
                 if key_alias:
                     from repositories import ai_key_repo
+
                     ai_key = await ai_key_repo.find_by_litellm_key_alias(
                         session, key_alias
                     )
@@ -196,6 +202,7 @@ def _parse_json(raw):
     if isinstance(raw, str):
         try:
             import json
+
             return json.loads(raw)
         except (ValueError, TypeError):
             return {}
@@ -210,6 +217,7 @@ def _to_text(raw) -> str:
         return raw
     try:
         import json
+
         return json.dumps(raw, ensure_ascii=False)
     except (ValueError, TypeError):
         return str(raw)
@@ -225,11 +233,9 @@ async def _health_check_all():
                 try:
                     await litellm_client.test_mcp_connection(
                         url=server.url,
-                        transport=server.transport,
+                        transport=to_litellm_transport(server.transport),
                         auth_type=(
-                            server.auth_type
-                            if server.auth_type != "none"
-                            else None
+                            server.auth_type if server.auth_type != "none" else None
                         ),
                         credentials=server.credentials if server.credentials else None,
                     )

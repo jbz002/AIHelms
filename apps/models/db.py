@@ -547,6 +547,11 @@ class McpServer(Base):
     litellm_synced: Mapped[bool] = mapped_column(Boolean, default=False)
     litellm_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     litellm_synced_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    current_version_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("aihelms.mcp_server_versions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id"), nullable=True
     )
@@ -557,6 +562,13 @@ class McpServer(Base):
 
     tools: Mapped[list["McpTool"]] = relationship(
         back_populates="server", lazy="selectin", passive_deletes=True
+    )
+    versions: Mapped[list["McpServerVersion"]] = relationship(
+        back_populates="server",
+        foreign_keys="McpServerVersion.server_id",
+        lazy="selectin",
+        passive_deletes=True,
+        cascade="all, delete-orphan",
     )
 
 
@@ -590,6 +602,43 @@ class McpTool(Base):
     )
 
     server: Mapped["McpServer"] = relationship(back_populates="tools")
+
+
+class McpServerVersion(Base):
+    __tablename__ = "mcp_server_versions"
+    __table_args__ = (
+        UniqueConstraint("server_id", "version"),
+        {"schema": "aihelms"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    server_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("aihelms.mcp_servers.id", ondelete="CASCADE")
+    )
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    version_label: Mapped[str] = mapped_column(String(128), default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    lifecycle_status: Mapped[str] = mapped_column(String(20), default="inactive")
+    sunset_date: Mapped[datetime | None] = mapped_column(nullable=True)
+    source: Mapped[str] = mapped_column(String(20), default="manual")
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    transport: Mapped[str] = mapped_column(String(20), nullable=False)
+    auth_type: Mapped[str] = mapped_column(String(30), default="none")
+    credentials: Mapped[dict] = mapped_column(JSONB, default=dict)
+    mcp_info: Mapped[dict] = mapped_column(JSONB, default=dict)
+    allowed_tools: Mapped[list] = mapped_column(JSONB, default=list)
+    extra_headers: Mapped[list] = mapped_column(ARRAY(String), default=list)
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    auto_discovered_version: Mapped[str] = mapped_column(String(64), default="")
+    change_log: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    server: Mapped["McpServer"] = relationship(
+        back_populates="versions", foreign_keys=[server_id]
+    )
 
 
 class ResourceApplication(Base):
