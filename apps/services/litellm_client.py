@@ -21,7 +21,7 @@ async def _request(
     url = f"{settings.litellm_url}{path}"
     headers = {"Authorization": f"Bearer {auth_token or settings.litellm_master_key}"}
     try:
-        async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+        async with httpx.AsyncClient(timeout=timeout, proxy=None) as client:
             response = await client.request(
                 method=method,
                 url=url,
@@ -310,7 +310,7 @@ async def list_credentials() -> list[dict]:
 async def get_provider_fields() -> list[dict]:
     url = f"{settings.litellm_url}/public/providers/fields"
     try:
-        async with httpx.AsyncClient(timeout=LITELLM_TIMEOUT, trust_env=False) as client:
+        async with httpx.AsyncClient(timeout=LITELLM_TIMEOUT, proxy=None) as client:
             response = await client.get(url)
             if response.status_code >= 400:
                 logger.error(
