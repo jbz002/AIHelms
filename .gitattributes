@@ -1,0 +1,5 @@
+# Windows 上 core.autocrlf=true 会把这些脚本/模板在 checkout 时转成 CRLF，
+# 挂载进 Linux 容器后执行会报 "not found" 或渲染出带 \r 的配置。
+# 强制容器相关脚本和 nginx 模板使用 LF 行尾。
+*.sh text eol=lf
+docker/nginx/*.template text eol=lf
