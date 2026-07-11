@@ -1,13 +1,15 @@
 import logging
 import os
 import uuid
+from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from exceptions import ConflictError, NotFoundError
-from models.db import Skill, SkillCategory, SkillUsageLog
-from repositories import ai_policies_repo, skill_repo
+from exceptions import ConflictError, NotFoundError, ValidationError
+from models.db import Skill, SkillCategory, SkillUsageLog, SkillVersion
+from repositories import ai_policies_repo, skill_repo, skill_version_repo
+from services import versioning_service
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +129,27 @@ async def create_skill(
 
     await session.commit()
     await session.refresh(skill)
+
+    # 为新 Skill 种入 v1 active 版本（与存量回填一致）
+    v1 = SkillVersion(
+        skill_id=skill.id,
+        version=version,
+        is_active=True,
+        lifecycle_status="active",
+        source="manual",
+        zip_path=zip_path,
+        zip_size=zip_size,
+        zip_filename=zip_filename,
+        agent_install_prompt=agent_install_prompt,
+        usage_instructions=usage_instructions,
+        change_log="initial version",
+        security_status="not_scanned",
+        created_by=created_by,
+    )
+    v1 = await skill_version_repo.create(session, v1)
+    skill.current_version_id = v1.id
+    await session.commit()
+    await session.refresh(skill)
     return _serialize(skill)
 
 
@@ -137,6 +160,11 @@ async def update_skill(
     zip_filename: str | None = None,
     **kwargs,
 ) -> dict:
+    """更新 Skill 元数据。
+
+    内容（zip）变更走 create_version + activate_version + 版本绑定安全审查，
+    不在此处直接覆盖 active 内容，避免与版本模型冲突。zip_* 参数仅为兼容旧调用签名。
+    """
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
         raise NotFoundError("skill", skill_id)
@@ -144,22 +172,6 @@ async def update_skill(
     for key, value in kwargs.items():
         if hasattr(skill, key) and value is not None:
             setattr(skill, key, value)
-
-    if zip_content:
-        base_dir = _ensure_skills_dir()
-        safe_filename = f"{skill.skill_id}.zip"
-        full_path = os.path.join(base_dir, safe_filename)
-        with open(full_path, "wb") as f:
-            f.write(zip_content)
-        skill.zip_path = full_path
-        skill.zip_size = len(zip_content)
-        skill.security_status = "not_scanned"
-        skill.security_decision = ""
-        skill.security_severity = ""
-        skill.security_risk_score = 0
-        skill.latest_ai_policies_audit_id = None
-        if zip_filename:
-            skill.zip_filename = zip_filename
 
     # 发布且不需要审批时同步到所有主 Key，否则从主 Key 中移除
     if skill.is_published and not skill.requires_approval:
@@ -180,15 +192,27 @@ async def update_skill(
     return _serialize(skill)
 
 
+def _version_zip_dir(skill_uuid: str) -> str:
+    """单个 Skill 的版本 zip 存储目录：{skills_storage_dir}/{skill_uuid}/"""
+    skill_dir = os.path.join(settings.skills_storage_dir, skill_uuid)
+    os.makedirs(skill_dir, exist_ok=True)
+    return skill_dir
+
+
 async def delete_skill(session: AsyncSession, skill_id: int) -> None:
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
         raise NotFoundError("skill", skill_id)
-    if skill.zip_path and os.path.exists(skill.zip_path):
-        try:
-            os.remove(skill.zip_path)
-        except OSError:
-            logger.warning("failed to remove zip file: %s", skill.zip_path)
+    # 收集所有版本各自的 zip 文件去重后清理（v1 可能与主表同路径）
+    version_paths = {v.zip_path for v in (skill.versions or []) if v.zip_path}
+    if skill.zip_path:
+        version_paths.add(skill.zip_path)
+    for path in version_paths:
+        if os.path.exists(path):
+            try:
+                os.remove(path)
+            except OSError:
+                logger.warning("failed to remove zip file: %s", path)
     from services import ai_key_service
 
     await ai_key_service.remove_public_resource_from_all_keys(
@@ -247,6 +271,176 @@ async def get_install_info(
         "agent_prompt": agent_prompt,
         "download_url": download_url,
         "usage_instructions": skill.usage_instructions or "",
+    }
+
+
+# ─── Skill Versions ──────────────────────────────────────────────────────────
+
+# 激活硬门控：必须通过安全审查（passed / attention_required）才允许激活新版本
+_ACTIVATE_ALLOWED_DECISIONS = ("passed", "attention_required")
+
+
+async def list_versions(
+    session: AsyncSession,
+    skill_id: int,
+    include_deprecated: bool = True,
+) -> list[dict]:
+    skill = await skill_repo.find_by_id(session, skill_id)
+    if not skill:
+        raise NotFoundError("skill", skill_id)
+    versions = await skill_version_repo.list_versions(
+        session, skill_id, include_deprecated
+    )
+    return [_serialize_version(v) for v in versions]
+
+
+async def create_version(
+    session: AsyncSession,
+    skill_id: int,
+    *,
+    version: str,
+    zip_content: bytes | None = None,
+    zip_filename: str = "",
+    version_label: str = "",
+    agent_install_prompt: str = "",
+    usage_instructions: str = "",
+    change_log: str = "",
+    source: str = "manual",
+    created_by: int | None = None,
+) -> dict:
+    skill = await skill_repo.find_by_id(session, skill_id)
+    if not skill:
+        raise NotFoundError("skill", skill_id)
+    if await skill_version_repo.find_by_skill_and_version(session, skill_id, version):
+        raise ConflictError(f"版本号 '{version}' 已存在")
+
+    v = SkillVersion(
+        skill_id=skill_id,
+        version=version,
+        version_label=version_label,
+        is_active=False,
+        lifecycle_status="inactive",
+        source=source,
+        agent_install_prompt=agent_install_prompt or skill.agent_install_prompt,
+        usage_instructions=usage_instructions or skill.usage_instructions,
+        change_log=change_log,
+        security_status="not_scanned",
+        created_by=created_by,
+    )
+    v = await skill_version_repo.create(session, v)
+
+    if zip_content:
+        skill_dir = _version_zip_dir(skill.skill_id)
+        zip_path = os.path.join(skill_dir, f"{v.id}.zip")
+        with open(zip_path, "wb") as f:
+            f.write(zip_content)
+        v.zip_path = zip_path
+        v.zip_size = len(zip_content)
+        v.zip_filename = zip_filename
+    elif skill.zip_path:
+        # 未上传新 zip：fork 当前 active 内容作为新版本起点
+        v.zip_path = skill.zip_path
+        v.zip_size = skill.zip_size
+        v.zip_filename = skill.zip_filename
+
+    await session.commit()
+    await session.refresh(v)
+    return _serialize_version(v)
+
+
+async def activate_version(
+    session: AsyncSession, skill_id: int, version_id: int
+) -> dict:
+    skill = await skill_repo.find_by_id(session, skill_id)
+    if not skill:
+        raise NotFoundError("skill", skill_id)
+    version = await skill_version_repo.find_by_id(session, version_id)
+    if not version or version.skill_id != skill_id:
+        raise NotFoundError("skill_version", version_id)
+
+    # 幂等：已是 active 直接返回，不触发门控
+    if version.is_active:
+        latest_audit_map = await _latest_audit_map(session, [skill])
+        return _serialize(skill, latest_audit_map)
+
+    # 硬门控：未通过安全审查的新版本不可激活
+    if not (
+        version.security_status == "completed"
+        and version.security_decision in _ACTIVATE_ALLOWED_DECISIONS
+    ):
+        raise ValidationError("新版本未通过安全审查，不可激活")
+
+    await versioning_service.activate_version(
+        session,
+        version,
+        skill,
+        skill_id,
+        skill_version_repo,
+        on_sync=_noop_sync,
+        apply_snapshot=_apply_version_snapshot_to_skill,
+    )
+    await session.refresh(skill)
+    latest_audit_map = await _latest_audit_map(session, [skill])
+    return _serialize(skill, latest_audit_map)
+
+
+async def deprecate_version(
+    session: AsyncSession,
+    skill_id: int,
+    version_id: int,
+    sunset_date: datetime | None = None,
+) -> dict:
+    skill = await skill_repo.find_by_id(session, skill_id)
+    if not skill:
+        raise NotFoundError("skill", skill_id)
+    version = await skill_version_repo.find_by_id(session, version_id)
+    if not version or version.skill_id != skill_id:
+        raise NotFoundError("skill_version", version_id)
+
+    await versioning_service.deprecate(
+        session, version, skill_version_repo, sunset_date
+    )
+    version = await skill_version_repo.find_by_id(session, version_id)
+    return _serialize_version(version)
+
+
+async def _noop_sync(skill: Skill, version: SkillVersion) -> None:
+    """Skill 不进 LiteLLM，激活无外部系统同步。"""
+
+
+async def _apply_version_snapshot_to_skill(skill: Skill, version: SkillVersion) -> None:
+    """把 active 版本的内容/安全快照拷贝到主表（主表 = active 版本冗余快照）。"""
+    skill.zip_path = version.zip_path
+    skill.zip_size = version.zip_size
+    skill.zip_filename = version.zip_filename
+    skill.version = version.version
+    skill.agent_install_prompt = version.agent_install_prompt
+    skill.usage_instructions = version.usage_instructions
+    skill.security_status = version.security_status
+    skill.security_decision = version.security_decision
+    skill.security_severity = version.security_severity
+    skill.security_risk_score = version.security_risk_score
+    skill.latest_ai_policies_audit_id = version.latest_ai_policies_audit_id
+
+
+def _serialize_version(v: SkillVersion) -> dict:
+    return {
+        "id": v.id,
+        "skill_id": v.skill_id,
+        "version": v.version,
+        "version_label": v.version_label,
+        "is_active": v.is_active,
+        "lifecycle_status": v.lifecycle_status,
+        "sunset_date": v.sunset_date.isoformat() if v.sunset_date else None,
+        "source": v.source,
+        "zip_size": v.zip_size,
+        "zip_filename": v.zip_filename,
+        "change_log": v.change_log,
+        "security_status": v.security_status,
+        "security_decision": v.security_decision,
+        "latest_ai_policies_audit_id": v.latest_ai_policies_audit_id,
+        "created_by": v.created_by,
+        "created_at": v.created_at.isoformat() if v.created_at else None,
     }
 
 
@@ -313,6 +507,7 @@ def _serialize(skill: Skill, latest_audit_map: dict[int, str] | None = None) -> 
         if skill.latest_ai_policies_audit_id
         else None
     )
+    active = next((v for v in (skill.versions or []) if v.is_active), None)
     return {
         "id": skill.id,
         "skill_id": skill.skill_id,
@@ -339,6 +534,8 @@ def _serialize(skill: Skill, latest_audit_map: dict[int, str] | None = None) -> 
         "security_risk_score": skill.security_risk_score,
         "latest_ai_policies_audit_id": skill.latest_ai_policies_audit_id,
         "latest_ai_policies_audit_code": latest_audit_code,
+        "current_version_id": skill.current_version_id,
+        "active_version": _serialize_version(active) if active else None,
         "created_by": skill.created_by,
         "created_at": skill.created_at.isoformat() if skill.created_at else None,
         "updated_at": skill.updated_at.isoformat() if skill.updated_at else None,

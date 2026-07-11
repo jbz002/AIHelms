@@ -17,6 +17,7 @@ import {
 import { ArrowLeft, Download, FileText, PlayCircle, ShieldCheck, Trash2 } from 'lucide-vue-next'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import IconPicker from '../../components/IconPicker.vue'
+import SkillVersionPanel from './SkillVersionPanel.vue'
 
 type SecurityStatus = 'not_scanned' | 'queued' | 'running' | 'completed' | 'failed'
 type SecurityDecision = 'passed' | 'attention_required' | 'high_risk' | 'failed'
@@ -164,6 +165,10 @@ async function loadData(): Promise<void> {
 function handleZipChange(event: Event): void {
   const target = event.target as HTMLInputElement
   zipFile.value = target.files?.[0] || null
+}
+
+function handleVersionActivated(updated: Skill): void {
+  skill.value = updated
 }
 
 async function handleSave(): Promise<void> {
@@ -361,16 +366,22 @@ onMounted(loadData)
           </div>
           <div class="col-span-2">
             <label class="mb-1 block text-sm font-medium text-slate-700">
-              上传 zip 包
-              <span v-if="!isNew && skill?.has_zip" class="text-xs text-slate-400">（不上传则保留原文件）</span>
+              <span v-if="isNew">上传 zip 包</span>
+              <span v-else>当前 active 文件</span>
             </label>
             <div class="flex items-center gap-3">
               <input
+                v-if="isNew"
                 type="file"
                 accept=".zip"
                 class="block flex-1 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-purple-50 file:px-3 file:py-2 file:text-sm file:font-medium file:text-purple-700 hover:file:bg-purple-100"
                 @change="handleZipChange"
               />
+              <span v-else-if="skill?.zip_filename" class="flex-1 text-xs text-slate-600">
+                {{ skill.zip_filename }} ({{ Math.round((skill.zip_size || 0) / 1024) }} KB)
+                · 已下载 {{ skill?.install_count }} 次
+              </span>
+              <span v-else class="flex-1 text-xs text-slate-400">暂无文件</span>
               <button
                 v-if="!isNew && skill?.has_zip"
                 class="flex items-center gap-1 rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
@@ -380,13 +391,12 @@ onMounted(loadData)
                 下载当前
               </button>
             </div>
-            <div v-if="zipFile" class="mt-1 text-xs text-slate-500">
+            <div v-if="isNew && zipFile" class="mt-1 text-xs text-slate-500">
               已选择：{{ zipFile.name }} ({{ Math.round(zipFile.size / 1024) }} KB)
             </div>
-            <div v-else-if="!isNew && skill?.zip_filename" class="mt-1 text-xs text-slate-500">
-              当前文件：{{ skill.zip_filename }} ({{ Math.round((skill.zip_size || 0) / 1024) }} KB)
-              · 已下载 {{ skill.install_count }} 次
-            </div>
+            <p v-if="!isNew" class="mt-1 text-[11px] text-slate-400">
+              内容变更请在下方「版本管理」中创建新版本并通过安全审查后激活。
+            </p>
           </div>
 
           <div v-if="!isNew && skill?.has_zip && securitySummary" class="col-span-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
@@ -432,6 +442,14 @@ onMounted(loadData)
                 {{ securitySummary.completedChecks }}/{{ securitySummary.totalChecks }} 项 · {{ securitySummary.progress }}%
               </div>
             </div>
+          </div>
+
+          <div v-if="!isNew && skillId" class="col-span-2">
+            <SkillVersionPanel
+              :skill-id="skillId"
+              :active-version="skill?.active_version ?? null"
+              @activated="handleVersionActivated"
+            />
           </div>
 
           <div class="col-span-2 flex items-center gap-4">

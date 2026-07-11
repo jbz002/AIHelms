@@ -748,6 +748,47 @@ ALTER TABLE aihelms.skills
 CREATE INDEX IF NOT EXISTS idx_skills_security_status ON aihelms.skills(security_status);
 CREATE INDEX IF NOT EXISTS idx_skills_latest_ai_policies_audit_id ON aihelms.skills(latest_ai_policies_audit_id);
 
+-- Skill 版本子表：每个 Skill 的多版本内容快照 + 版本绑定安全审查
+CREATE TABLE IF NOT EXISTS aihelms.skill_versions (
+    id BIGSERIAL PRIMARY KEY,
+    skill_id BIGINT NOT NULL REFERENCES aihelms.skills(id) ON DELETE CASCADE,
+    version VARCHAR(64) NOT NULL,
+    version_label VARCHAR(128) NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT false,
+    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'inactive',
+    sunset_date TIMESTAMPTZ,
+    source VARCHAR(20) NOT NULL DEFAULT 'manual',
+    content_sha256 VARCHAR(64) NOT NULL DEFAULT '',
+    zip_path VARCHAR(500) NOT NULL DEFAULT '',
+    zip_size BIGINT NOT NULL DEFAULT 0,
+    zip_filename VARCHAR(200) NOT NULL DEFAULT '',
+    agent_install_prompt TEXT NOT NULL DEFAULT '',
+    usage_instructions TEXT NOT NULL DEFAULT '',
+    change_log TEXT NOT NULL DEFAULT '',
+    security_status VARCHAR(32) NOT NULL DEFAULT 'not_scanned',
+    security_decision VARCHAR(32) NOT NULL DEFAULT '',
+    security_severity VARCHAR(32) NOT NULL DEFAULT '',
+    security_risk_score INTEGER NOT NULL DEFAULT 0,
+    latest_ai_policies_audit_id BIGINT REFERENCES aihelms.ai_policies_audits(id) ON DELETE SET NULL,
+    created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(skill_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_skill_versions_skill ON aihelms.skill_versions(skill_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_skill_versions_active
+    ON aihelms.skill_versions(skill_id) WHERE is_active = true;
+
+-- skills.current_version_id：指向当前 active 版本（skill_versions 已存在，FK 内联）
+ALTER TABLE aihelms.skills
+    ADD COLUMN IF NOT EXISTS current_version_id BIGINT
+    REFERENCES aihelms.skill_versions(id) ON DELETE SET NULL;
+
+-- ai_policies_audits.skill_version_id：版本绑定安全审查指针
+ALTER TABLE aihelms.ai_policies_audits
+    ADD COLUMN IF NOT EXISTS skill_version_id BIGINT
+    REFERENCES aihelms.skill_versions(id) ON DELETE SET NULL;
+
 INSERT INTO aihelms.ai_policies_risk_catalog
     (code, name_en, name_zh, severity, description_zh, check_points, sort_order)
 VALUES

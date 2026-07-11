@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_worker_session_factory
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import AiPoliciesAudit
-from repositories import ai_policies_repo, skill_repo
+from repositories import ai_policies_repo, skill_repo, skill_version_repo
 from services import (
     ai_policies_denoise,
     ai_policies_llm,
@@ -385,9 +385,7 @@ def _normalize_finding(raw: dict, zip_path: str = "") -> dict:
         "description": description,
         "recommendation": recommendation,
         "file_role": file_role,
-        "path_bucket": ai_policies_denoise.normalized_path_bucket(
-            file_name, file_role
-        ),
+        "path_bucket": ai_policies_denoise.normalized_path_bucket(file_name, file_role),
         "location": {
             "file": file_name,
             "start_line": start_line,
@@ -694,9 +692,7 @@ def _legacy_group_to_items(group: dict) -> list[dict]:
             "finding": snippet,
             "code_snippet": snippet,
             "severity": str(
-                localized.get("scanner_severity")
-                or localized.get("severity")
-                or "low"
+                localized.get("scanner_severity") or localized.get("severity") or "low"
             ).upper(),
         }
         file_role = ai_policies_denoise.file_role_for(file_name, raw)
@@ -722,7 +718,8 @@ def _legacy_group_to_items(group: dict) -> list[dict]:
                 "snippet": snippet,
                 "matched_text": snippet,
             },
-            "must_review": (localized.get("severity") or "") in {
+            "must_review": (localized.get("severity") or "")
+            in {
                 "critical",
                 "high",
             },
@@ -867,8 +864,10 @@ def _serialize_audit(
     display_findings = (
         _display_findings(audit.findings or []) if include_findings else []
     )
-    summary_findings = display_findings if include_findings else _display_findings(
-        audit.findings or []
+    summary_findings = (
+        display_findings
+        if include_findings
+        else _display_findings(audit.findings or [])
     )
     metrics = _display_metrics(audit, summary_findings)
     data = {
@@ -937,35 +936,59 @@ async def _commit_progress(
 
 
 async def create_skill_audit(
-    session: AsyncSession, skill_id: int, current_user: dict
+    session: AsyncSession,
+    skill_id: int,
+    current_user: dict,
+    version_id: int | None = None,
 ) -> dict:
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
         raise NotFoundError("skill", skill_id)
-    if not skill.zip_path or not os.path.exists(skill.zip_path):
-        raise ValidationError("Skill zip 文件不存在，无法发起审查")
     active = await ai_policies_repo.find_active_by_skill(session, skill_id)
     if active:
         raise ConflictError("该 Skill 已有审查任务正在进行中")
+
+    version = None
+    if version_id:
+        version = await skill_version_repo.find_by_id(session, version_id)
+        if not version or version.skill_id != skill_id:
+            raise NotFoundError("skill_version", version_id)
+        if not version.zip_path or not os.path.exists(version.zip_path):
+            raise ValidationError("Skill 版本 zip 文件不存在，无法发起审查")
+        target_zip = version.zip_path
+        target_version_label = version.version
+    else:
+        if not skill.zip_path or not os.path.exists(skill.zip_path):
+            raise ValidationError("Skill zip 文件不存在，无法发起审查")
+        target_zip = skill.zip_path
+        target_version_label = skill.version
 
     audit = AiPoliciesAudit(
         audit_id=f"AIP-{uuid4().hex[:12]}",
         audit_type="skill",
         skill_id=skill.id,
+        skill_version_id=version.id if version else None,
         skill_name=skill.name,
-        skill_version=skill.version,
-        source_sha256=_sha256_file(skill.zip_path),
+        skill_version=target_version_label,
+        source_sha256=_sha256_file(target_zip),
         scanner="skillspector",
         mode="static",
         status="queued",
         created_by=int(current_user["id"]),
     )
     audit = await ai_policies_repo.create_audit(session, audit)
-    skill.security_status = "queued"
-    skill.security_decision = ""
-    skill.security_severity = ""
-    skill.security_risk_score = 0
-    skill.latest_ai_policies_audit_id = audit.id
+    if version:
+        version.security_status = "queued"
+        version.security_decision = ""
+        version.security_severity = ""
+        version.security_risk_score = 0
+        version.latest_ai_policies_audit_id = audit.id
+    else:
+        skill.security_status = "queued"
+        skill.security_decision = ""
+        skill.security_severity = ""
+        skill.security_risk_score = 0
+        skill.latest_ai_policies_audit_id = audit.id
     await session.commit()
     await session.refresh(audit)
 
@@ -975,36 +998,69 @@ async def create_skill_audit(
     return _serialize_audit(audit, include_findings=True)
 
 
+async def _resolve_audit_target(session: AsyncSession, audit: AiPoliciesAudit) -> tuple:
+    """返回 (target, target_zip_path, is_version)。
+
+    版本绑定审查返回 (SkillVersion, version.zip_path, True)；
+    否则返回 (Skill, skill.zip_path, False)。
+    """
+    if audit.skill_version_id:
+        version = await skill_version_repo.find_by_id(session, audit.skill_version_id)
+        if version:
+            return version, version.zip_path, True
+    skill = (
+        await skill_repo.find_by_id(session, audit.skill_id) if audit.skill_id else None
+    )
+    target_zip = skill.zip_path if skill else None
+    return skill, target_zip, False
+
+
+def _apply_security_success(target, audit: AiPoliciesAudit, score_result) -> None:
+    target.security_status = "completed"
+    target.security_decision = score_result.decision
+    target.security_severity = audit.severity
+    target.security_risk_score = score_result.risk_score
+    target.latest_ai_policies_audit_id = audit.id
+
+
+def _apply_security_failure(target, audit: AiPoliciesAudit) -> None:
+    target.security_status = "failed"
+    target.security_decision = "failed"
+    target.security_severity = "unknown"
+    target.latest_ai_policies_audit_id = audit.id
+
+
 async def process_skill_audit(session: AsyncSession, audit_pk: int) -> None:
     audit = await ai_policies_repo.find_by_id(session, audit_pk)
     if not audit or audit.status not in {"queued", "running"}:
         return
+    target, target_zip, is_version = await _resolve_audit_target(session, audit)
+    if not target or not target_zip or not os.path.exists(target_zip):
+        await _fail_audit(session, audit, "Skill zip 文件不存在，无法完成审查")
+        return
     skill = (
         await skill_repo.find_by_id(session, audit.skill_id) if audit.skill_id else None
     )
-    if not skill or not skill.zip_path or not os.path.exists(skill.zip_path):
-        await _fail_audit(session, audit, "Skill zip 文件不存在，无法完成审查")
-        return
 
     audit.status = "running"
     audit.started_at = audit.started_at or _now()
     audit.error_message = ""
-    skill.security_status = "running"
+    target.security_status = "running"
     await _commit_progress(session, audit, 20, 1, "正在扫描 Skill")
     category_labels = await _category_labels(session)
 
     try:
         response = await ai_policies_scanner_client.scan_skill_zip(
-            _scanner_target(skill.zip_path)
+            _scanner_target(target_zip)
         )
         await _commit_progress(session, audit, 50, 2, "正在整理风险结果")
         payload = response.get("data") or {}
         raw_findings = payload.get("findings") or []
-        normalized_findings = _normalize_findings(raw_findings, skill.zip_path)
+        normalized_findings = _normalize_findings(raw_findings, target_zip)
         scan_limitations = _scan_limitations(normalized_findings)
         findings = _aggregate_findings(normalized_findings)
-        file_summaries = _zip_file_summaries(skill.zip_path, findings)
-        external_links = _zip_external_links(skill.zip_path)
+        file_summaries = _zip_file_summaries(target_zip, findings)
+        external_links = _zip_external_links(target_zip)
         await _commit_progress(session, audit, 65, 3, "正在归类风险")
         score_result = ai_policies_denoise.score_groups(findings)
         audit.severity = score_result.severity
@@ -1020,7 +1076,7 @@ async def process_skill_audit(session: AsyncSession, audit_pk: int) -> None:
                     audit,
                     findings,
                     category_labels,
-                    skill.zip_path,
+                    target_zip,
                 )
                 findings = ai_policies_denoise.apply_finding_reviews(
                     findings, llm_review
@@ -1064,7 +1120,7 @@ async def process_skill_audit(session: AsyncSession, audit_pk: int) -> None:
             "files": file_summaries,
             "file_count": len(file_summaries),
             "external_links": external_links,
-            "source_size_bytes": Path(skill.zip_path).stat().st_size,
+            "source_size_bytes": Path(target_zip).stat().st_size,
         }
         if scan_limitations:
             audit.summary = {**audit.summary, "scan_limitations": scan_limitations}
@@ -1080,11 +1136,10 @@ async def process_skill_audit(session: AsyncSession, audit_pk: int) -> None:
             audit, category_labels
         )
 
-        skill.security_status = "completed"
-        skill.security_decision = score_result.decision
-        skill.security_severity = audit.severity
-        skill.security_risk_score = score_result.risk_score
-        skill.latest_ai_policies_audit_id = audit.id
+        _apply_security_success(target, audit, score_result)
+        # 版本绑定审查：若该版本为当前 active 版本，同步回写主表（master = active 快照）
+        if is_version and getattr(target, "is_active", False) and skill:
+            _apply_security_success(skill, audit, score_result)
         await session.commit()
     except Exception as exc:  # noqa: BLE001
         logger.exception("AI Policies skill audit failed: audit_id=%s", audit.audit_id)
@@ -1117,13 +1172,18 @@ async def _fail_audit(
     category_labels = await _category_labels(session)
     audit.summary = ai_policies_report.build_summary(audit)
     audit.markdown_report = ai_policies_report.build_markdown(audit, category_labels)
-    if audit.skill_id:
+    if audit.skill_version_id:
+        version = await skill_version_repo.find_by_id(session, audit.skill_version_id)
+        if version:
+            _apply_security_failure(version, audit)
+            if version.is_active and audit.skill_id:
+                skill = await skill_repo.find_by_id(session, audit.skill_id)
+                if skill:
+                    _apply_security_failure(skill, audit)
+    elif audit.skill_id:
         skill = await skill_repo.find_by_id(session, audit.skill_id)
         if skill:
-            skill.security_status = "failed"
-            skill.security_decision = "failed"
-            skill.security_severity = "unknown"
-            skill.latest_ai_policies_audit_id = audit.id
+            _apply_security_failure(skill, audit)
     await session.commit()
 
 

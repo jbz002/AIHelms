@@ -39,9 +39,43 @@ export interface Skill {
   security_risk_score?: number
   latest_ai_policies_audit_id?: number | null
   latest_ai_policies_audit_code?: string | null
+  current_version_id?: number | null
+  active_version?: SkillVersion | null
   created_by: number | null
   created_at: string | null
   updated_at: string | null
+}
+
+export type SkillVersionLifecycle = 'inactive' | 'active' | 'deprecated'
+
+export interface SkillVersion {
+  id: number
+  skill_id: number
+  version: string
+  version_label: string
+  is_active: boolean
+  lifecycle_status: SkillVersionLifecycle
+  sunset_date: string | null
+  source: 'manual' | 'auto_discovered'
+  zip_size: number
+  zip_filename: string
+  change_log: string
+  security_status?: 'not_scanned' | 'queued' | 'running' | 'completed' | 'failed'
+  security_decision?: '' | 'passed' | 'attention_required' | 'high_risk' | 'failed'
+  latest_ai_policies_audit_id?: number | null
+  created_by: number | null
+  created_at: string | null
+}
+
+export interface CreateSkillVersionParams {
+  version: string
+  version_label?: string
+  change_log?: string
+  zip_file?: File | null
+}
+
+export interface DeprecateSkillVersionParams {
+  sunset_date?: string | null
 }
 
 export interface SkillListResult {

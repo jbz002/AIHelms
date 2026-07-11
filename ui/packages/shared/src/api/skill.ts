@@ -4,6 +4,9 @@ import type {
   SkillCategory,
   SkillListResult,
   CreateSkillCategoryParams,
+  SkillVersion,
+  CreateSkillVersionParams,
+  DeprecateSkillVersionParams,
 } from '../types/skill'
 import type { AiPolicyAudit } from '../types/aiPolicies'
 
@@ -79,6 +82,42 @@ export function deleteSkill(id: number): Promise<null> {
 
 export function createSkillSecurityAudit(id: number): Promise<AiPolicyAudit> {
   return request<AiPolicyAudit>(`/api/v1/skills/${id}/ai-policies-audits`, { method: 'POST' })
+}
+
+export function getSkillVersions(skillId: number, includeDeprecated: boolean = true): Promise<SkillVersion[]> {
+  const params: Record<string, string | number | boolean> = { include_deprecated: includeDeprecated }
+  return request<SkillVersion[]>(`/api/v1/skills/${skillId}/versions`, { params })
+}
+
+export function createSkillVersion(skillId: number, params: CreateSkillVersionParams): Promise<SkillVersion> {
+  const fd = new FormData()
+  fd.append('version', params.version)
+  if (params.version_label !== undefined) fd.append('version_label', params.version_label)
+  if (params.change_log !== undefined) fd.append('change_log', params.change_log)
+  if (params.zip_file) fd.append('zip_file', params.zip_file)
+  return request<SkillVersion>(`/api/v1/skills/${skillId}/versions`, { method: 'POST', body: fd })
+}
+
+export function activateSkillVersion(skillId: number, versionId: number): Promise<Skill> {
+  return request<Skill>(`/api/v1/skills/${skillId}/versions/${versionId}/activate`, { method: 'POST' })
+}
+
+export function deprecateSkillVersion(
+  skillId: number,
+  versionId: number,
+  params: DeprecateSkillVersionParams = {},
+): Promise<SkillVersion> {
+  return request<SkillVersion>(`/api/v1/skills/${skillId}/versions/${versionId}/deprecate`, {
+    method: 'POST',
+    body: params,
+  })
+}
+
+export function createSkillVersionSecurityAudit(skillId: number, versionId: number): Promise<AiPolicyAudit> {
+  return request<AiPolicyAudit>(
+    `/api/v1/skills/${skillId}/versions/${versionId}/ai-policies-audits`,
+    { method: 'POST' },
+  )
 }
 
 export function getSkillDownloadUrl(id: number): string {

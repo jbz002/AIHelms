@@ -800,6 +800,11 @@ class AiPoliciesAudit(Base):
     skill_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.skills.id", ondelete="SET NULL"), nullable=True
     )
+    skill_version_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("aihelms.skill_versions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     skill_name: Mapped[str] = mapped_column(String(128), default="")
     skill_version: Mapped[str] = mapped_column(String(64), default="")
     source_sha256: Mapped[str] = mapped_column(String(64), default="")
@@ -903,12 +908,68 @@ class Skill(Base):
         ForeignKey("aihelms.ai_policies_audits.id", ondelete="SET NULL"),
         nullable=True,
     )
+    current_version_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("aihelms.skill_versions.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()
+    )
+
+    versions: Mapped[list["SkillVersion"]] = relationship(
+        back_populates="skill",
+        foreign_keys="SkillVersion.skill_id",
+        lazy="selectin",
+        passive_deletes=True,
+        cascade="all, delete-orphan",
+    )
+
+
+class SkillVersion(Base):
+    __tablename__ = "skill_versions"
+    __table_args__ = (
+        UniqueConstraint("skill_id", "version"),
+        {"schema": "aihelms"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    skill_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("aihelms.skills.id", ondelete="CASCADE")
+    )
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    version_label: Mapped[str] = mapped_column(String(128), default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=False)
+    lifecycle_status: Mapped[str] = mapped_column(String(20), default="inactive")
+    sunset_date: Mapped[datetime | None] = mapped_column(nullable=True)
+    source: Mapped[str] = mapped_column(String(20), default="manual")
+    content_sha256: Mapped[str] = mapped_column(String(64), default="")
+    zip_path: Mapped[str] = mapped_column(String(500), default="")
+    zip_size: Mapped[int] = mapped_column(BigInteger, default=0)
+    zip_filename: Mapped[str] = mapped_column(String(200), default="")
+    agent_install_prompt: Mapped[str] = mapped_column(Text, default="")
+    usage_instructions: Mapped[str] = mapped_column(Text, default="")
+    change_log: Mapped[str] = mapped_column(Text, default="")
+    security_status: Mapped[str] = mapped_column(String(32), default="not_scanned")
+    security_decision: Mapped[str] = mapped_column(String(32), default="")
+    security_severity: Mapped[str] = mapped_column(String(32), default="")
+    security_risk_score: Mapped[int] = mapped_column(Integer, default=0)
+    latest_ai_policies_audit_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("aihelms.ai_policies_audits.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    skill: Mapped["Skill"] = relationship(
+        back_populates="versions", foreign_keys=[skill_id]
     )
 
 

@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
@@ -18,6 +19,10 @@ class CreateCategoryRequest(BaseModel):
     sort_order: int = 0
 
 
+class DeprecateVersionRequest(BaseModel):
+    sunset_date: datetime | None = None
+
+
 @router.get("/categories")
 async def list_categories(
     session: AsyncSession = Depends(get_db),
@@ -35,7 +40,10 @@ async def create_category(
 ):
     try:
         data = await skill_service.create_category(
-            session, name=req.name, description=req.description, sort_order=req.sort_order
+            session,
+            name=req.name,
+            description=req.description,
+            sort_order=req.sort_order,
         )
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -64,7 +72,9 @@ async def list_published_skills(
     _: dict = Depends(get_current_user),
 ):
     """公开接口：已认证用户可查看已发布的 Skill 列表。"""
-    data = await skill_service.list_skills(session, page, page_size, category, is_published=True)
+    data = await skill_service.list_skills(
+        session, page, page_size, category, is_published=True
+    )
     return {"code": 200, "message": "ok", "data": data}
 
 
@@ -77,7 +87,9 @@ async def list_skills(
     session: AsyncSession = Depends(get_db),
     _: dict = Depends(require_permission("skill:read")),
 ):
-    data = await skill_service.list_skills(session, page, page_size, category, is_published)
+    data = await skill_service.list_skills(
+        session, page, page_size, category, is_published
+    )
     return {"code": 200, "message": "ok", "data": data}
 
 
@@ -92,6 +104,114 @@ async def get_skill(
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")
     return {"code": 200, "message": "ok", "data": data}
+
+
+# ─── Skill Versions ───────────────────────────────────────────────────────────
+
+
+@router.get("/{skill_id}/versions")
+async def list_skill_versions(
+    skill_id: int,
+    include_deprecated: bool = Query(True),
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("skill:read")),
+):
+    try:
+        data = await skill_service.list_versions(session, skill_id, include_deprecated)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 不存在")
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.post("/{skill_id}/versions", summary="创建Skill新版本")
+async def create_skill_version(
+    skill_id: int,
+    version: str = Form(...),
+    version_label: str = Form(""),
+    change_log: str = Form(""),
+    zip_file: UploadFile | None = File(None),
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_permission("skill:create")),
+):
+    zip_content = None
+    zip_filename = ""
+    if zip_file is not None and zip_file.filename:
+        zip_content = await zip_file.read()
+        zip_filename = zip_file.filename
+    try:
+        data = await skill_service.create_version(
+            session,
+            skill_id,
+            version=version,
+            version_label=version_label,
+            change_log=change_log,
+            zip_content=zip_content,
+            zip_filename=zip_filename,
+            created_by=current_user["id"],
+        )
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 不存在")
+    except ConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    return {"code": 200, "message": "Skill 版本创建成功", "data": data}
+
+
+@router.post("/{skill_id}/versions/{version_id}/activate", summary="激活Skill版本")
+async def activate_skill_version(
+    skill_id: int,
+    version_id: int,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("skill:update")),
+):
+    try:
+        data = await skill_service.activate_version(session, skill_id, version_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 或版本不存在")
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "Skill 版本已激活", "data": data}
+
+
+@router.post("/{skill_id}/versions/{version_id}/deprecate", summary="弃用Skill版本")
+async def deprecate_skill_version(
+    skill_id: int,
+    version_id: int,
+    req: DeprecateVersionRequest,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("skill:update")),
+):
+    try:
+        data = await skill_service.deprecate_version(
+            session, skill_id, version_id, req.sunset_date
+        )
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 或版本不存在")
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "Skill 版本已弃用", "data": data}
+
+
+@router.post(
+    "/{skill_id}/versions/{version_id}/ai-policies-audits",
+    summary="发起Skill版本安全审查",
+)
+async def create_skill_version_ai_policies_audit(
+    skill_id: int,
+    version_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_permission("ai_policies:scan")),
+):
+    try:
+        data = await ai_policies_service.create_skill_audit(
+            session, skill_id, current_user, version_id=version_id
+        )
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 或版本不存在")
+    except ConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "审查任务已创建", "data": data}
 
 
 @router.post("", summary="创建 Skill")
@@ -197,7 +317,11 @@ async def update_skill(
 
     try:
         data = await skill_service.update_skill(
-            session, skill_id, zip_content=zip_content, zip_filename=zip_filename, **kwargs
+            session,
+            skill_id,
+            zip_content=zip_content,
+            zip_filename=zip_filename,
+            **kwargs,
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")
@@ -224,7 +348,9 @@ async def download_skill(
     current_user: dict = Depends(require_permission("skill:read")),
 ):
     try:
-        zip_path, download_name, _ = await skill_service.get_skill_zip(session, skill_id)
+        zip_path, download_name, _ = await skill_service.get_skill_zip(
+            session, skill_id
+        )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 或 zip 文件不存在")
     await skill_service.record_skill_usage(
