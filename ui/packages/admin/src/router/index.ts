@@ -117,6 +117,18 @@ const router = createRouter({
           meta: { permission: 'ai_policies:read' },
         },
         {
+          path: 'lab/docs',
+          name: 'DocsMcp',
+          component: () => import('../views/docs-mcp/DocsMcpView.vue'),
+          meta: { permission: 'efficiency:read' },
+        },
+        {
+          path: 'lab/docs/:libraryName',
+          name: 'DocsMcpDetail',
+          component: () => import('../views/docs-mcp/DocsMcpDetailView.vue'),
+          meta: { permission: 'efficiency:read' },
+        },
+        {
           path: 'agents',
           name: 'AgentList',
           component: () => import('../views/agents/AgentList.vue'),

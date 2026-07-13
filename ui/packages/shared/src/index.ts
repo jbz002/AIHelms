@@ -83,3 +83,15 @@ export {
   getEfficiencyAdoptionScopeUsers, getEfficiencyCost, getEfficiencyCostDetail,
   getEfficiencyBudget, getEfficiencyBudgetAlerts, getEfficiencyHealth,
 } from './api/efficiency'
+export type {
+  DocsMcpStats, DocsMcpJob, DocsMcpJobProgress,
+  DocsMcpVersion, DocsMcpVersionCounts, DocsMcpVersionProgress,
+  DocsMcpLibrary, DocsMcpSearchResult,
+  DocsMcpScrapeOptions, DocsMcpCreateJobParams,
+} from './types/docs-mcp'
+export {
+  getDocsMcpStats, getDocsMcpJobs, createDocsMcpJob,
+  cancelDocsMcpJob, clearCompletedDocsMcpJobs, refreshDocsMcpVersion,
+  getDocsMcpLibraries, getDocsMcpLibraryDetail, searchDocsMcp,
+  deleteDocsMcpVersion, getDocsMcpEventSourceUrl,
+} from './api/docs-mcp'
