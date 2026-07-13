@@ -30,6 +30,8 @@ export { testModelAccessStream, testModelAccessSync, testEmbedding, testRerank }
 export type { AccessTestErrorDetail, TestAccessParams, TestAccessResult, TestEmbeddingParams, TestEmbeddingResult, TestRerankParams, TestRerankResult } from './types/accessTest'
 export type { McpServer, McpTool, McpCategory, McpServerListResult, CreateMcpServerParams, UpdateMcpServerParams, UpdateToolBillingParams, CreateMcpCategoryParams } from './types/mcp'
 export { getMcpServers, getMcpServerById, createMcpServer, updateMcpServer, deleteMcpServer, getMcpTools, refreshMcpTools, updateToolBilling, healthCheckMcpServer, getMcpCategories, createMcpCategory, deleteMcpCategory } from './api/mcp'
+export type { SearchResultItem, SearchResponse, SearchRequest } from './types/search'
+export { search } from './api/search'
 export type { Skill, SkillCategory, SkillListResult, CreateSkillCategoryParams } from './types/skill'
 export { getSkills, getSkillById, createSkill, updateSkill, deleteSkill, createSkillSecurityAudit, getSkillDownloadUrl, getSkillCategories, createSkillCategory, deleteSkillCategory } from './api/skill'
 export type { AiPolicyAudit, AiPolicyAuditSummary, AiPolicyAuditListResult, AiPolicyAuditQuery, AiPolicyFinding, AiPolicyAuditFileSummary, AiPolicyRiskCatalogItem, AiPolicySettings } from './types/aiPolicies'

@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
-import { getMyKeys } from '@aihelms/shared'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { getMyKeys, search } from '@aihelms/shared'
 import { request } from '@aihelms/shared/src/api/request'
 import { createResourceApplication } from '@aihelms/shared/src/api/resource-application'
 import type { AiKey } from '@aihelms/shared/src/types/ai-key'
 import type { Skill } from '@aihelms/shared/src/types/skill'
 import type { McpServer } from '@aihelms/shared/src/types/mcp'
+import type { SearchResultItem } from '@aihelms/shared/src/types/search'
 import { Server, Sparkles, CheckCircle2, Search, X, ExternalLink, Flame } from 'lucide-vue-next'
 import * as lucideIcons from 'lucide-vue-next'
 
@@ -15,8 +16,10 @@ const items = ref<MarketItem[]>([])
 const mySkills = ref<number[]>([])
 const myMcps = ref<number[]>([])
 const isLoading = ref(true)
-const search = ref('')
-const typeFilter = ref<'all' | 'skill' | 'mcp'>('all')
+const searchQuery = ref('')
+const searchResults = ref<SearchResultItem[]>([])
+const isSearching = ref(false)
+const typeFilter = ref<'all' | 'skill' | 'mcp' | 'tool'>('all')
 const categoryFilter = ref('')
 const showApplyDialog = ref(false)
 const showMcpAccessDialog = ref(false)
@@ -24,6 +27,7 @@ const applyTarget = ref<MarketItem | null>(null)
 const mcpTarget = ref<McpServer | null>(null)
 const applyReason = ref('')
 const applyingId = ref<number | null>(null)
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const categories = computed(() => {
   const base = items.value.filter(i => typeFilter.value === 'all' || i._type === typeFilter.value)
@@ -48,17 +52,50 @@ async function copyToClipboard(text: string): Promise<void> {
   } catch { /* ignore */ }
 }
 
-const filtered = computed(() => {
+const categories = computed(() => {
+  const base = items.value.filter(i => typeFilter.value === 'all' || itemToType(i) === typeFilter.value)
+  const set = new Set(base.map(i => i.category).filter(Boolean))
+  return Array.from(set).sort()
+})
+
+// Backend search results — displayed when user is actively searching
+const backendResults = computed<MarketItem[]>(() => {
+  if (!searchQuery.value || searchResults.value.length === 0) return []
+  // Map backend SearchResultItem back to MarketItem-like structure for template
+  return searchResults.value.map(r => {
+    const meta = r.metadata as Record<string, unknown> | undefined
+    const type = r.entity_type === 'skill' ? 'skill' : 'mcp'
+    return {
+      _type: type,
+      name: r.name,
+      description: r.description,
+      entity_type: r.entity_type,
+      entity_id: r.entity_id,
+      id: r.entity_id,
+      category: (meta as Record<string, unknown>)?.category as string | undefined,
+      tags: (meta as Record<string, unknown>)?.tags as string[] || [],
+      author: (meta as Record<string, unknown>)?.author as string | undefined,
+      install_count: (meta as Record<string, unknown>)?.install_count as number | 0,
+      call_count: (meta as Record<string, unknown>)?.call_count as number | 0,
+      requires_approval: false,
+    } as unknown as MarketItem
+  })
+})
+
+// Display items: when searching, show backend results; otherwise use client-side filtered
+const displayItems = computed<MarketItem[]>(() => {
+  if (searchQuery.value && backendResults.value.length > 0) return backendResults.value
+  // Non-search path: client-side filtering (existing behavior)
   return items.value.filter(item => {
-    if (typeFilter.value !== 'all' && item._type !== typeFilter.value) return false
+    if (typeFilter.value !== 'all' && itemToType(item) !== typeFilter.value) return false
     if (categoryFilter.value && item.category !== categoryFilter.value) return false
-    if (search.value) {
-      const q = search.value.toLowerCase()
-      if (!item.name.toLowerCase().includes(q) && !item.description?.toLowerCase().includes(q)) return false
-    }
     return true
   })
 })
+
+function itemToType(item: MarketItem): 'skill' | 'mcp' {
+  return (item as Record<string, unknown>)._type as 'skill' | 'mcp'
+}
 
 function isOwned(item: MarketItem): boolean {
   return item._type === 'skill' ? mySkills.value.includes(item.id) : myMcps.value.includes(item.id)
@@ -97,6 +134,49 @@ function formatUsageCount(count: number): string {
   if (count >= 1000) return `${Math.floor(count / 100) / 10}K`
   return String(count)
 }
+
+async function performSearch(keyword: string): Promise<void> {
+  if (!keyword.trim()) {
+    searchResults.value = []
+    return
+  }
+  isSearching.value = true
+  try {
+    // Map frontend typeFilter to backend entity_types
+    const etypes: string[] = []
+    if (typeFilter.value === 'all' || typeFilter.value === 'skill') etypes.push('skill')
+    if (typeFilter.value === 'all' || typeFilter.value === 'mcp') {
+      etypes.push('mcp_server')
+      etypes.push('mcp_tool')
+    }
+    const res = await search(
+      { q: keyword.trim(), entity_types: etypes, category: categoryFilter.value || undefined },
+      { page: 1, page_size: 50 },
+    )
+    searchResults.value = res?.items ?? []
+  } catch {
+    /* ignore search errors, fall back to empty */
+    searchResults.value = []
+  } finally {
+    isSearching.value = false
+  }
+}
+
+function handleSearchInput(value: string): void {
+  searchQuery.value = value
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+  if (!value.trim()) {
+    searchResults.value = []
+    return
+  }
+  searchDebounceTimer = setTimeout(() => {
+    performSearch(value)
+  }, 350)
+}
+
+onUnmounted(() => {
+  if (searchDebounceTimer) clearTimeout(searchDebounceTimer)
+})
 
 async function handleCopyPrompt(item: MarketItem) {
   if (item._type !== 'skill') return
@@ -255,16 +335,14 @@ onMounted(loadData)
               ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-sm'
               : 'text-slate-600 hover:text-slate-900'"
             @click="typeFilter = opt.key as 'all' | 'skill' | 'mcp'"
-          >
-            {{ opt.label }}
-          </button>
         </div>
         <div class="relative flex-1 max-w-xs">
           <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
           <input
-            v-model="search"
+            v-model="searchQuery"
+            @input="handleSearchInput(($event.target as HTMLInputElement).value)"
             type="text"
-            placeholder="搜索名称或描述..."
+            placeholder="搜索 Skill / MCP / Tool ..."
             class="w-full rounded-xl border border-slate-200/60 bg-white py-2 pl-9 pr-4 text-sm placeholder:text-slate-400 focus:border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
           />
         </div>
@@ -295,19 +373,19 @@ onMounted(loadData)
     </div>
 
     <!-- Loading -->
-    <div v-if="isLoading" class="flex items-center justify-center py-20">
+    <div v-if="isLoading || isSearching" class="flex items-center justify-center py-20">
       <div class="h-8 w-8 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
     </div>
 
     <!-- Empty -->
-    <div v-else-if="!filtered.length" class="py-20 text-center text-slate-400">
+    <div v-else-if="!displayItems.length" class="py-20 text-center text-slate-400">
       暂无可用资源
     </div>
 
     <!-- Card Grid -->
     <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
       <div
-        v-for="item in filtered"
+        v-for="item in displayItems"
         :key="`${item._type}-${item.id}`"
         class="group relative flex min-h-[200px] flex-col rounded-2xl border border-slate-200/60 bg-white p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-lg hover:shadow-purple-500/5"
       >
