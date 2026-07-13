@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import type { DocsMcpSearchResult } from '@aihelms/shared'
-import { FileText, ExternalLink } from 'lucide-vue-next'
+import MarkdownRenderer from '@aihelms/shared/src/components/MarkdownRenderer.vue'
+import { FileText, ExternalLink, ChevronDown, ChevronUp } from 'lucide-vue-next'
 
 interface Props {
   results: DocsMcpSearchResult[]
@@ -8,6 +10,22 @@ interface Props {
 }
 
 defineProps<Props>()
+
+const expandedSet = ref<Set<number>>(new Set())
+
+function toggleExpand(index: number): void {
+  const next = new Set(expandedSet.value)
+  if (next.has(index)) {
+    next.delete(index)
+  } else {
+    next.add(index)
+  }
+  expandedSet.value = next
+}
+
+function isExpanded(index: number): boolean {
+  return expandedSet.value.has(index)
+}
 </script>
 
 <template>
@@ -52,9 +70,28 @@ defineProps<Props>()
             {{ (result.score * 100).toFixed(1) }}%
           </span>
         </div>
-        <div class="line-clamp-4 whitespace-pre-wrap text-sm leading-relaxed text-gray-600">
-          {{ result.content }}
+
+        <div v-if="isExpanded(index)">
+          <MarkdownRenderer
+            :content="result.content"
+            :mime-type="result.mimeType"
+          />
         </div>
+        <div v-else class="line-clamp-4">
+          <MarkdownRenderer
+            :content="result.content"
+            :mime-type="result.mimeType"
+          />
+        </div>
+
+        <button
+          class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
+          @click="toggleExpand(index)"
+        >
+          <ChevronDown v-if="!isExpanded(index)" class="h-3.5 w-3.5" />
+          <ChevronUp v-else class="h-3.5 w-3.5" />
+          {{ isExpanded(index) ? '收起' : '展开全部' }}
+        </button>
       </div>
     </div>
   </div>
