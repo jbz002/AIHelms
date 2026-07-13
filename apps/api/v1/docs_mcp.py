@@ -68,14 +68,45 @@ async def get_jobs(
 @router.post("/jobs", summary="创建爬取任务")
 async def create_job(body: dict, _: dict = Depends(get_current_user)):
     try:
+        logger.info(f"create_job received body: {body}")
+
+        url = body.get("url", "").strip()
+        library = body.get("library", "").strip()
+        version = body.get("version", "").strip() or None
+
+        # 验证必需字段
+        if not url:
+            return {"code": 400, "message": "url 不能为空", "data": None}
+        if not library:
+            return {"code": 400, "message": "library 不能为空", "data": None}
+
+        # 构建 ScraperOptions（必需字段：url, library, version）
+        # 确保 options 始终是一个字典
+        additional_options = body.get("options") or {}
+        if not isinstance(additional_options, dict):
+            additional_options = {}
+
+        scraper_options = {
+            "url": url,
+            "library": library,
+            "version": version or "",  # 空值转为空字符串
+            **additional_options,
+        }
+
+        logger.info(f"create_job: library={library}, version={version}, scraper_options={scraper_options}, additional_options={additional_options}")
+
         result = await docs_mcp_client.enqueue_scrape_job(
-            library=body["library"],
-            version=body.get("version"),
-            options=body.get("options", {}),
+            library=library,
+            version=version,
+            options=scraper_options,
         )
         return {"code": 200, "message": "任务创建成功", "data": result}
     except DocsMcpError as e:
+        logger.error(f"DocsMcpError in create_job: {str(e)}")
         return {"code": 500, "message": str(e), "data": None}
+    except Exception as e:
+        logger.error(f"Unexpected error in create_job: {str(e)}", exc_info=True)
+        return {"code": 500, "message": f"创建任务失败: {str(e)}", "data": None}
 
 
 @router.post("/jobs/clear-completed", summary="清理已完成任务")
@@ -104,13 +135,22 @@ async def refresh_version(
 ):
     """根据 job 信息刷新对应版本的文档。body 需包含 library 和 version。"""
     try:
-        library = body.get("library", "") if body else ""
-        version = body.get("version") if body else None
-        options = body.get("options") if body else None
+        if not body:
+            return {"code": 400, "message": "请求体不能为空", "data": None}
+
+        library = body.get("library", "").strip()
+        version = body.get("version", "").strip() or None
+
+        if not library:
+            return {"code": 400, "message": "library 不能为空", "data": None}
+
+        # 刷新任务的 options（可选）
+        refresh_options = body.get("options", {})
+
         result = await docs_mcp_client.enqueue_refresh_job(
             library=library,
             version=version,
-            options=options,
+            options=refresh_options,
         )
         return {"code": 200, "message": "刷新任务已创建", "data": result}
     except DocsMcpError as e:

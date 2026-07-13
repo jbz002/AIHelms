@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     platform_public_url: str = ""
 
     # 日志
-    log_level: str = "WARNING"
+    log_level: str = "INFO"
     log_dir: str = "/logs"
 
     # 应用
