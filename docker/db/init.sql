@@ -470,6 +470,35 @@ CREATE TABLE IF NOT EXISTS aihelms.mcp_tools (
     UNIQUE(server_id, tool_name)
 );
 
+-- MCP 版本表：每个 MCP Server 的多版本运行时快照 + 版本元信息
+CREATE TABLE IF NOT EXISTS aihelms.mcp_server_versions (
+    id BIGSERIAL PRIMARY KEY,
+    server_id BIGINT NOT NULL REFERENCES aihelms.mcp_servers(id) ON DELETE CASCADE,
+    version VARCHAR(64) NOT NULL,
+    version_label VARCHAR(128) NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT false,
+    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'inactive',
+    sunset_date TIMESTAMPTZ,
+    source VARCHAR(20) NOT NULL DEFAULT 'manual',
+    url TEXT NOT NULL,
+    transport VARCHAR(20) NOT NULL,
+    auth_type VARCHAR(30) NOT NULL DEFAULT 'none',
+    credentials JSONB NOT NULL DEFAULT '{}',
+    mcp_info JSONB NOT NULL DEFAULT '{}',
+    allowed_tools JSONB NOT NULL DEFAULT '[]',
+    extra_headers TEXT[] NOT NULL DEFAULT '{}',
+    instructions TEXT NOT NULL DEFAULT '',
+    auto_discovered_version VARCHAR(64) NOT NULL DEFAULT '',
+    change_log TEXT NOT NULL DEFAULT '',
+    created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(server_id, version)
+);
+-- mcp_servers.current_version_id：指向当前 active 版本（表已存在，FK 内联）
+ALTER TABLE aihelms.mcp_servers
+    ADD COLUMN IF NOT EXISTS current_version_id BIGINT
+    REFERENCES aihelms.mcp_server_versions(id) ON DELETE SET NULL;
+
 -- 统一 AI 资源申请审批表
 CREATE TABLE IF NOT EXISTS aihelms.resource_applications (
     id BIGSERIAL PRIMARY KEY,
@@ -585,6 +614,9 @@ CREATE INDEX IF NOT EXISTS idx_mcp_servers_is_published ON aihelms.mcp_servers(i
 CREATE INDEX IF NOT EXISTS idx_mcp_servers_business_scenario ON aihelms.mcp_servers(business_scenario_id);
 CREATE INDEX IF NOT EXISTS idx_mcp_tools_server ON aihelms.mcp_tools(server_id);
 CREATE INDEX IF NOT EXISTS idx_mcp_tools_namespaced ON aihelms.mcp_tools(namespaced_name);
+CREATE INDEX IF NOT EXISTS idx_mcp_server_versions_server ON aihelms.mcp_server_versions(server_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_mcp_server_versions_active
+    ON aihelms.mcp_server_versions(server_id) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS idx_mcp_call_logs_user ON aihelms.mcp_call_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_mcp_call_logs_server ON aihelms.mcp_call_logs(server_id);
 CREATE INDEX IF NOT EXISTS idx_mcp_call_logs_called_at ON aihelms.mcp_call_logs(called_at);
@@ -715,6 +747,47 @@ ALTER TABLE aihelms.skills
 
 CREATE INDEX IF NOT EXISTS idx_skills_security_status ON aihelms.skills(security_status);
 CREATE INDEX IF NOT EXISTS idx_skills_latest_ai_policies_audit_id ON aihelms.skills(latest_ai_policies_audit_id);
+
+-- Skill 版本子表：每个 Skill 的多版本内容快照 + 版本绑定安全审查
+CREATE TABLE IF NOT EXISTS aihelms.skill_versions (
+    id BIGSERIAL PRIMARY KEY,
+    skill_id BIGINT NOT NULL REFERENCES aihelms.skills(id) ON DELETE CASCADE,
+    version VARCHAR(64) NOT NULL,
+    version_label VARCHAR(128) NOT NULL DEFAULT '',
+    is_active BOOLEAN NOT NULL DEFAULT false,
+    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'inactive',
+    sunset_date TIMESTAMPTZ,
+    source VARCHAR(20) NOT NULL DEFAULT 'manual',
+    content_sha256 VARCHAR(64) NOT NULL DEFAULT '',
+    zip_path VARCHAR(500) NOT NULL DEFAULT '',
+    zip_size BIGINT NOT NULL DEFAULT 0,
+    zip_filename VARCHAR(200) NOT NULL DEFAULT '',
+    agent_install_prompt TEXT NOT NULL DEFAULT '',
+    usage_instructions TEXT NOT NULL DEFAULT '',
+    change_log TEXT NOT NULL DEFAULT '',
+    security_status VARCHAR(32) NOT NULL DEFAULT 'not_scanned',
+    security_decision VARCHAR(32) NOT NULL DEFAULT '',
+    security_severity VARCHAR(32) NOT NULL DEFAULT '',
+    security_risk_score INTEGER NOT NULL DEFAULT 0,
+    latest_ai_policies_audit_id BIGINT REFERENCES aihelms.ai_policies_audits(id) ON DELETE SET NULL,
+    created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE(skill_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_skill_versions_skill ON aihelms.skill_versions(skill_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_skill_versions_active
+    ON aihelms.skill_versions(skill_id) WHERE is_active = true;
+
+-- skills.current_version_id：指向当前 active 版本（skill_versions 已存在，FK 内联）
+ALTER TABLE aihelms.skills
+    ADD COLUMN IF NOT EXISTS current_version_id BIGINT
+    REFERENCES aihelms.skill_versions(id) ON DELETE SET NULL;
+
+-- ai_policies_audits.skill_version_id：版本绑定安全审查指针
+ALTER TABLE aihelms.ai_policies_audits
+    ADD COLUMN IF NOT EXISTS skill_version_id BIGINT
+    REFERENCES aihelms.skill_versions(id) ON DELETE SET NULL;
 
 INSERT INTO aihelms.ai_policies_risk_catalog
     (code, name_en, name_zh, severity, description_zh, check_points, sort_order)
@@ -940,6 +1013,48 @@ CREATE TABLE IF NOT EXISTS aihelms.efficiency_suggestions (
 
 CREATE INDEX IF NOT EXISTS idx_suggestions_report ON aihelms.efficiency_suggestions(report_id);
 
+-- ====================================
+-- 自定义实体类型与实例表
+-- 支持管理员在运行时定义新的资产目录类型
+-- ====================================
+
+-- 类型定义表
+CREATE TABLE IF NOT EXISTS aihelms.custom_entity_types (
+    id BIGSERIAL PRIMARY KEY,
+    type_key VARCHAR(64) NOT NULL UNIQUE,           -- 如 llm_prompt / model_card / n8n_workflow
+    display_name VARCHAR(128) NOT NULL,
+    description TEXT DEFAULT '',
+    icon VARCHAR(20) DEFAULT '🧩',
+    schema_definition JSONB NOT NULL DEFAULT '{}',   -- JSON Schema（字段定义、类型、必填、约束）
+    searchable_fields JSONB DEFAULT '[]',           -- 哪些 data 字段纳入词法检索
+    is_active BOOLEAN DEFAULT true,
+    is_published BOOLEAN DEFAULT false,               -- 类型发布后用户端可见
+    created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    -- 约束
+    CONSTRAINT chk_type_key_format CHECK (type_key ~ '^[a-z0-9_-]+$')
+);
+
+-- 实体实例表
+CREATE TABLE IF NOT EXISTS aihelms.custom_entities (
+    id BIGSERIAL PRIMARY KEY,
+    type_id BIGINT NOT NULL REFERENCES aihelms.custom_entity_types(id) ON DELETE CASCADE,
+    type_key VARCHAR(64) NOT NULL,                    -- 冗余（便于跨实体检索/过滤）
+    name VARCHAR(200) NOT NULL,                      -- 独立列：高频查询/展示
+    data JSONB NOT NULL DEFAULT '{}',                 -- 实例数据，按 schema_definition 校验
+    content_text TEXT DEFAULT '',                     -- 冗余：用于 embedding 的拼接文本
+    description TEXT DEFAULT '',                      -- 独立列：列表/搜索展示
+    tags JSONB DEFAULT '[]',
+    is_active BOOLEAN DEFAULT true,
+    is_published BOOLEAN DEFAULT false,
+    visibility_type VARCHAR(20) DEFAULT 'all',        -- 复用现有可见性模型
+    requires_approval BOOLEAN DEFAULT false,
+    created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_usage_logs_user_id ON aihelms.usage_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_created_at ON aihelms.usage_logs(created_at);
@@ -968,6 +1083,15 @@ CREATE INDEX IF NOT EXISTS idx_model_dept_visibility_model ON aihelms.model_depa
 CREATE INDEX IF NOT EXISTS idx_model_dept_visibility_dept ON aihelms.model_department_visibility(department_id);
 CREATE INDEX IF NOT EXISTS idx_model_user_visibility_model ON aihelms.model_user_visibility(model_id);
 CREATE INDEX IF NOT EXISTS idx_model_user_visibility_user ON aihelms.model_user_visibility(user_id);
+
+-- 自定义实体索引
+CREATE INDEX IF NOT EXISTS idx_custom_entities_type ON aihelms.custom_entities(type_id);
+CREATE INDEX IF NOT EXISTS idx_custom_entities_type_key ON aihelms.custom_entities(type_key);
+CREATE INDEX IF NOT EXISTS idx_custom_entities_published ON aihelms.custom_entities(is_published);
+CREATE INDEX IF NOT EXISTS idx_custom_entities_visibility ON aihelms.custom_entities(visibility_type);
+CREATE INDEX IF NOT EXISTS idx_custom_entities_data ON aihelms.custom_entities USING gin (data);
+CREATE INDEX IF NOT EXISTS idx_custom_entities_name ON aihelms.custom_entities(name);
+CREATE INDEX IF NOT EXISTS idx_custom_entities_created_by ON aihelms.custom_entities(created_by);
 
 -- 初始角色
 INSERT INTO aihelms.roles (name, display_name, description, is_system) VALUES
@@ -1050,5 +1174,9 @@ INSERT INTO aihelms.permissions (code, name, resource, action, description)
 VALUES
     ('ai_policies:read', '查看 AI Policies', 'ai_policies', 'read', '查看 AI Policies 审查任务和报告'),
     ('ai_policies:scan', '发起 AI Policies 审查', 'ai_policies', 'scan', '发起 Skill 安全审查'),
-    ('ai_policies:config', '配置 AI Policies', 'ai_policies', 'config', '配置 LLM 审查引擎')
+    ('ai_policies:config', '配置 AI Policies', 'ai_policies', 'config', '配置 LLM 审查引擎'),
+    ('custom_entity:create', '创建自定义实体类型', 'custom_entity', 'create', '创建自定义实体类型'),
+    ('custom_entity:read', '查看自定义实体', 'custom_entity', 'read', '查看自定义实体类型和实例'),
+    ('custom_entity:update', '编辑自定义实体', 'custom_entity', 'update', '编辑自定义实体类型和实例'),
+    ('custom_entity:delete', '删除自定义实体', 'custom_entity', 'delete', '删除自定义实体类型和实例')
 ON CONFLICT (code) DO NOTHING;
