@@ -1,4 +1,3 @@
-import { toast } from '../utils/toast'
 import { getLoginUrl } from '../utils/auth-redirect'
 import { getCurrentLocale } from '../i18n'
 import errorsZh from '../i18n/locales/zh-CN/errors.json'
@@ -35,21 +34,17 @@ function getToken(): string | null {
   return localStorage.getItem('aihelms_token')
 }
 
-async function parseResponseJSON<T>(response: Response, silent: boolean): Promise<ApiResponse<T>> {
+async function parseResponseJSON<T>(response: Response): Promise<ApiResponse<T>> {
   let text: string
   try {
     text = await response.text()
   } catch {
-    const message = getLocalErrorMessage('error.readResponse')
-    if (!silent) toast.error(message)
-    throw new Error(message)
+    throw new Error(getLocalErrorMessage('error.readResponse'))
   }
   try {
     return JSON.parse(text) as ApiResponse<T>
   } catch {
-    const message = getLocalErrorMessage('error.nonJsonResponse', { body: text.slice(0, 200) })
-    if (!silent) toast.error(message)
-    throw new Error(message)
+    throw new Error(getLocalErrorMessage('error.nonJsonResponse', { body: text.slice(0, 200) }))
   }
 }
 
@@ -91,12 +86,10 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
   try {
     response = await fetch(fullUrl, fetchOptions)
   } catch {
-    const message = getLocalErrorMessage('error.network')
-    if (!silent) toast.error(message)
-    throw new Error(message)
+    throw new Error(getLocalErrorMessage('error.network'))
   }
 
-  const json = await parseResponseJSON<T>(response, silent)
+  const json = await parseResponseJSON<T>(response)
 
   if (response.status === 401) {
     if (!silent) {
@@ -108,13 +101,7 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
   }
 
   if (!response.ok) {
-    const message = json.message || getLocalErrorMessage('error.requestFailed', { status: response.status })
-    if (!silent) toast.error(message)
-    throw new Error(message)
-  }
-
-  if (!silent && method !== 'GET' && json.message && json.message !== 'ok') {
-    toast.success(json.message)
+    throw new Error(json.message || getLocalErrorMessage('error.requestFailed', { status: response.status }))
   }
 
   return json.data
