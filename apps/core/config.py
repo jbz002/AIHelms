@@ -22,11 +22,13 @@ class Settings(BaseSettings):
     litellm_host: str = "localhost"
     litellm_port: int = 4000
     litellm_master_key: str = ""
-    # 对外暴露给用户客户端的 LiteLLM 地址（自动由 NGINX_SERVER_NAME + LITELLM_PORT 拼接）
+    # 对外暴露给用户客户端的 LiteLLM 地址
+    # （自动由 NGINX_SERVER_NAME + LITELLM_PORT 拼接）
     litellm_public_url: str = ""
     nginx_server_name: str = "localhost"
     web_port: int = 80
-    # 平台对外访问地址（自动由 NGINX_SERVER_NAME + WEB_PORT 拼接），用于生成 skill 下载链接等
+    # 平台对外访问地址（自动由 NGINX_SERVER_NAME + WEB_PORT 拼接），
+    # 用于生成 skill 下载链接等
     platform_public_url: str = ""
 
     # 日志
@@ -70,6 +72,10 @@ class Settings(BaseSettings):
     ai_policies_scanner_url: str = "http://127.0.0.1:8010"
     ai_policies_timeout_seconds: int = 600
 
+    # Crawl4AI 网页抓取
+    crawl4ai_enabled: bool = True
+    crawl_timeout: int = 30  # 单页抓取超时（秒）
+
     # LLM 调用日志同步与清理
     llm_log_sync_interval_minutes: int = 5
     llm_log_retention_days: int = 0  # 0 = 不清理
@@ -89,10 +95,18 @@ class Settings(BaseSettings):
             self.litellm_url = f"http://{self.litellm_host}:{self.litellm_port}"
         if not self.litellm_public_url:
             # 用 NGINX_SERVER_NAME + LITELLM_PORT 拼接对外 LiteLLM 地址
-            host = self.nginx_server_name.split()[0] if self.nginx_server_name else "localhost"
+            host = (
+                self.nginx_server_name.split()[0]
+                if self.nginx_server_name
+                else "localhost"
+            )
             self.litellm_public_url = f"http://{host}:{self.litellm_port}"
         if not self.platform_public_url:
-            host = self.nginx_server_name.split()[0] if self.nginx_server_name else "localhost"
+            host = (
+                self.nginx_server_name.split()[0]
+                if self.nginx_server_name
+                else "localhost"
+            )
             port_suffix = "" if self.web_port == 80 else f":{self.web_port}"
             self.platform_public_url = f"http://{host}{port_suffix}"
         if not self.skills_storage_dir:
@@ -104,7 +118,9 @@ class Settings(BaseSettings):
         return self
 
     class Config:
-        env_file = str(__import__("pathlib").Path(__file__).resolve().parent.parent.parent / ".env")
+        env_file = str(
+            __import__("pathlib").Path(__file__).resolve().parent.parent.parent / ".env"
+        )
         extra = "ignore"
 
 
