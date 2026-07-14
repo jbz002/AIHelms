@@ -28,10 +28,12 @@ export { getCredentials, getCredentialById, createCredential, updateCredential, 
 export { getModels, getModelById, getActiveModels, createModel, updateModel, deleteModel, createDeployment, updateDeployment, deleteDeployment, getAccessGroups, createAccessGroup, updateAccessGroup, deleteAccessGroup, getRouterSettings, updateRouterSettings, getModelVisibility, updateModelPublish, resyncAnthropicDeployments } from './api/model'
 export { testModelAccessStream, testModelAccessSync, testEmbedding, testRerank } from './api/accessTest'
 export type { AccessTestErrorDetail, TestAccessParams, TestAccessResult, TestEmbeddingParams, TestEmbeddingResult, TestRerankParams, TestRerankResult } from './types/accessTest'
-export type { McpServer, McpTool, McpCategory, McpServerListResult, CreateMcpServerParams, UpdateMcpServerParams, UpdateToolBillingParams, CreateMcpCategoryParams, McpServerVersion, McpVersionLifecycle, CreateMcpVersionParams, DeprecateMcpVersionParams } from './types/mcp'
-export { getMcpServers, getMcpServerById, createMcpServer, updateMcpServer, deleteMcpServer, getMcpTools, refreshMcpTools, updateToolBilling, healthCheckMcpServer, getMcpCategories, createMcpCategory, deleteMcpCategory, getMcpServerVersions, createMcpServerVersion, activateMcpServerVersion, deprecateMcpServerVersion } from './api/mcp'
-export type { Skill, SkillCategory, SkillListResult, CreateSkillCategoryParams, SkillVersion, SkillVersionLifecycle, CreateSkillVersionParams, DeprecateSkillVersionParams } from './types/skill'
-export { getSkills, getSkillById, createSkill, updateSkill, deleteSkill, createSkillSecurityAudit, getSkillDownloadUrl, getSkillCategories, createSkillCategory, deleteSkillCategory, getSkillVersions, createSkillVersion, activateSkillVersion, deprecateSkillVersion, createSkillVersionSecurityAudit } from './api/skill'
+export type { McpServer, McpTool, McpCategory, McpServerListResult, CreateMcpServerParams, UpdateMcpServerParams, UpdateToolBillingParams, CreateMcpCategoryParams } from './types/mcp'
+export { getMcpServers, getMcpServerById, createMcpServer, updateMcpServer, deleteMcpServer, getMcpTools, refreshMcpTools, updateToolBilling, healthCheckMcpServer, getMcpCategories, createMcpCategory, deleteMcpCategory } from './api/mcp'
+export type { SearchResultItem, SearchResponse, SearchRequest } from './types/search'
+export { search } from './api/search'
+export type { Skill, SkillCategory, SkillListResult, CreateSkillCategoryParams } from './types/skill'
+export { getSkills, getSkillById, createSkill, updateSkill, deleteSkill, createSkillSecurityAudit, getSkillDownloadUrl, getSkillCategories, createSkillCategory, deleteSkillCategory } from './api/skill'
 export type { AiPolicyAudit, AiPolicyAuditSummary, AiPolicyAuditListResult, AiPolicyAuditQuery, AiPolicyFinding, AiPolicyAuditFileSummary, AiPolicyRiskCatalogItem, AiPolicySettings } from './types/aiPolicies'
 export { getAiPolicyAudits, getAiPolicyAudit, getAiPolicyReportDownloadUrl, getAiPolicyRiskCatalog, getAiPolicySettings, updateAiPolicySettings } from './api/aiPolicies'
 export type { Agent, AgentCategory, AgentPlatform, AgentListResult, CreateAgentParams, UpdateAgentParams, CreateAgentCategoryParams, CreateAgentPlatformParams, AgentUsageLog, AgentUsageLogListResult } from './types/agent'
@@ -83,15 +85,3 @@ export {
   getEfficiencyAdoptionScopeUsers, getEfficiencyCost, getEfficiencyCostDetail,
   getEfficiencyBudget, getEfficiencyBudgetAlerts, getEfficiencyHealth,
 } from './api/efficiency'
-export type {
-  DocsMcpStats, DocsMcpJob, DocsMcpJobProgress,
-  DocsMcpVersion, DocsMcpVersionCounts, DocsMcpVersionProgress,
-  DocsMcpLibrary, DocsMcpSearchResult,
-  DocsMcpScrapeOptions, DocsMcpCreateJobParams,
-} from './types/docs-mcp'
-export {
-  getDocsMcpStats, getDocsMcpJobs, createDocsMcpJob,
-  cancelDocsMcpJob, clearCompletedDocsMcpJobs, refreshDocsMcpVersion,
-  getDocsMcpLibraries, getDocsMcpLibraryDetail, searchDocsMcp,
-  deleteDocsMcpVersion, getDocsMcpEventSourceUrl,
-} from './api/docs-mcp'

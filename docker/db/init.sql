@@ -1013,6 +1013,48 @@ CREATE TABLE IF NOT EXISTS aihelms.efficiency_suggestions (
 
 CREATE INDEX IF NOT EXISTS idx_suggestions_report ON aihelms.efficiency_suggestions(report_id);
 
+-- ====================================
+-- 自定义实体类型与实例表
+-- 支持管理员在运行时定义新的资产目录类型
+-- ====================================
+
+-- 类型定义表
+CREATE TABLE IF NOT EXISTS aihelms.custom_entity_types (
+    id BIGSERIAL PRIMARY KEY,
+    type_key VARCHAR(64) NOT NULL UNIQUE,           -- 如 llm_prompt / model_card / n8n_workflow
+    display_name VARCHAR(128) NOT NULL,
+    description TEXT DEFAULT '',
+    icon VARCHAR(20) DEFAULT '🧩',
+    schema_definition JSONB NOT NULL DEFAULT '{}',   -- JSON Schema（字段定义、类型、必填、约束）
+    searchable_fields JSONB DEFAULT '[]',           -- 哪些 data 字段纳入词法检索
+    is_active BOOLEAN DEFAULT true,
+    is_published BOOLEAN DEFAULT false,               -- 类型发布后用户端可见
+    created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    -- 约束
+    CONSTRAINT chk_type_key_format CHECK (type_key ~ '^[a-z0-9_-]+$')
+);
+
+-- 实体实例表
+CREATE TABLE IF NOT EXISTS aihelms.custom_entities (
+    id BIGSERIAL PRIMARY KEY,
+    type_id BIGINT NOT NULL REFERENCES aihelms.custom_entity_types(id) ON DELETE CASCADE,
+    type_key VARCHAR(64) NOT NULL,                    -- 冗余（便于跨实体检索/过滤）
+    name VARCHAR(200) NOT NULL,                      -- 独立列：高频查询/展示
+    data JSONB NOT NULL DEFAULT '{}',                 -- 实例数据，按 schema_definition 校验
+    content_text TEXT DEFAULT '',                     -- 冗余：用于 embedding 的拼接文本
+    description TEXT DEFAULT '',                      -- 独立列：列表/搜索展示
+    tags JSONB DEFAULT '[]',
+    is_active BOOLEAN DEFAULT true,
+    is_published BOOLEAN DEFAULT false,
+    visibility_type VARCHAR(20) DEFAULT 'all',        -- 复用现有可见性模型
+    requires_approval BOOLEAN DEFAULT false,
+    created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_usage_logs_user_id ON aihelms.usage_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_usage_logs_created_at ON aihelms.usage_logs(created_at);
@@ -1041,6 +1083,15 @@ CREATE INDEX IF NOT EXISTS idx_model_dept_visibility_model ON aihelms.model_depa
 CREATE INDEX IF NOT EXISTS idx_model_dept_visibility_dept ON aihelms.model_department_visibility(department_id);
 CREATE INDEX IF NOT EXISTS idx_model_user_visibility_model ON aihelms.model_user_visibility(model_id);
 CREATE INDEX IF NOT EXISTS idx_model_user_visibility_user ON aihelms.model_user_visibility(user_id);
+
+-- 自定义实体索引
+CREATE INDEX IF NOT EXISTS idx_custom_entities_type ON aihelms.custom_entities(type_id);
+CREATE INDEX IF NOT EXISTS idx_custom_entities_type_key ON aihelms.custom_entities(type_key);
+CREATE INDEX IF NOT EXISTS idx_custom_entities_published ON aihelms.custom_entities(is_published);
+CREATE INDEX IF NOT EXISTS idx_custom_entities_visibility ON aihelms.custom_entities(visibility_type);
+CREATE INDEX IF NOT EXISTS idx_custom_entities_data ON aihelms.custom_entities USING gin (data);
+CREATE INDEX IF NOT EXISTS idx_custom_entities_name ON aihelms.custom_entities(name);
+CREATE INDEX IF NOT EXISTS idx_custom_entities_created_by ON aihelms.custom_entities(created_by);
 
 -- 初始角色
 INSERT INTO aihelms.roles (name, display_name, description, is_system) VALUES
@@ -1123,5 +1174,9 @@ INSERT INTO aihelms.permissions (code, name, resource, action, description)
 VALUES
     ('ai_policies:read', '查看 AI Policies', 'ai_policies', 'read', '查看 AI Policies 审查任务和报告'),
     ('ai_policies:scan', '发起 AI Policies 审查', 'ai_policies', 'scan', '发起 Skill 安全审查'),
-    ('ai_policies:config', '配置 AI Policies', 'ai_policies', 'config', '配置 LLM 审查引擎')
+    ('ai_policies:config', '配置 AI Policies', 'ai_policies', 'config', '配置 LLM 审查引擎'),
+    ('custom_entity:create', '创建自定义实体类型', 'custom_entity', 'create', '创建自定义实体类型'),
+    ('custom_entity:read', '查看自定义实体', 'custom_entity', 'read', '查看自定义实体类型和实例'),
+    ('custom_entity:update', '编辑自定义实体', 'custom_entity', 'update', '编辑自定义实体类型和实例'),
+    ('custom_entity:delete', '删除自定义实体', 'custom_entity', 'delete', '删除自定义实体类型和实例')
 ON CONFLICT (code) DO NOTHING;

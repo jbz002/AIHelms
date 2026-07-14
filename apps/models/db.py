@@ -1214,3 +1214,62 @@ class EfficiencySuggestion(Base):
     )
     status_updated_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class CustomEntityType(Base):
+    """自定义实体类型定义表"""
+    __tablename__ = "custom_entity_types"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    type_key: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    display_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    icon: Mapped[str] = mapped_column(String(20), default="🧩")
+    schema_definition: Mapped[dict] = mapped_column(JSONB, default=dict)
+    searchable_fields: Mapped[list] = mapped_column(JSONB, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+
+    entities: Mapped[list["CustomEntity"]] = relationship(
+        back_populates="type_def", lazy="selectin", passive_deletes=True
+    )
+
+
+class CustomEntity(Base):
+    """自定义实体实例表"""
+    __tablename__ = "custom_entities"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    type_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("aihelms.custom_entity_types.id", ondelete="CASCADE")
+    )
+    type_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    data: Mapped[dict] = mapped_column(JSONB, default=dict)
+    content_text: Mapped[str] = mapped_column(Text, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    tags: Mapped[list] = mapped_column(JSONB, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    visibility_type: Mapped[str] = mapped_column(String(20), default="all")
+    requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+
+    type_def: Mapped["CustomEntityType"] = relationship(
+        back_populates="entities", lazy="selectin"
+    )
