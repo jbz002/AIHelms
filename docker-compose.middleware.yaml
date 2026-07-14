@@ -8,7 +8,7 @@ services:
     ports:
       - "${DOCS_MCP_WORKER_PORT:-8080}:8080"
     env_file:
-      - ../demo/docs-mcp-server/.env
+      - ../docs-mcp-server/.env
     volumes:
       - docs-mcp-data:/data
       - docs-mcp-config:/config
@@ -33,7 +33,7 @@ services:
     ports:
       - "${DOCS_MCP_SERVER_PORT:-6280}:6280"
     env_file:
-      - ../demo/docs-mcp-server/.env
+      - ../docs-mcp-server/.env
     volumes:
       - docs-mcp-config:/config
     depends_on:
@@ -54,7 +54,7 @@ services:
     ports:
       - "${DOCS_MCP_WEB_PORT:-6281}:6281"
     env_file:
-      - ../demo/docs-mcp-server/.env
+      - ../docs-mcp-server/.env
     volumes:
       - docs-mcp-config:/config
     depends_on:

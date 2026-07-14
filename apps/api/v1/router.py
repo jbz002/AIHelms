@@ -23,6 +23,7 @@ from api.v1.projects import router as projects_router
 from api.v1.providers import router as providers_router
 from api.v1.resource_applications import router as resource_applications_router
 from api.v1.roles import router as roles_router
+from api.v1.search import router as search_router
 from api.v1.skills import router as skills_router
 from api.v1.usage_logs import router as usage_logs_router
 from api.v1.users import router as users_router
@@ -46,6 +47,7 @@ router.include_router(models_router, tags=["模型纳管"])
 router.include_router(access_test_router, tags=["模型纳管"])
 router.include_router(mcp_router, tags=["AI 市场"])
 router.include_router(skills_router, tags=["AI 市场"])
+router.include_router(search_router, prefix="/search", tags=["AI 市场"])
 router.include_router(custom_entities_router, tags=["AI 市场"])
 router.include_router(agents_router, tags=["智能体中心"])
 router.include_router(resource_applications_router, tags=["资源审计"])

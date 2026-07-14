@@ -1,12 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
-import { getMyKeys, search } from '@aihelms/shared'
-import { request } from '@aihelms/shared/src/api/request'
-import { createResourceApplication } from '@aihelms/shared/src/api/resource-application'
-import type { AiKey } from '@aihelms/shared/src/types/ai-key'
-import type { Skill } from '@aihelms/shared/src/types/skill'
-import type { McpServer } from '@aihelms/shared/src/types/mcp'
-import type { SearchResultItem } from '@aihelms/shared/src/types/search'
+import { getMyKeys, search, request, createResourceApplication } from '@aihelms/shared'
+import type { AiKey, Skill, McpServer, SearchResultItem } from '@aihelms/shared'
 import { Server, Sparkles, CheckCircle2, Search, X, ExternalLink, Flame } from 'lucide-vue-next'
 import * as lucideIcons from 'lucide-vue-next'
 
@@ -30,7 +25,7 @@ const applyingId = ref<number | null>(null)
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null
 
 const categories = computed(() => {
-  const base = items.value.filter(i => typeFilter.value === 'all' || i._type === typeFilter.value)
+  const base = items.value.filter(i => typeFilter.value === 'all' || itemToType(i) === typeFilter.value)
   const set = new Set(base.map(i => i.category).filter(Boolean))
   return Array.from(set).sort()
 })
@@ -51,12 +46,6 @@ async function copyToClipboard(text: string): Promise<void> {
     }
   } catch { /* ignore */ }
 }
-
-const categories = computed(() => {
-  const base = items.value.filter(i => typeFilter.value === 'all' || itemToType(i) === typeFilter.value)
-  const set = new Set(base.map(i => i.category).filter(Boolean))
-  return Array.from(set).sort()
-})
 
 // Backend search results — displayed when user is actively searching
 const backendResults = computed<MarketItem[]>(() => {
@@ -94,7 +83,7 @@ const displayItems = computed<MarketItem[]>(() => {
 })
 
 function itemToType(item: MarketItem): 'skill' | 'mcp' {
-  return (item as Record<string, unknown>)._type as 'skill' | 'mcp'
+  return item._type
 }
 
 function isOwned(item: MarketItem): boolean {
