@@ -80,3 +80,6 @@ dev/test/
 
 # agent
 .agents
+
+# Claude Code worktrees (local only)
+.claude/worktrees/
