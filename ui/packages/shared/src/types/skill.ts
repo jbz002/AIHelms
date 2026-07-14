@@ -25,6 +25,8 @@ export interface Skill {
   is_published: boolean
   requires_approval: boolean
   install_count: number
+  frontmatter: Record<string, unknown>
+  summary_text: string
   security_status?: 'not_scanned' | 'queued' | 'running' | 'completed' | 'failed'
   security_decision?: '' | 'passed' | 'attention_required' | 'high_risk' | 'failed'
   security_severity?:
@@ -57,9 +59,17 @@ export interface SkillVersion {
   lifecycle_status: SkillVersionLifecycle
   sunset_date: string | null
   source: 'manual' | 'auto_discovered'
+  source_type: 'zip' | 'url'
   zip_size: number
   zip_filename: string
   change_log: string
+  frontmatter: Record<string, unknown>
+  summary_text: string
+  composite_hash: string
+  file_hashes: Record<string, string>
+  drift_detected: boolean
+  drifted_files: string[]
+  last_drift_check_at: string | null
   security_status?: 'not_scanned' | 'queued' | 'running' | 'completed' | 'failed'
   security_decision?: '' | 'passed' | 'attention_required' | 'high_risk' | 'failed'
   latest_ai_policies_audit_id?: number | null
@@ -89,4 +99,33 @@ export interface CreateSkillCategoryParams {
   name: string
   description?: string
   sort_order?: number
+}
+
+export interface SkillSummaryView {
+  id: number
+  name: string
+  frontmatter: Record<string, unknown>
+  summary_text: string
+}
+
+export interface SkillFullView {
+  id: number
+  name: string
+  frontmatter: Record<string, unknown>
+  summary_text: string
+  full_content: string
+  file_hashes: Record<string, string>
+  composite_hash: string
+}
+
+export interface SkillIntegrityView {
+  skill_id: number
+  version: string
+  source_type: string
+  composite_hash: string
+  content_sha256: string
+  file_hashes: Record<string, string>
+  drift_detected: boolean
+  drifted_files: string[]
+  last_drift_check_at: string | null
 }

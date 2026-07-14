@@ -18,6 +18,7 @@ import { ArrowLeft, Download, FileText, PlayCircle, ShieldCheck, Trash2 } from '
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import IconPicker from '../../components/IconPicker.vue'
 import SkillVersionPanel from './SkillVersionPanel.vue'
+import SkillContentPanel from './SkillContentPanel.vue'
 
 type SecurityStatus = 'not_scanned' | 'queued' | 'running' | 'completed' | 'failed'
 type SecurityDecision = 'passed' | 'attention_required' | 'high_risk' | 'failed'
@@ -450,6 +451,10 @@ onMounted(loadData)
               :active-version="skill?.active_version ?? null"
               @activated="handleVersionActivated"
             />
+          </div>
+
+          <div v-if="!isNew && skillId" class="col-span-2">
+            <SkillContentPanel :skill-id="skillId" />
           </div>
 
           <div class="col-span-2 flex items-center gap-4">

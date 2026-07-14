@@ -191,6 +191,10 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             <span v-if="v.zip_filename" class="truncate">{{ v.zip_filename }}</span>
             <span v-else class="italic">无独立 zip</span>
             <span v-if="v.change_log" class="truncate">· {{ v.change_log }}</span>
+            <span v-if="v.frontmatter && Object.keys(v.frontmatter).length > 0" class="text-emerald-500">· SKILL.md ✓</span>
+            <span v-if="v.composite_hash" class="truncate text-slate-300 font-mono text-[10px]">{{ v.composite_hash.slice(0, 8) }}</span>
+          </div>
+          <div v-if="v.summary_text" class="mt-0.5 truncate text-slate-400 italic">{{ v.summary_text.slice(0, 80) }}{{ v.summary_text.length > 80 ? '...' : '' }}</div>
           </div>
         </div>
         <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px]" :class="lifecycleBadge(v.lifecycle_status).cls">

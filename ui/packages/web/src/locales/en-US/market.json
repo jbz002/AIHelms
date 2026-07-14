@@ -19,5 +19,11 @@
   "market.install.instructions": "Instructions",
   "market.action.close": "Close",
   "market.skill.agentPrompt": "Prompt",
-  "market.skill.copyPrompt": "Copy install prompt"
+  "market.skill.copyPrompt": "Copy install prompt",
+  "market.skill.viewDetails": "View details",
+  "market.skill.expandFull": "Expand full instructions",
+  "market.skill.summary": "Summary",
+  "market.skill.fullInstructions": "Full instructions",
+  "market.skill.loading": "Loading...",
+  "market.skill.noContent": "No content"
 }

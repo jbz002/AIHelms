@@ -7,6 +7,9 @@ import type {
   SkillVersion,
   CreateSkillVersionParams,
   DeprecateSkillVersionParams,
+  SkillSummaryView,
+  SkillFullView,
+  SkillIntegrityView,
 } from '../types/skill'
 import type { AiPolicyAudit } from '../types/aiPolicies'
 
@@ -134,4 +137,16 @@ export function createSkillCategory(params: CreateSkillCategoryParams): Promise<
 
 export function deleteSkillCategory(id: number): Promise<null> {
   return request<null>(`/api/v1/skills/categories/${id}`, { method: 'DELETE' })
+}
+
+export function getSkillSummary(skillId: number): Promise<SkillSummaryView> {
+  return request<SkillSummaryView>(`/api/v1/skills/${skillId}/summary`)
+}
+
+export function getSkillFull(skillId: number): Promise<SkillFullView> {
+  return request<SkillFullView>(`/api/v1/skills/${skillId}/full`)
+}
+
+export function getSkillIntegrity(skillId: number): Promise<SkillIntegrityView> {
+  return request<SkillIntegrityView>(`/api/v1/skills/${skillId}/integrity`)
 }

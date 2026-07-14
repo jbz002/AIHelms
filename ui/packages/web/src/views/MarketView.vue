@@ -9,6 +9,7 @@ import type { McpServer } from '@aihelms/shared/src/types/mcp'
 import type { SearchResultItem } from '@aihelms/shared/src/types/search'
 import { Server, Sparkles, CheckCircle2, Search, X, ExternalLink, Flame } from 'lucide-vue-next'
 import * as lucideIcons from 'lucide-vue-next'
+import SkillInstallDialog from '../components/SkillInstallDialog.vue'
 
 type MarketItem = (Skill & { _type: 'skill' }) | (McpServer & { _type: 'mcp' })
 
@@ -573,58 +574,12 @@ onMounted(loadData)
     </Teleport>
 
     <!-- Skill Install Dialog -->
-    <Teleport to="body">
-      <div v-if="showSkillInstallDialog && skillTarget" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30" @click.self="showSkillInstallDialog = false">
-        <div class="flex max-h-[85vh] w-full max-w-lg flex-col rounded-2xl border border-slate-200/60 bg-white shadow-xl">
-            <div class="flex items-center justify-between gap-4 border-b border-slate-100 px-6 py-4">
-              <div class="flex min-w-0 items-center gap-2">
-                <h3 class="truncate text-lg font-semibold text-slate-800">{{ skillTarget.name }}</h3>
-                <span v-if="getSkillDialogAuthor()" class="max-w-[6em] shrink-0 truncate text-xs text-slate-400">{{ getSkillDialogAuthor() }}</span>
-                <span class="flex shrink-0 items-center gap-1 text-xs text-slate-400 tabular-nums">
-                  <Flame class="h-3.5 w-3.5 text-orange-500" />
-                  {{ formatUsageCount(getSkillDialogUsageCount()) }}
-                </span>
-              </div>
-            <button class="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600" @click="showSkillInstallDialog = false">
-              <X class="h-5 w-5" />
-            </button>
-          </div>
-
-          <div class="flex-1 overflow-y-auto px-6 py-5">
-            <div v-if="skillInstallLoading" class="flex items-center justify-center py-10">
-              <div class="h-6 w-6 animate-spin rounded-full border-2 border-purple-500 border-t-transparent" />
-            </div>
-
-            <template v-else-if="skillInstallInfo">
-              <!-- 介绍 -->
-              <p v-if="skillInstallInfo.description" class="mb-4 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">{{ skillInstallInfo.description }}</p>
-
-              <!-- Agent Prompt -->
-              <div class="mb-4">
-                <label class="mb-2 block text-xs font-semibold text-slate-700">Agent 安装提示词</label>
-                <div class="rounded-lg bg-slate-900 p-4">
-                  <pre class="whitespace-pre-wrap text-xs leading-relaxed text-green-300">{{ skillInstallInfo.agent_prompt }}</pre>
-                </div>
-                <button @click="copySkillPrompt"
-                  class="mt-2 rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-1.5 text-xs font-medium text-white shadow-sm">
-                  {{ skillPromptCopied ? '已复制' : '复制安装提示词' }}
-                </button>
-              </div>
-
-              <!-- 使用说明 -->
-              <div v-if="skillInstallInfo.usage_instructions">
-                <label class="mb-2 block text-xs font-semibold text-slate-700">使用说明</label>
-                <div class="rounded-lg bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">{{ skillInstallInfo.usage_instructions }}</div>
-              </div>
-            </template>
-          </div>
-
-          <div class="flex justify-end border-t border-slate-100 px-6 py-3">
-            <button class="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100" @click="showSkillInstallDialog = false">关闭</button>
-          </div>
-        </div>
-      </div>
-    </Teleport>
+    <SkillInstallDialog
+      v-if="showSkillInstallDialog && skillTarget"
+      :visible="showSkillInstallDialog"
+      :skill="skillTarget"
+      @close="showSkillInstallDialog = false"
+    />
   </div>
 </template>
 

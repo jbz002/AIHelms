@@ -666,6 +666,8 @@ CREATE TABLE IF NOT EXISTS aihelms.skills (
     is_published BOOLEAN DEFAULT false,
     requires_approval BOOLEAN DEFAULT false,
     install_count INTEGER DEFAULT 0,
+    frontmatter JSONB DEFAULT '{}',
+    summary_text TEXT DEFAULT '',
     created_by BIGINT REFERENCES aihelms.users(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -770,12 +772,24 @@ CREATE TABLE IF NOT EXISTS aihelms.skill_versions (
     security_severity VARCHAR(32) NOT NULL DEFAULT '',
     security_risk_score INTEGER NOT NULL DEFAULT 0,
     latest_ai_policies_audit_id BIGINT REFERENCES aihelms.ai_policies_audits(id) ON DELETE SET NULL,
+    source_type VARCHAR(16) NOT NULL DEFAULT 'zip',
+    source_url TEXT DEFAULT '',
+    frontmatter JSONB DEFAULT '{}',
+    summary_text TEXT DEFAULT '',
+    full_content TEXT DEFAULT '',
+    composite_hash VARCHAR(64) NOT NULL DEFAULT '',
+    file_hashes JSONB DEFAULT '{}',
+    drift_detected BOOLEAN NOT NULL DEFAULT false,
+    drifted_files JSONB DEFAULT '[]',
+    last_drift_check_at TIMESTAMPTZ,
     created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(skill_id, version)
 );
 
 CREATE INDEX IF NOT EXISTS idx_skill_versions_skill ON aihelms.skill_versions(skill_id);
+CREATE INDEX IF NOT EXISTS idx_skill_versions_source_type ON aihelms.skill_versions(source_type);
+CREATE INDEX IF NOT EXISTS idx_skill_versions_composite_hash ON aihelms.skill_versions(composite_hash);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_skill_versions_active
     ON aihelms.skill_versions(skill_id) WHERE is_active = true;
 
