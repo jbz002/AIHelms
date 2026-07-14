@@ -449,7 +449,12 @@ CREATE TABLE IF NOT EXISTS aihelms.mcp_servers (
     litellm_synced_at TIMESTAMPTZ,
     created_by BIGINT REFERENCES aihelms.users(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    security_status VARCHAR(32) NOT NULL DEFAULT 'not_scanned',
+    security_decision VARCHAR(32) NOT NULL DEFAULT '',
+    security_severity VARCHAR(32) NOT NULL DEFAULT '',
+    security_risk_score INTEGER NOT NULL DEFAULT 0,
+    latest_ai_policies_audit_id BIGINT
 );
 
 -- MCP 工具表
@@ -612,6 +617,8 @@ CREATE INDEX IF NOT EXISTS idx_mcp_servers_category ON aihelms.mcp_servers(categ
 CREATE INDEX IF NOT EXISTS idx_mcp_servers_status ON aihelms.mcp_servers(status);
 CREATE INDEX IF NOT EXISTS idx_mcp_servers_is_published ON aihelms.mcp_servers(is_published);
 CREATE INDEX IF NOT EXISTS idx_mcp_servers_business_scenario ON aihelms.mcp_servers(business_scenario_id);
+CREATE INDEX IF NOT EXISTS idx_mcp_servers_url_transport ON aihelms.mcp_servers(url, transport);
+CREATE INDEX IF NOT EXISTS idx_mcp_servers_security_status ON aihelms.mcp_servers(security_status);
 CREATE INDEX IF NOT EXISTS idx_mcp_tools_server ON aihelms.mcp_tools(server_id);
 CREATE INDEX IF NOT EXISTS idx_mcp_tools_namespaced ON aihelms.mcp_tools(namespaced_name);
 CREATE INDEX IF NOT EXISTS idx_mcp_server_versions_server ON aihelms.mcp_server_versions(server_id);
@@ -674,6 +681,7 @@ CREATE TABLE IF NOT EXISTS aihelms.skills (
 );
 
 CREATE INDEX IF NOT EXISTS idx_skills_category ON aihelms.skills(category);
+CREATE INDEX IF NOT EXISTS idx_skills_name ON aihelms.skills(name);
 CREATE INDEX IF NOT EXISTS idx_skills_published ON aihelms.skills(is_published);
 CREATE INDEX IF NOT EXISTS idx_skills_business_scenario ON aihelms.skills(business_scenario_id);
 
@@ -708,7 +716,11 @@ CREATE TABLE IF NOT EXISTS aihelms.ai_policies_audits (
     findings JSONB NOT NULL DEFAULT '[]',
     raw_report JSONB NOT NULL DEFAULT '{}',
     markdown_report TEXT NOT NULL DEFAULT '',
-    error_message TEXT NOT NULL DEFAULT ''
+    error_message TEXT NOT NULL DEFAULT '',
+    entity_type VARCHAR(16) NOT NULL DEFAULT 'skill',
+    entity_id BIGINT,
+    entity_name VARCHAR(128) NOT NULL DEFAULT '',
+    entity_version VARCHAR(64) NOT NULL DEFAULT ''
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_audit_type ON aihelms.ai_policies_audits(audit_type);
@@ -716,6 +728,7 @@ CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_skill_id ON aihelms.ai_policie
 CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_status ON aihelms.ai_policies_audits(status);
 CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_decision ON aihelms.ai_policies_audits(decision);
 CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_finished_at ON aihelms.ai_policies_audits(finished_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_entity ON aihelms.ai_policies_audits(entity_type, entity_id);
 
 CREATE TABLE IF NOT EXISTS aihelms.ai_policies_risk_catalog (
     code VARCHAR(16) PRIMARY KEY,

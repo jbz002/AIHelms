@@ -29,6 +29,15 @@ async def find_server_by_name(session: AsyncSession, server_name: str) -> McpSer
     return result.scalar_one_or_none()
 
 
+async def find_server_by_url_and_transport(
+    session: AsyncSession, url: str, transport: str,
+) -> McpServer | None:
+    result = await session.execute(
+        select(McpServer).where(McpServer.url == url, McpServer.transport == transport)
+    )
+    return result.scalar_one_or_none()
+
+
 async def find_servers_by_ids(session: AsyncSession, ids: list[int]) -> list[McpServer]:
     if not ids:
         return []

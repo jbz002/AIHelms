@@ -41,6 +41,7 @@ interface SkillFormFields {
   is_published?: boolean
   requires_approval?: boolean
   zip_file?: File | null
+  source_url?: string
 }
 
 function buildSkillFormData(fields: SkillFormFields): FormData {
@@ -56,6 +57,7 @@ function buildSkillFormData(fields: SkillFormFields): FormData {
   if (fields.is_published !== undefined) fd.append('is_published', String(fields.is_published))
   if (fields.requires_approval !== undefined) fd.append('requires_approval', String(fields.requires_approval))
   if (fields.zip_file) fd.append('zip_file', fields.zip_file)
+  if (fields.source_url) fd.append('source_url', fields.source_url)
   return fd
 }
 

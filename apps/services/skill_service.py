@@ -42,6 +42,20 @@ def _ensure_skills_dir() -> str:
     return base
 
 
+async def _download_from_url(url: str) -> tuple[bytes, str]:
+    """下载远程 zip 文件，返回 (content, filename)。"""
+    import httpx
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        content = resp.content
+    filename = url.rsplit("/", 1)[-1] or "skill.zip"
+    if not filename.endswith(".zip"):
+        filename += ".zip"
+    return content, filename
+
+
 # ─── Skill CRUD ──────────────────────────────────────────────────────────────
 
 
@@ -86,8 +100,24 @@ async def create_skill(
     requires_approval: bool = False,
     zip_content: bytes | None = None,
     zip_filename: str = "",
+    source_url: str | None = None,
     created_by: int | None = None,
 ) -> dict:
+    if not zip_content and not source_url:
+        raise ValidationError("请上传 zip 包或提供仓库 URL")
+
+    existing = await skill_repo.find_by_name(session, name)
+    if existing:
+        raise ConflictError(f"Skill 名称 '{name}' 已存在")
+
+    if source_url:
+        from core.url_translator import translate_repo_url
+        from core.url_safety import validate_url
+
+        translated = translate_repo_url(source_url)
+        validate_url(translated.download_url, profile="default")
+        zip_content, zip_filename = await _download_from_url(translated.download_url)
+
     sid = str(uuid.uuid4())
     zip_path = ""
     zip_size = 0

@@ -24,6 +24,11 @@ async def find_by_skill_id(session: AsyncSession, skill_id: str) -> Skill | None
     return result.scalar_one_or_none()
 
 
+async def find_by_name(session: AsyncSession, name: str) -> Skill | None:
+    result = await session.execute(select(Skill).where(Skill.name == name))
+    return result.scalar_one_or_none()
+
+
 async def find_all(
     session: AsyncSession,
     page: int = 1,

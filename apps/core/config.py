@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     ai_policies_scanner_url: str = "http://127.0.0.1:8010"
     ai_policies_timeout_seconds: int = 600
 
+    # SSRF 校验
+    ssrf_allowed_hosts: str = ""  # MCP 内网白名单域名（逗号分隔）
+    ssrf_allowed_cidrs: str = ""  # MCP 内网白名单 CIDR（逗号分隔）
+    ssrf_skill_url_domains: str = ""  # Skill URL 注册允许的仓库域名白名单
+
     # Crawl4AI 网页抓取
     crawl4ai_enabled: bool = True
     crawl_timeout: int = 30  # 单页抓取超时（秒）

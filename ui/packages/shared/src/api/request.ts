@@ -100,6 +100,10 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
     throw new Error(message)
   }
 
+  if (response.status === 409) {
+    throw new Error(json.message || getLocalErrorMessage('error.requestFailed', { status: response.status }))
+  }
+
   if (!response.ok) {
     throw new Error(json.message || getLocalErrorMessage('error.requestFailed', { status: response.status }))
   }

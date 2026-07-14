@@ -282,6 +282,7 @@ async def create_skill(
     usage_instructions: str = Form(""),
     is_published: bool = Form(False),
     requires_approval: bool = Form(False),
+    source_url: str = Form(""),
     zip_file: UploadFile | None = File(None),
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("skill:create")),
@@ -311,6 +312,7 @@ async def create_skill(
         requires_approval=requires_approval,
         zip_content=zip_content,
         zip_filename=zip_filename,
+        source_url=source_url or None,
         created_by=current_user["id"],
     )
     return {"code": 200, "message": "Skill 创建成功", "data": data}

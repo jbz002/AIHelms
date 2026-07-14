@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/mcp", tags=["mcp"])
 class CreateServerRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=128)
     server_name: str = Field(..., min_length=1, max_length=128)
-    url: str = Field(..., min_length=1)
+    url: str = Field(..., min_length=1, max_length=2048)
     transport: str = Field(
         "sse", pattern=r"^(sse|http|streamable_http|streamableHttp)$"
     )
@@ -32,6 +32,13 @@ class CreateServerRequest(BaseModel):
     category: str = Field("general", max_length=50)
     tags: list[str] | None = None
     author: str = Field("", max_length=128)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_format(cls, v: str) -> str:
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("URL 必须以 http:// 或 https:// 开头")
+        return v
     icon_url: str = Field("", max_length=500)
     documentation_url: str = Field("", max_length=500)
     source_url: str = Field("", max_length=500)
@@ -90,7 +97,7 @@ class CreateCategoryRequest(BaseModel):
 class CreateMcpVersionRequest(BaseModel):
     version: str = Field(..., min_length=1, max_length=64)
     version_label: str = Field("", max_length=128)
-    url: str = Field(..., min_length=1)
+    url: str = Field(..., min_length=1, max_length=2048)
     transport: str = Field(
         "sse", pattern=r"^(sse|http|streamable_http|streamableHttp)$"
     )
@@ -101,6 +108,13 @@ class CreateMcpVersionRequest(BaseModel):
     extra_headers: list[str] | None = None
     instructions: str = Field("", max_length=5000)
     change_log: str = Field("", max_length=5000)
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_format(cls, v: str) -> str:
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("URL 必须以 http:// 或 https:// 开头")
+        return v
 
 
 class DeprecateVersionRequest(BaseModel):
@@ -404,6 +418,30 @@ async def refresh_tools(
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"code": 200, "message": "工具列表刷新成功", "data": tools}
+
+
+@router.post(
+    "/servers/{server_id}/ai-policies-audits",
+    summary="发起MCP Server安全审查",
+)
+async def create_mcp_audit(
+    server_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_permission("ai_policies:scan")),
+):
+    try:
+        from services import ai_policies_service
+
+        data = await ai_policies_service.create_mcp_audit(
+            session, server_id, current_user
+        )
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="MCP Server 不存在")
+    except ConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "审查任务已完成", "data": data}
 
 
 @router.get("/servers/{server_id}/tools")

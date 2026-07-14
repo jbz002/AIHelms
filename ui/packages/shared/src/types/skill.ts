@@ -41,6 +41,8 @@ export interface Skill {
   security_risk_score?: number
   latest_ai_policies_audit_id?: number | null
   latest_ai_policies_audit_code?: string | null
+  source_type?: 'zip' | 'url' | null
+  source_url?: string | null
   current_version_id?: number | null
   active_version?: SkillVersion | null
   created_by: number | null

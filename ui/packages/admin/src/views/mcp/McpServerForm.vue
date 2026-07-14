@@ -46,6 +46,7 @@ const form = ref({
 const error = ref('')
 const saving = ref(false)
 const serverNameError = ref('')
+const urlError = ref('')
 const showAuthValue = ref(false)
 
 function validateServerName() {
@@ -53,6 +54,15 @@ function validateServerName() {
     serverNameError.value = '唯一标识不能包含横杠（-），请使用下划线（_）替代'
   } else {
     serverNameError.value = ''
+  }
+}
+
+function validateUrl() {
+  const url = form.value.url
+  if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
+    urlError.value = 'URL 必须以 http:// 或 https:// 开头'
+  } else {
+    urlError.value = ''
   }
 }
 
@@ -111,6 +121,11 @@ async function handleSubmit(): Promise<void> {
   error.value = ''
   if (!form.value.name || !form.value.server_name || !form.value.url) {
     error.value = '请填写所有必填项'
+    return
+  }
+  validateUrl()
+  if (urlError.value) {
+    error.value = urlError.value
     return
   }
   if (form.value.server_name.includes('-')) {
@@ -210,8 +225,11 @@ async function handleSubmit(): Promise<void> {
           <input
             v-model="form.url"
             class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
+            :class="{ 'border-red-300': urlError }"
             placeholder="https://example.com/mcp/sse"
+            @input="validateUrl"
           />
+          <p v-if="urlError" class="mt-1 text-xs text-red-500">{{ urlError }}</p>
         </div>
         <div>
           <label class="mb-1 block text-sm font-medium text-slate-700">传输方式</label>

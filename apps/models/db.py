@@ -552,6 +552,15 @@ class McpServer(Base):
         ForeignKey("aihelms.mcp_server_versions.id", ondelete="SET NULL"),
         nullable=True,
     )
+    security_status: Mapped[str] = mapped_column(String(32), default="not_scanned")
+    security_decision: Mapped[str] = mapped_column(String(32), default="")
+    security_severity: Mapped[str] = mapped_column(String(32), default="")
+    security_risk_score: Mapped[int] = mapped_column(Integer, default=0)
+    latest_ai_policies_audit_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("aihelms.ai_policies_audits.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id"), nullable=True
     )
@@ -840,6 +849,10 @@ class AiPoliciesAudit(Base):
     raw_report: Mapped[dict] = mapped_column(JSONB, default=dict)
     markdown_report: Mapped[str] = mapped_column(Text, default="")
     error_message: Mapped[str] = mapped_column(Text, default="")
+    entity_type: Mapped[str] = mapped_column(String(16), default="skill")
+    entity_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    entity_name: Mapped[str] = mapped_column(String(128), default="")
+    entity_version: Mapped[str] = mapped_column(String(64), default="")
 
 
 class AiPoliciesRiskCatalog(Base):
