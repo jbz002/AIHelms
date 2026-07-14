@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { DocsMcpSearchResult } from '@aihelms/shared'
-import MarkdownRenderer from '@aihelms/shared/src/components/MarkdownRenderer.vue'
+import { MarkdownRenderer } from '@aihelms/shared'
 import { FileText, ExternalLink, ChevronDown, ChevronUp } from 'lucide-vue-next'
 
 interface Props {
