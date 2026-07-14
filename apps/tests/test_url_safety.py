@@ -1,8 +1,7 @@
 import pytest
 
-from core.url_safety import assert_safe_url, validate_url, contains_nginx_metacharacters
+from core.url_safety import assert_safe_url, contains_nginx_metacharacters, validate_url
 from exceptions import ValidationError
-
 
 # ─── 基础校验（原有） ──────────────────────────────────────────────────────
 
@@ -107,4 +106,6 @@ def test_nginx_metacharacters_detected():
 
 def test_validate_url_reject_nginx_metacharacters():
     with pytest.raises(ValidationError):
-        validate_url("http://example.com/path\r\nInject", reject_nginx_metacharacters=True)
+        validate_url(
+            "http://example.com/path\r\nInject", reject_nginx_metacharacters=True
+        )

@@ -1,5 +1,6 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from core.url_translator import translate_repo_url
 from exceptions import ValidationError
@@ -13,7 +14,9 @@ def _mock_settings(domains: str):
 
 def test_translate_github_url():
     with patch("core.config.settings", _mock_settings("github.com")):
-        result = translate_repo_url("https://github.com/owner/repo/tree/main/skills/my-skill")
+        result = translate_repo_url(
+            "https://github.com/owner/repo/tree/main/skills/my-skill"
+        )
     assert result.platform == "github"
     assert result.owner == "owner"
     assert result.repo == "repo"

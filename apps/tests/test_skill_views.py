@@ -23,10 +23,14 @@ def _make_valid_zip(name: str = "test-skill") -> bytes:
     """Create a minimal valid ZIP with SKILL.md for testing."""
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr(
-            "SKILL.md",
-            f"---\nname: {name}\ndescription: A test skill for views\n---\n\n# {name}\n\nFirst paragraph of instructions.\nSecond paragraph of details.\n",
+        content = (
+            f"---\nname: {name}\n"
+            f"description: A test skill for views\n"
+            f"---\n\n# {name}\n\n"
+            "First paragraph of instructions.\n"
+            "Second paragraph of details.\n"
         )
+        zf.writestr("SKILL.md", content)
     return buf.getvalue()
 
 
@@ -51,7 +55,9 @@ async def _cleanup(skill_ids: list[int]) -> None:
     session = _session()
     try:
         for sid in skill_ids:
-            await session.execute(delete(SkillVersion).where(SkillVersion.skill_id == sid))
+            await session.execute(
+                delete(SkillVersion).where(SkillVersion.skill_id == sid)
+            )
             await session.execute(delete(Skill).where(Skill.id == sid))
         await session.commit()
     finally:
@@ -122,7 +128,7 @@ async def test_get_skill_integrity_returns_hashes():
 
 @pytest.mark.asyncio
 async def test_skill_creation_populates_content_fields():
-    """Verify that create_skill parses SKILL.md and writes content to version + skill."""
+    """create_skill parses SKILL.md and writes content to version + skill."""
     skill_id, _ = await _make_skill_with_content("parse")
     session = _session()
     try:

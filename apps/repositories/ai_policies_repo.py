@@ -59,7 +59,9 @@ async def find_active_by_skill(
 
 
 async def find_active_by_entity(
-    session: AsyncSession, entity_type: str, entity_id: int,
+    session: AsyncSession,
+    entity_type: str,
+    entity_id: int,
 ) -> AiPoliciesAudit | None:
     result = await session.execute(
         select(AiPoliciesAudit)

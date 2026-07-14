@@ -1,11 +1,11 @@
 """注册流程强化测试：MCP SSRF 拒绝、重复检查 409、Skill 名称重复。"""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
-from core.url_safety import validate_url
-from exceptions import ConflictError, ValidationError
+import pytest
 
+from core.url_safety import validate_url
+from exceptions import ValidationError
 
 # ─── MCP SSRF 校验 ────────────────────────────────────────────────────────
 

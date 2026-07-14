@@ -1243,6 +1243,7 @@ class EfficiencySuggestion(Base):
 
 class CustomEntityType(Base):
     """自定义实体类型定义表"""
+
     __tablename__ = "custom_entity_types"
     __table_args__ = {"schema": "aihelms"}
 
@@ -1270,6 +1271,7 @@ class CustomEntityType(Base):
 
 class CustomEntity(Base):
     """自定义实体实例表"""
+
     __tablename__ = "custom_entities"
     __table_args__ = {"schema": "aihelms"}
 

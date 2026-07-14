@@ -109,6 +109,8 @@ async def get_skill_integrity(session: AsyncSession, skill_id: int) -> dict:
         "drift_detected": active.drift_detected,
         "drifted_files": active.drifted_files,
         "last_drift_check_at": (
-            active.last_drift_check_at.isoformat() if active.last_drift_check_at else None
+            active.last_drift_check_at.isoformat()
+            if active.last_drift_check_at
+            else None
         ),
     }

@@ -39,6 +39,7 @@ class CreateServerRequest(BaseModel):
         if not v.startswith(("http://", "https://")):
             raise ValueError("URL 必须以 http:// 或 https:// 开头")
         return v
+
     icon_url: str = Field("", max_length=500)
     documentation_url: str = Field("", max_length=500)
     source_url: str = Field("", max_length=500)

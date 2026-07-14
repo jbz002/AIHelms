@@ -1,4 +1,4 @@
-"""Skill content parsing service — ZIP → SKILL.md → frontmatter/summary/full + SHA-256 hashes.
+"""Skill content parsing — ZIP → SKILL.md → frontmatter/summary/full + SHA-256 hashes.
 
 This service is stateless and has no DB dependency. It is called during
 version creation (write-time) so that queries (read-time) incur zero parsing cost.
@@ -12,7 +12,6 @@ import logging
 import re
 import zipfile
 from dataclasses import dataclass, field
-from typing import BinaryIO
 
 import yaml
 
@@ -82,7 +81,7 @@ def _parse_skill_md(raw: str) -> tuple[dict, str]:
                 if ":" in line:
                     k, v = line.split(":", 1)
                     frontmatter[k.strip()] = v.strip().strip("\"'")
-        body = raw[match.end():]
+        body = raw[match.end() :]
     else:
         body = raw
 
@@ -119,10 +118,14 @@ def _parse_skill_md(raw: str) -> tuple[dict, str]:
 
 
 def _extract_summary(body: str, max_lines: int = SUMMARY_MAX_LINES) -> str:
-    """Return the first *max_lines* of the body, trimmed to the first blank line."""
+    """Return the first paragraph of the body, skipping leading headings."""
     lines = body.split("\n")
+    # Skip leading blank lines and ATX headings (# ## ### …)
+    idx = 0
+    while idx < len(lines) and (not lines[idx].strip() or lines[idx].lstrip().startswith("#")):
+        idx += 1
     selected: list[str] = []
-    for line in lines[:max_lines]:
+    for line in lines[idx : idx + max_lines]:
         if not line.strip() and selected:
             break
         selected.append(line)
@@ -151,7 +154,9 @@ def _compute_hashes(zip_bytes: bytes) -> tuple[str, dict[str, str]]:
     if not file_hashes:
         return "", {}
 
-    composite_input = "".join(f"{path}:{sha}" for path, sha in sorted(file_hashes.items()))
+    composite_input = "".join(
+        f"{path}:{sha}" for path, sha in sorted(file_hashes.items())
+    )
     composite_hash = hashlib.sha256(composite_input.encode()).hexdigest()
     return composite_hash, file_hashes
 
@@ -160,7 +165,7 @@ def _compute_hashes(zip_bytes: bytes) -> tuple[str, dict[str, str]]:
 
 
 def parse_skill_zip(zip_bytes: bytes) -> ParsedSkillContent:
-    """Parse a Skill ZIP: find SKILL.md, extract frontmatter/summary/full, compute hashes."""
+    """Parse Skill ZIP: find SKILL.md, extract content, compute hashes."""
     result = ParsedSkillContent()
 
     # Hashes — always computed (even if no SKILL.md)

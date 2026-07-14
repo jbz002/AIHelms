@@ -5,13 +5,11 @@ Extracted from skill_service.py to keep it under the 500-line limit.
 
 from __future__ import annotations
 
-from repositories import ai_policies_repo
 from models.db import Skill, SkillVersion
+from repositories import ai_policies_repo
 
 
-async def _latest_audit_map(
-    session, skills: list[Skill]
-) -> dict[int, str]:
+async def _latest_audit_map(session, skills: list[Skill]) -> dict[int, str]:
     audit_ids = [
         skill.latest_ai_policies_audit_id
         for skill in skills

@@ -52,7 +52,12 @@ def _get_allowed_domains() -> set[str]:
 
 
 def _translate_github(m: re.Match, source_url: str) -> TranslatedUrl:
-    owner, repo, ref, _path = m.group("owner"), m.group("repo"), m.group("ref"), m.group("path")
+    owner, repo, ref, _path = (
+        m.group("owner"),
+        m.group("repo"),
+        m.group("ref"),
+        m.group("path"),
+    )
     if not ref:
         ref = "main"
     download_url = f"https://codeload.github.com/{owner}/{repo}/zip/refs/heads/{ref}"
@@ -83,12 +88,17 @@ def _translate_gitee(m: re.Match, source_url: str) -> TranslatedUrl:
 
 def _translate_gitlab(m: re.Match, source_url: str) -> TranslatedUrl:
     domain, owner, repo, ref = (
-        m.group("domain"), m.group("owner"), m.group("repo"), m.group("ref"),
+        m.group("domain"),
+        m.group("owner"),
+        m.group("repo"),
+        m.group("ref"),
     )
     if not ref:
         ref = "main"
     safe_ref = ref.replace("/", "-")
-    download_url = f"https://{domain}/{owner}/{repo}/-/archive/{ref}/{repo}-{safe_ref}.zip"
+    download_url = (
+        f"https://{domain}/{owner}/{repo}/-/archive/{ref}/{repo}-{safe_ref}.zip"
+    )
     return TranslatedUrl(
         download_url=download_url,
         owner=owner,

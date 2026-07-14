@@ -4,18 +4,14 @@ import hashlib
 import io
 import zipfile
 
-import pytest
-
 from services.skill_content_service import (
     ParsedSkillContent,
     _compute_hashes,
     _extract_summary,
-    _find_skill_md_content,
     _parse_skill_md,
     apply_parsed_to_version,
     parse_skill_zip,
 )
-
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -77,7 +73,10 @@ class TestParseSkillMd:
 
     def test_nested_yaml_frontmatter(self):
         content = _make_skill_md(
-            frontmatter="name: nested\ndescription: test\nmetadata:\n  author: me\n  version: 2.0",
+            frontmatter=(
+                "name: nested\ndescription: test\n"
+                "metadata:\n  author: me\n  version: 2.0"
+            ),
             body="\n# Nested Skill",
         )
         fm, body = _parse_skill_md(content)
@@ -221,7 +220,17 @@ class TestApplyParsedToVersion:
             composite_hash="abc123",
             file_hashes={"f.txt": "hash1"},
         )
-        version = type("MockVersion", (), {"frontmatter": {}, "summary_text": "", "full_content": "", "composite_hash": "", "file_hashes": {}})()
+        version = type(
+            "MockVersion",
+            (),
+            {
+                "frontmatter": {},
+                "summary_text": "",
+                "full_content": "",
+                "composite_hash": "",
+                "file_hashes": {},
+            },
+        )()
         apply_parsed_to_version(version, parsed)
         assert version.frontmatter == {"name": "test"}
         assert version.summary_text == "summary"

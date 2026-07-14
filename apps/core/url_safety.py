@@ -48,15 +48,14 @@ class _Allowlist:
         return hostname_lower in self.hosts
 
     def allows_ip(
-        self, ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
+        self,
+        ip: ipaddress.IPv4Address | ipaddress.IPv6Address,
     ) -> bool:
         return any(ip in net for net in self.cidrs)
 
 
 def _parse_hosts(raw: str) -> frozenset[str]:
-    return frozenset(
-        h.strip().lower() for h in (raw or "").split(",") if h.strip()
-    )
+    return frozenset(h.strip().lower() for h in (raw or "").split(",") if h.strip())
 
 
 def _parse_cidrs(
@@ -193,9 +192,7 @@ def validate_url(
     parsed = urlparse(url)
     allowed_schemes = {"https"} if require_https else _ALLOWED_SCHEMES
     if parsed.scheme not in allowed_schemes:
-        raise ValidationError(
-            f"不支持的 URL 协议: {parsed.scheme or '空'}"
-        )
+        raise ValidationError(f"不支持的 URL 协议: {parsed.scheme or '空'}")
 
     host = parsed.hostname
     if not host:

@@ -1353,32 +1353,39 @@ async def _process_mcp_audit(
 
     try:
         from core.url_safety import validate_url
+
         validate_url(server.url, profile="mcp")
     except ValidationError as e:
-        findings.append({
-            "source": "static",
-            "rule_id": "URL-001",
-            "category": "AST06",
-            "severity": "high",
-            "title": "MCP Server URL 未通过安全校验",
-            "description": str(e),
-            "recommendation": "请确保 URL 指向公网可访问的地址",
-        })
+        findings.append(
+            {
+                "source": "static",
+                "rule_id": "URL-001",
+                "category": "AST06",
+                "severity": "high",
+                "title": "MCP Server URL 未通过安全校验",
+                "description": str(e),
+                "recommendation": "请确保 URL 指向公网可访问的地址",
+            }
+        )
 
     if server.transport not in ("sse", "http", "streamable_http", "streamableHttp"):
-        findings.append({
-            "source": "static",
-            "rule_id": "MCP-001",
-            "category": "AST06",
-            "severity": "medium",
-            "title": "不支持的传输方式",
-            "description": f"transport={server.transport}",
-            "recommendation": "请使用 sse 或 streamableHttp",
-        })
+        findings.append(
+            {
+                "source": "static",
+                "rule_id": "MCP-001",
+                "category": "AST06",
+                "severity": "medium",
+                "title": "不支持的传输方式",
+                "description": f"transport={server.transport}",
+                "recommendation": "请使用 sse 或 streamableHttp",
+            }
+        )
 
     if findings:
         decision = "rejected"
-        severity = "high" if any(f["severity"] == "high" for f in findings) else "medium"
+        severity = (
+            "high" if any(f["severity"] == "high" for f in findings) else "medium"
+        )
         risk_score = 100
     else:
         decision = "passed"

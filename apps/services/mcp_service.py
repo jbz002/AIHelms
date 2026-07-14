@@ -96,7 +96,9 @@ async def create_server(
 
     validate_url(url, profile="mcp")
 
-    existing_url = await mcp_repo.find_server_by_url_and_transport(session, url, transport)
+    existing_url = await mcp_repo.find_server_by_url_and_transport(
+        session, url, transport
+    )
     if existing_url:
         raise ConflictError(
             f"相同 URL 和传输方式的 MCP Server 已存在: '{existing_url.name}'"
@@ -209,7 +211,9 @@ async def update_server(
             raise ConflictError(f"MCP Server 名称 '{kwargs['server_name']}' 已存在")
 
     url_changed = "url" in kwargs and kwargs["url"] != server.url
-    transport_changed = "transport" in kwargs and kwargs["transport"] != server.transport
+    transport_changed = (
+        "transport" in kwargs and kwargs["transport"] != server.transport
+    )
     if url_changed or transport_changed:
         from core.url_safety import validate_url
 

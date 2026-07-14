@@ -10,7 +10,7 @@ from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import Skill, SkillCategory, SkillUsageLog, SkillVersion
 from repositories import skill_repo, skill_version_repo
 from services import versioning_service
-from services.skill_serializers import _serialize, _serialize_version, _latest_audit_map
+from services.skill_serializers import _latest_audit_map, _serialize, _serialize_version
 
 logger = logging.getLogger(__name__)
 
@@ -111,8 +111,8 @@ async def create_skill(
         raise ConflictError(f"Skill 名称 '{name}' 已存在")
 
     if source_url:
-        from core.url_translator import translate_repo_url
         from core.url_safety import validate_url
+        from core.url_translator import translate_repo_url
 
         translated = translate_repo_url(source_url)
         validate_url(translated.download_url, profile="default")
@@ -511,4 +511,3 @@ async def delete_category(session: AsyncSession, category_id: int) -> None:
         raise NotFoundError("skill_category", category_id)
     await skill_repo.delete_category(session, category_id)
     await session.commit()
-
