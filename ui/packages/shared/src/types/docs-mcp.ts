@@ -109,3 +109,25 @@ export interface DocsMcpStoredScraperOptions {
 export interface DocsMcpFetchUrlResult {
   content: string
 }
+
+export interface DocUploadRecord {
+  id: number
+  library: string
+  version: string
+  file_name: string
+  file_size: number
+  content_type: string
+  status: 'pending' | 'processing' | 'completed' | 'failed'
+  chunk_count: number
+  error_message: string
+  created_by: number | null
+  created_at: string
+  finished_at: string | null
+}
+
+export interface DocUploadListResult {
+  items: DocUploadRecord[]
+  total: number
+  page: number
+  page_size: number
+}

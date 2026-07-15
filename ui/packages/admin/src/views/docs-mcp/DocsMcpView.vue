@@ -14,18 +14,21 @@ import {
   type DocsMcpJob,
   type DocsMcpLibrary,
   type DocsMcpCreateJobParams,
+  type DocUploadRecord,
 } from '@aihelms/shared'
-import { RefreshCw, Loader2, Globe, Copy, X, ChevronDown } from 'lucide-vue-next'
+import { RefreshCw, Loader2, Globe, Copy, X, ChevronDown, Upload } from 'lucide-vue-next'
 import AnalyticsCards from './components/AnalyticsCards.vue'
 import JobList from './components/JobList.vue'
 import LibraryList from './components/LibraryList.vue'
 import ScrapeJobDialog from './components/ScrapeJobDialog.vue'
+import UploadDialog from './components/UploadDialog.vue'
 
 const stats = ref<DocsMcpStats | null>(null)
 const jobs = ref<DocsMcpJob[]>([])
 const libraries = ref<DocsMcpLibrary[]>([])
 const loading = ref(false)
 const showScrapeDialog = ref(false)
+const showUploadDialog = ref(false)
 let eventSource: EventSource | null = null
 
 // Fetch URL state
@@ -154,6 +157,11 @@ async function handleSubmitJob(params: DocsMcpCreateJobParams): Promise<void> {
   }
 }
 
+async function handleUploaded(_record: DocUploadRecord): Promise<void> {
+  await loadLibraries()
+  await loadStats()
+}
+
 onMounted(() => {
   loadAll()
   connectSSE()
@@ -171,15 +179,24 @@ onUnmounted(() => {
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h1 class="text-xl font-bold text-gray-900">API文档管理</h1>
-      <button
-        class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-        :disabled="loading"
-        @click="loadAll"
-      >
-        <Loader2 v-if="loading" class="h-4 w-4 animate-spin" />
-        <RefreshCw v-else class="h-4 w-4" />
-        刷新
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          @click="showUploadDialog = true"
+        >
+          <Upload class="h-4 w-4" />
+          上传文档
+        </button>
+        <button
+          class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+          :disabled="loading"
+          @click="loadAll"
+        >
+          <Loader2 v-if="loading" class="h-4 w-4 animate-spin" />
+          <RefreshCw v-else class="h-4 w-4" />
+          刷新
+        </button>
+      </div>
     </div>
 
     <!-- Fetch URL -->
@@ -261,6 +278,11 @@ onUnmounted(() => {
       :visible="showScrapeDialog"
       @close="showScrapeDialog = false"
       @submit="handleSubmitJob"
+    />
+    <UploadDialog
+      :visible="showUploadDialog"
+      @close="showUploadDialog = false"
+      @uploaded="handleUploaded"
     />
   </div>
 </template>

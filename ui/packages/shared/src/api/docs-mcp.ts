@@ -9,6 +9,8 @@ import type {
   DocsMcpStoredScraperOptions,
   DocsMcpScrapeOptions,
   DocsMcpFetchUrlResult,
+  DocUploadRecord,
+  DocUploadListResult,
 } from '../types/docs-mcp'
 
 export function getDocsMcpStats() {
@@ -116,5 +118,22 @@ export function fetchDocsMcpUrl(url: string, followRedirects = true) {
   return request<DocsMcpFetchUrlResult>('/api/v1/docs-mcp/fetch-url', {
     method: 'POST',
     body: { url, followRedirects },
+  })
+}
+
+export function uploadDocument(library: string, file: File, version?: string) {
+  const formData = new FormData()
+  formData.append('library', library)
+  formData.append('file', file)
+  if (version) formData.append('version', version)
+  return request<DocUploadRecord>('/api/v1/docs-mcp/upload', {
+    method: 'POST',
+    body: formData,
+  })
+}
+
+export function getDocUploadRecords(library?: string, page = 1, pageSize = 20) {
+  return request<DocUploadListResult>('/api/v1/docs-mcp/uploads', {
+    params: { library, page, page_size: pageSize } as Record<string, string | number | undefined>,
   })
 }
