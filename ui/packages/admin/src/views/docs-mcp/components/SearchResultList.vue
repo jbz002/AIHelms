@@ -13,6 +13,8 @@ const props = defineProps<Props>()
 
 const expandedSet = ref<Set<number>>(new Set())
 const overflowingSet = ref<Set<number>>(new Set())
+/** 非响应式追踪：避免函数 ref 触发 nextTick → 更新 overflowingSet → 重新渲染 → ref 再次触发的无限循环 */
+const checkedIndices = new Set<number>()
 
 // 重置状态当搜索结果变化时
 watch(
@@ -20,6 +22,7 @@ watch(
   () => {
     expandedSet.value = new Set()
     overflowingSet.value = new Set()
+    checkedIndices.clear()
   },
 )
 
@@ -39,7 +42,8 @@ function isExpanded(index: number): boolean {
 
 /** 挂载后检测内容是否超出折叠高度 */
 function onContentMount(index: number, el: unknown): void {
-  if (!el) return
+  if (!el || checkedIndices.has(index)) return
+  checkedIndices.add(index)
   nextTick(() => {
     const htmlEl = el as HTMLElement
     // 折叠时 max-height 为 7rem (112px)，scrollHeight > clientHeight 说明内容溢出
