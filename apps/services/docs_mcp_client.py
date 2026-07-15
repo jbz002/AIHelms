@@ -212,5 +212,28 @@ class DocsMcpClient:
             body["headers"] = headers
         return await self._call("POST", "/api/fetch-url", json_data=body)
 
+    async def ingest_raw(
+        self,
+        library: str,
+        version: str | None,
+        documents: list[dict],
+    ) -> dict:
+        """提交原始内容到 docs-mcp，由 docs-mcp 负责分块入库。
+
+        Args:
+            library: 文档库名。
+            version: 版本号，可选。
+            documents: 文档列表，每个包含 url, title, contentType, content。
+        """
+        return await self._call(
+            "POST",
+            "/api/ingest-raw",
+            json_data={
+                "library": library,
+                "version": version or None,
+                "documents": documents,
+            },
+        )
+
 
 docs_mcp_client = DocsMcpClient()

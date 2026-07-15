@@ -3,11 +3,12 @@
 import logging
 
 import httpx
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from core.config import settings
-from core.deps import get_current_user
+from core.deps import get_current_user, get_db
+from services import doc_upload_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
 logger = logging.getLogger(__name__)
@@ -347,3 +348,63 @@ async def fetch_url(body: dict, _: dict = Depends(get_current_user)):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/upload", summary="上传文档入库")
+async def upload_document(
+    library: str = Form(...),
+    version: str = Form(""),
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+    session = Depends(get_db),
+):
+    """上传本地文档，提取内容后提交到 docs-mcp 进行分块入库。"""
+    if not library.strip():
+        return {"code": 400, "message": "library 不能为空", "data": None}
+    if not file.filename:
+        return {"code": 400, "message": "文件名不能为空", "data": None}
+
+    try:
+        file_bytes = await file.read()
+    except Exception as e:
+        return {"code": 400, "message": f"读取文件失败: {str(e)}", "data": None}
+
+    if len(file_bytes) == 0:
+        return {"code": 400, "message": "文件内容为空", "data": None}
+
+    created_by = current_user.get("id") if isinstance(current_user, dict) else None
+    record = await doc_upload_service.upload_document(
+        session=session,
+        file_bytes=file_bytes,
+        file_name=file.filename,
+        library=library.strip(),
+        version=version.strip() or None,
+        created_by=created_by,
+    )
+
+    if record["status"] == "failed":
+        return {
+            "code": 500,
+            "message": f"入库失败: {record['error_message']}",
+            "data": record,
+        }
+
+    return {"code": 200, "message": "文档入库成功", "data": record}
+
+
+@router.get("/uploads", summary="查询文档上传记录")
+async def list_uploads(
+    library: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    _: dict = Depends(get_current_user),
+    session = Depends(get_db),
+):
+    """查询文档上传记录，可按文档库筛选。"""
+    result = await doc_upload_service.list_upload_records(
+        session=session,
+        library=library,
+        page=page,
+        page_size=page_size,
+    )
+    return {"code": 200, "message": "ok", "data": result}

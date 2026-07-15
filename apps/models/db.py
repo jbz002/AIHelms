@@ -1273,3 +1273,23 @@ class CustomEntity(Base):
     type_def: Mapped["CustomEntityType"] = relationship(
         back_populates="entities", lazy="selectin"
     )
+
+
+class DocUploadRecord(Base):
+    __tablename__ = "doc_upload_records"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    library: Mapped[str] = mapped_column(String(200), nullable=False)
+    version: Mapped[str] = mapped_column(String(200), default="")
+    file_name: Mapped[str] = mapped_column(String(500), nullable=False)
+    file_size: Mapped[int] = mapped_column(BigInteger, default=0)
+    content_type: Mapped[str] = mapped_column(String(100), default="text/plain")
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
