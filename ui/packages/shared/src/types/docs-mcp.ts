@@ -131,3 +131,46 @@ export interface DocUploadListResult {
   page: number
   page_size: number
 }
+
+export interface CrawlTask {
+  id: number
+  job_id: string
+  library: string
+  version: string
+  source_url: string
+  status: 'pending' | 'crawling' | 'crawled' | 'ingesting' | 'ingested' | 'failed'
+  pages_total: number
+  pages_crawled: number
+  error_message: string
+  created_by: number | null
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+}
+
+export interface CrawledPage {
+  id: number
+  crawl_task_id: number
+  url: string
+  title: string
+  source_content_type: string
+  content_type: string
+  text_content: string
+  chunks_count: number
+  depth: number
+  created_at: string
+}
+
+export interface CrawlTaskListResult {
+  items: CrawlTask[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface CrawlPageListResult {
+  items: CrawledPage[]
+  total: number
+  page: number
+  page_size: number
+}

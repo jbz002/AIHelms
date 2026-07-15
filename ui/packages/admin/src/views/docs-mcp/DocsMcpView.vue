@@ -2,31 +2,27 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import {
   getDocsMcpStats,
-  getDocsMcpJobs,
   getDocsMcpLibraries,
   createDocsMcpJob,
-  cancelDocsMcpJob,
-  clearCompletedDocsMcpJobs,
+  createCrawlTask,
   getDocsMcpEventSourceUrl,
   fetchDocsMcpUrl,
   toast,
   type DocsMcpStats,
-  type DocsMcpJob,
   type DocsMcpLibrary,
   type DocsMcpCreateJobParams,
+  type DocsMcpScrapeOptions,
   type DocUploadRecord,
 } from '@aihelms/shared'
-import { RefreshCw, Loader2, Globe, Copy, X, ChevronDown, Upload } from 'lucide-vue-next'
+import { Loader2, Globe, Copy, X, ChevronDown, Plus, Upload } from 'lucide-vue-next'
 import AnalyticsCards from './components/AnalyticsCards.vue'
-import JobList from './components/JobList.vue'
 import LibraryList from './components/LibraryList.vue'
 import ScrapeJobDialog from './components/ScrapeJobDialog.vue'
 import UploadDialog from './components/UploadDialog.vue'
+import CrawlTaskList from './components/CrawlTaskList.vue'
 
 const stats = ref<DocsMcpStats | null>(null)
-const jobs = ref<DocsMcpJob[]>([])
 const libraries = ref<DocsMcpLibrary[]>([])
-const loading = ref(false)
 const showScrapeDialog = ref(false)
 const showUploadDialog = ref(false)
 let eventSource: EventSource | null = null
@@ -67,20 +63,15 @@ function closeResult(): void {
 }
 
 async function loadAll(): Promise<void> {
-  loading.value = true
   try {
-    const [statsRes, jobsRes, libsRes] = await Promise.all([
+    const [statsRes, libsRes] = await Promise.all([
       getDocsMcpStats(),
-      getDocsMcpJobs(),
       getDocsMcpLibraries(),
     ])
     stats.value = statsRes
-    jobs.value = jobsRes
     libraries.value = libsRes
   } catch (e) {
     toast.error((e as Error).message || '加载数据失败')
-  } finally {
-    loading.value = false
   }
 }
 
@@ -88,13 +79,14 @@ function connectSSE(): void {
   const url = getDocsMcpEventSourceUrl()
   eventSource = new EventSource(url)
   eventSource.addEventListener('job-status-change', () => {
-    loadJobs()
+    loadLibraries()
+    loadStats()
   })
   eventSource.addEventListener('job-progress', () => {
-    loadJobs()
+    loadLibraries()
   })
   eventSource.addEventListener('job-list-change', () => {
-    loadJobs()
+    loadLibraries()
   })
   eventSource.addEventListener('library-change', () => {
     loadLibraries()
@@ -106,12 +98,6 @@ function connectSSE(): void {
       setTimeout(connectSSE, 5000)
     }
   }
-}
-
-async function loadJobs(): Promise<void> {
-  try {
-    jobs.value = await getDocsMcpJobs()
-  } catch { /* silent */ }
 }
 
 async function loadLibraries(): Promise<void> {
@@ -126,32 +112,28 @@ async function loadStats(): Promise<void> {
   } catch { /* silent */ }
 }
 
-async function handleCancelJob(jobId: string): Promise<void> {
-  try {
-    await cancelDocsMcpJob(jobId)
-    toast.success('任务已取消')
-    await loadJobs()
-  } catch (e) {
-    toast.error((e as Error).message || '取消失败')
+async function handleSubmitJob(params: { url: string; library: string; version: string; options: DocsMcpScrapeOptions; ingestMode: 'direct' | 'crawl-only' }): Promise<void> {
+  if (params.ingestMode === 'crawl-only') {
+    try {
+      await createCrawlTask({ url: params.url, library: params.library, version: params.version, options: params.options })
+      toast.success('爬取任务已创建（仅爬取，不入库）')
+      showScrapeDialog.value = false
+    } catch (e) {
+      toast.error((e as Error).message || '创建失败')
+    }
+    return
   }
-}
 
-async function handleClearCompleted(): Promise<void> {
-  try {
-    await clearCompletedDocsMcpJobs()
-    toast.success('已清理完成任务')
-    await loadJobs()
-  } catch (e) {
-    toast.error((e as Error).message || '清理失败')
+  const createParams: DocsMcpCreateJobParams = {
+    url: params.url,
+    library: params.library,
+    version: params.version,
+    options: params.options,
   }
-}
-
-async function handleSubmitJob(params: DocsMcpCreateJobParams): Promise<void> {
   try {
-    await createDocsMcpJob(params)
+    await createDocsMcpJob(createParams)
     toast.success('爬取任务已创建')
     showScrapeDialog.value = false
-    await loadJobs()
   } catch (e) {
     toast.error((e as Error).message || '创建失败')
   }
@@ -182,22 +164,22 @@ onUnmounted(() => {
       <div class="flex items-center gap-2">
         <button
           class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          @click="showScrapeDialog = true"
+        >
+          <Plus class="h-4 w-4" />
+          新建文档
+        </button>
+        <button
+          class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
           @click="showUploadDialog = true"
         >
           <Upload class="h-4 w-4" />
           上传文档
         </button>
-        <button
-          class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
-          :disabled="loading"
-          @click="loadAll"
-        >
-          <Loader2 v-if="loading" class="h-4 w-4 animate-spin" />
-          <RefreshCw v-else class="h-4 w-4" />
-          刷新
-        </button>
       </div>
     </div>
+
+    <AnalyticsCards :stats="stats" />
 
     <!-- Fetch URL -->
     <div class="rounded-lg border border-gray-200 bg-white p-4">
@@ -260,19 +242,9 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <AnalyticsCards :stats="stats" />
+    <CrawlTaskList />
 
-    <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
-      <JobList
-        :jobs="jobs"
-        @cancel="handleCancelJob"
-        @clear-completed="handleClearCompleted"
-      />
-      <LibraryList
-        :libraries="libraries"
-        @add-job="showScrapeDialog = true"
-      />
-    </div>
+    <LibraryList :libraries="libraries" />
 
     <ScrapeJobDialog
       :visible="showScrapeDialog"

@@ -1,5 +1,6 @@
 """API文档管理 — docs-mcp-server 反向代理路由。"""
 
+import json
 import logging
 
 import httpx
@@ -7,6 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import StreamingResponse
 
 from core.config import settings
+from core.database import async_session
 from core.deps import get_current_user, get_db
 from services import doc_upload_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
@@ -69,20 +71,17 @@ async def get_jobs(
 @router.post("/jobs", summary="创建爬取任务")
 async def create_job(body: dict, _: dict = Depends(get_current_user)):
     try:
-        logger.info(f"create_job received body: {body}")
+        logger.info("create_job received body: %s", body)
 
         url = body.get("url", "").strip()
         library = body.get("library", "").strip()
         version = body.get("version", "").strip() or None
 
-        # 验证必需字段
         if not url:
             return {"code": 400, "message": "url 不能为空", "data": None}
         if not library:
             return {"code": 400, "message": "library 不能为空", "data": None}
 
-        # 构建 ScraperOptions（必需字段：url, library, version）
-        # 确保 options 始终是一个字典
         additional_options = body.get("options") or {}
         if not isinstance(additional_options, dict):
             additional_options = {}
@@ -90,11 +89,13 @@ async def create_job(body: dict, _: dict = Depends(get_current_user)):
         scraper_options = {
             "url": url,
             "library": library,
-            "version": version or "",  # 空值转为空字符串
+            "version": version or "",
             **additional_options,
         }
 
-        logger.info(f"create_job: library={library}, version={version}, scraper_options={scraper_options}, additional_options={additional_options}")
+        logger.info(
+            "create_job: library=%s, version=%s", library, version
+        )
 
         result = await docs_mcp_client.enqueue_scrape_job(
             library=library,
@@ -103,10 +104,10 @@ async def create_job(body: dict, _: dict = Depends(get_current_user)):
         )
         return {"code": 200, "message": "任务创建成功", "data": result}
     except DocsMcpError as e:
-        logger.error(f"DocsMcpError in create_job: {str(e)}")
+        logger.error("DocsMcpError in create_job: %s", str(e))
         return {"code": 500, "message": str(e), "data": None}
     except Exception as e:
-        logger.error(f"Unexpected error in create_job: {str(e)}", exc_info=True)
+        logger.error("Unexpected error in create_job: %s", str(e), exc_info=True)
         return {"code": 500, "message": f"创建任务失败: {str(e)}", "data": None}
 
 
@@ -154,7 +155,6 @@ async def refresh_version(
         if not library:
             return {"code": 400, "message": "library 不能为空", "data": None}
 
-        # 刷新任务的 options（可选）
         refresh_options = body.get("options", {})
 
         result = await docs_mcp_client.enqueue_refresh_job(
@@ -221,7 +221,10 @@ async def delete_version(
         return {"code": 500, "message": str(e), "data": None}
 
 
-@router.delete("/libraries/{library_name}/versions/{version}/documents", summary="删除版本所有文档")
+@router.delete(
+    "/libraries/{library_name}/versions/{version}/documents",
+    summary="删除版本所有文档",
+)
 async def delete_version_documents(
     library_name: str,
     version: str,
@@ -295,7 +298,90 @@ async def update_version_options(
 
 @router.get("/events", summary="SSE 实时事件代理")
 async def events_stream():
-    """SSE 事件流代理（无需认证，EventSource 无法携带 Authorization）。"""
+    """SSE 事件流代理（无需认证，EventSource 无法携带 Authorization）。
+    拦截 page-scraped 事件持久化到平台 DB，其他事件原样转发给前端。
+    """
+    upstream_url = f"{settings.docs_mcp_server_url}/api/events"
+
+    async def generate():
+        try:
+            async with httpx.AsyncClient(timeout=60.0, proxy=None) as client:
+                async with client.stream("GET", upstream_url) as resp:
+                    if resp.status_code >= 400:
+                        logger.error(
+                            "docs-mcp SSE upstream failed: %d",
+                            resp.status_code,
+                        )
+                        msg = f"upstream {resp.status_code}"
+                        yield f'event: error\ndata: {{"message": "{msg}"}}\n\n'
+                        return
+
+                    current_event = None
+                    current_data = ""
+
+                    async for line in resp.aiter_lines():
+                        if line.startswith("event: "):
+                            current_event = line[7:]
+                        elif line.startswith("data: "):
+                            current_data = line[6:]
+                        elif line == "" and current_event:
+                            await _handle_sse_event(current_event, current_data)
+                            yield f"event: {current_event}\ndata: {current_data}\n\n"
+                            current_event = None
+                            current_data = ""
+                        else:
+                            yield line + "\n"
+
+        except httpx.HTTPError as e:
+            logger.error("docs-mcp SSE connection error: %s", str(e))
+            yield f'event: error\ndata: {{"message": "{str(e)}"}}\n\n'
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+async def _handle_sse_event(event_name: str, data: str) -> None:
+    """处理需要服务端动作的 SSE 事件。"""
+    if event_name not in ("page-scraped", "job-status-change"):
+        return
+
+    try:
+        payload = json.loads(data)
+    except (json.JSONDecodeError, TypeError):
+        return
+
+    if event_name == "page-scraped":
+        job_id = payload.get("id")
+        if not job_id:
+            return
+        page = payload.get("page", {})
+        from services import crawl_task_service
+
+        async with async_session() as session:
+            await crawl_task_service.handle_page_scraped(session, job_id, page)
+            await session.commit()
+
+    elif event_name == "job-status-change":
+        job_id = payload.get("id")
+        status = payload.get("status")
+        if not job_id or not status:
+            return
+        error = payload.get("error")
+        error_message = error.get("message") if error else None
+        from services import crawl_task_service
+
+        async with async_session() as session:
+            await crawl_task_service.handle_job_completed(
+                session, job_id, status, error_message
+            )
+            await session.commit()
 
 
 @router.post("/fetch-url", summary="抓取 URL 转 Markdown")
@@ -319,35 +405,6 @@ async def fetch_url(body: dict, _: dict = Depends(get_current_user)):
         return {"code": 200, "message": "ok", "data": result}
     except DocsMcpError as e:
         return {"code": 500, "message": str(e), "data": None}
-
-    async def generate():
-        upstream_url = f"{settings.docs_mcp_server_url}/api/events"
-        try:
-            async with httpx.AsyncClient(timeout=60.0, proxy=None) as client:
-                async with client.stream("GET", upstream_url) as resp:
-                    if resp.status_code >= 400:
-                        logger.error(
-                            "docs-mcp SSE upstream failed: %d",
-                            resp.status_code,
-                        )
-                        msg = f"upstream {resp.status_code}"
-                        yield f'event: error\ndata: {{"message": "{msg}"}}\n\n'
-                        return
-                    async for line in resp.aiter_lines():
-                        yield line + "\n"
-        except httpx.HTTPError as e:
-            logger.error("docs-mcp SSE connection error: %s", str(e))
-            yield f'event: error\ndata: {{"message": "{str(e)}"}}\n\n'
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
-    )
 
 
 @router.post("/upload", summary="上传文档入库")
@@ -408,3 +465,143 @@ async def list_uploads(
         page_size=page_size,
     )
     return {"code": 200, "message": "ok", "data": result}
+
+
+# ── Crawl Tasks（crawl-only 解耦模式） ──
+
+
+@router.post("/crawl-tasks", summary="创建爬取任务(crawl-only)")
+async def create_crawl_task(
+    body: dict,
+    current_user: dict = Depends(get_current_user),
+):
+    """创建 crawl-only 任务：只爬取不入库，页面数据通过 SSE 实时推送并持久化。"""
+    url = body.get("url", "").strip()
+    library = body.get("library", "").strip()
+    version = body.get("version", "").strip()
+
+    if not url:
+        return {"code": 400, "message": "url 不能为空", "data": None}
+    if not library:
+        return {"code": 400, "message": "library 不能为空", "data": None}
+
+    additional_options = body.get("options") or {}
+    if not isinstance(additional_options, dict):
+        additional_options = {}
+
+    scraper_options = {
+        "url": url,
+        "library": library,
+        "version": version or "",
+        **additional_options,
+    }
+
+    created_by = current_user.get("id") if isinstance(current_user, dict) else None
+    from services import crawl_task_service
+
+    async with async_session() as session:
+        try:
+            result = await crawl_task_service.create_crawl_task(
+                session=session,
+                url=url,
+                library=library,
+                version=version or None,
+                scraper_options=scraper_options,
+                created_by=created_by,
+            )
+            await session.commit()
+            return {"code": 200, "message": "爬取任务创建成功", "data": result}
+        except ValueError as e:
+            return {"code": 400, "message": str(e), "data": None}
+
+
+@router.get("/crawl-tasks", summary="获取爬取任务列表")
+async def list_crawl_tasks(
+    status: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    _: dict = Depends(get_current_user),
+):
+    """分页查询 crawl-only 任务。"""
+    from services import crawl_task_service
+
+    async with async_session() as session:
+        result = await crawl_task_service.list_crawl_tasks(
+            session=session,
+            status=status,
+            page=page,
+            page_size=page_size,
+        )
+    return {"code": 200, "message": "ok", "data": result}
+
+
+@router.get("/crawl-tasks/{task_id}", summary="获取爬取任务详情")
+async def get_crawl_task(
+    task_id: int,
+    _: dict = Depends(get_current_user),
+):
+    """获取单个 crawl-only 任务详情。"""
+    from services import crawl_task_service
+
+    async with async_session() as session:
+        result = await crawl_task_service.get_crawl_task(session, task_id)
+    if result is None:
+        return {"code": 404, "message": "爬取任务不存在", "data": None}
+    return {"code": 200, "message": "ok", "data": result}
+
+
+@router.get("/crawl-tasks/{task_id}/pages", summary="获取爬取页面列表")
+async def list_crawl_pages(
+    task_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    _: dict = Depends(get_current_user),
+):
+    """分页查询 crawl task 下的页面。"""
+    from services import crawl_task_service
+
+    async with async_session() as session:
+        result = await crawl_task_service.list_crawl_pages(
+            session=session,
+            task_id=task_id,
+            page=page,
+            page_size=page_size,
+        )
+    return {"code": 200, "message": "ok", "data": result}
+
+
+@router.post("/crawl-tasks/{task_id}/ingest", summary="入库所有爬取页面")
+async def ingest_crawl_task(
+    task_id: int,
+    _: dict = Depends(get_current_user),
+):
+    """将 crawl task 的所有页面批量入库到 docs-mcp。"""
+    from services import crawl_task_service
+
+    async with async_session() as session:
+        try:
+            result = await crawl_task_service.ingest_crawl_task(session, task_id)
+            await session.commit()
+            if result["status"] == "ingested":
+                return {"code": 200, "message": "入库成功", "data": result}
+            return {
+                "code": 500,
+                "message": f"入库失败: {result['error_message']}",
+                "data": result,
+            }
+        except ValueError as e:
+            return {"code": 400, "message": str(e), "data": None}
+
+
+@router.delete("/crawl-tasks/{task_id}", summary="删除爬取任务")
+async def delete_crawl_task(
+    task_id: int,
+    _: dict = Depends(get_current_user),
+):
+    """删除 crawl task 及其所有页面数据。"""
+    from services import crawl_task_service
+
+    async with async_session() as session:
+        await crawl_task_service.delete_crawl_task(session, task_id)
+        await session.commit()
+    return {"code": 200, "message": "爬取任务已删除", "data": None}

@@ -4,6 +4,8 @@ import type { DocsMcpScrapeOptions } from '@aihelms/shared'
 import { checkDocsMcpLibraryExists, findDocsMcpVersionsByUrl } from '@aihelms/shared'
 import { X, ChevronDown, ChevronUp, Plus, Trash2, AlertTriangle } from 'lucide-vue-next'
 
+type IngestMode = 'direct' | 'crawl-only'
+
 interface Props {
   visible: boolean
   defaultUrl?: string
@@ -13,7 +15,7 @@ interface Props {
 
 interface Emits {
   close: []
-  submit: [params: { url: string; library: string; version: string; options: DocsMcpScrapeOptions }]
+  submit: [params: { url: string; library: string; version: string; options: DocsMcpScrapeOptions; ingestMode: IngestMode }]
 }
 
 const props = defineProps<Props>()
@@ -22,6 +24,7 @@ const emit = defineEmits<Emits>()
 const url = ref(props.defaultUrl ?? '')
 const library = ref(props.defaultLibrary ?? '')
 const version = ref(props.defaultVersion ?? '')
+const ingestMode = ref<IngestMode>('direct')
 const showAdvanced = ref(false)
 const submitting = ref(false)
 const maxPages = ref<number | undefined>(undefined)
@@ -47,7 +50,6 @@ async function doCheck(): Promise<void> {
   const libVal = library.value.trim()
   const urlVal = url.value.trim()
 
-  // Check library existence
   if (libVal) {
     libraryCheckState.value = 'checking'
     try {
@@ -60,7 +62,6 @@ async function doCheck(): Promise<void> {
     libraryCheckState.value = 'idle'
   }
 
-  // Check URL already indexed
   if (urlVal) {
     urlCheckState.value = 'checking'
     try {
@@ -79,17 +80,16 @@ async function doCheck(): Promise<void> {
   }
 }
 
-// Watch inputs for debounced validation
 watch([library, url], () => {
   debounceCheck()
 })
 
-// Reset state when dialog opens
 watch(() => props.visible, (v) => {
   if (v) {
     libraryCheckState.value = 'idle'
     urlCheckState.value = 'idle'
     urlCheckLibName.value = ''
+    ingestMode.value = 'direct'
   }
 })
 
@@ -129,7 +129,7 @@ function handleSubmit(): void {
     if (h.key.trim()) headers[h.key.trim()] = h.value
   }
   if (Object.keys(headers).length > 0) options.headers = headers
-  emit('submit', { url: url.value, library: library.value, version: version.value, options })
+  emit('submit', { url: url.value, library: library.value, version: version.value, options, ingestMode: ingestMode.value })
   submitting.value = false
 }
 </script>
@@ -143,10 +143,27 @@ function handleSubmit(): void {
         </button>
         <h3 class="mb-4 text-lg font-semibold text-gray-900">新建文档爬取任务</h3>
         <div class="space-y-4">
+          <!-- 入库模式 -->
+          <div class="flex items-center gap-6 rounded-md border border-gray-200 px-4 py-3">
+            <label class="flex cursor-pointer items-center gap-2">
+              <input v-model="ingestMode" type="radio" name="ingestMode" value="direct" class="accent-blue-600" />
+              <div>
+                <span class="text-sm font-medium text-gray-900">直接入库</span>
+                <p class="text-xs text-gray-500">爬取完成后自动入库，可立即搜索</p>
+              </div>
+            </label>
+            <label class="flex cursor-pointer items-center gap-2">
+              <input v-model="ingestMode" type="radio" name="ingestMode" value="crawl-only" class="accent-emerald-600" />
+              <div>
+                <span class="text-sm font-medium text-gray-900">仅爬取</span>
+                <p class="text-xs text-gray-500">先爬取不入库，可预览后手动入库</p>
+              </div>
+            </label>
+          </div>
+
           <div>
             <label class="mb-1 block text-sm font-medium text-gray-700">文档 URL *</label>
             <input v-model="url" type="url" placeholder="https://docs.example.com" :class="inputCls" />
-            <!-- URL already indexed warning -->
             <div v-if="urlCheckState === 'exists'" class="mt-1 flex items-center gap-1 text-xs text-amber-600">
               <AlertTriangle class="h-3 w-3" />
               该 URL 已在文档库「{{ urlCheckLibName }}」中索引
@@ -156,7 +173,6 @@ function handleSubmit(): void {
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">库名 *</label>
               <input v-model="library" type="text" placeholder="my-docs" :class="inputCls" />
-              <!-- Library exists warning -->
               <div v-if="libraryCheckState === 'exists'" class="mt-1 flex items-center gap-1 text-xs text-amber-600">
                 <AlertTriangle class="h-3 w-3" />
                 该文档库已存在，爬取将新增版本
@@ -233,7 +249,12 @@ function handleSubmit(): void {
         </div>
         <div class="mt-6 flex justify-end gap-3">
           <button class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" @click="emit('close')">取消</button>
-          <button class="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" :disabled="!url || !library || submitting" @click="handleSubmit">提交任务</button>
+          <button
+            class="rounded-md px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            :class="ingestMode === 'crawl-only' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'"
+            :disabled="!url || !library || submitting"
+            @click="handleSubmit"
+          >提交任务</button>
         </div>
       </div>
     </div>

@@ -11,6 +11,9 @@ import type {
   DocsMcpFetchUrlResult,
   DocUploadRecord,
   DocUploadListResult,
+  CrawlTask,
+  CrawlTaskListResult,
+  CrawlPageListResult,
 } from '../types/docs-mcp'
 
 export function getDocsMcpStats() {
@@ -135,5 +138,40 @@ export function uploadDocument(library: string, file: File, version?: string) {
 export function getDocUploadRecords(library?: string, page = 1, pageSize = 20) {
   return request<DocUploadListResult>('/api/v1/docs-mcp/uploads', {
     params: { library, page, page_size: pageSize } as Record<string, string | number | undefined>,
+  })
+}
+
+export function createCrawlTask(params: { url: string; library: string; version: string; options: DocsMcpScrapeOptions }) {
+  return request<CrawlTask>('/api/v1/docs-mcp/crawl-tasks', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+export function getCrawlTasks(status?: string, page?: number, pageSize?: number) {
+  return request<CrawlTaskListResult>('/api/v1/docs-mcp/crawl-tasks', {
+    params: { status, page, page_size: pageSize } as Record<string, string | number | undefined>,
+  })
+}
+
+export function getCrawlTask(taskId: number) {
+  return request<CrawlTask>('/api/v1/docs-mcp/crawl-tasks/{taskId}'.replace('{taskId}', String(taskId)))
+}
+
+export function getCrawlPages(taskId: number, page?: number, pageSize?: number) {
+  return request<CrawlPageListResult>('/api/v1/docs-mcp/crawl-tasks/{taskId}/pages'.replace('{taskId}', String(taskId)), {
+    params: { page, page_size: pageSize } as Record<string, string | number | undefined>,
+  })
+}
+
+export function ingestCrawlTask(taskId: number) {
+  return request<CrawlTask>('/api/v1/docs-mcp/crawl-tasks/{taskId}/ingest'.replace('{taskId}', String(taskId)), {
+    method: 'POST',
+  })
+}
+
+export function deleteCrawlTask(taskId: number) {
+  return request<void>('/api/v1/docs-mcp/crawl-tasks/{taskId}'.replace('{taskId}', String(taskId)), {
+    method: 'DELETE',
   })
 }

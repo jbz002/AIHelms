@@ -1293,3 +1293,55 @@ class DocUploadRecord(Base):
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class CrawlTask(Base):
+    __tablename__ = "crawl_tasks"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    library: Mapped[str] = mapped_column(String(200), nullable=False)
+    version: Mapped[str] = mapped_column(String(200), default="")
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    pages_total: Mapped[int] = mapped_column(Integer, default=0)
+    pages_crawled: Mapped[int] = mapped_column(Integer, default=0)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    scraper_options: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    pages: Mapped[list["CrawledPage"]] = relationship(
+        back_populates="crawl_task", lazy="selectin", passive_deletes=True
+    )
+
+
+class CrawledPage(Base):
+    __tablename__ = "crawled_pages"
+    __table_args__ = (
+        UniqueConstraint("crawl_task_id", "url"),
+        {"schema": "aihelms"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    crawl_task_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("aihelms.crawl_tasks.id", ondelete="CASCADE")
+    )
+    url: Mapped[str] = mapped_column(Text, nullable=False)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    source_content_type: Mapped[str] = mapped_column(String(100), default="")
+    content_type: Mapped[str] = mapped_column(String(100), default="")
+    text_content: Mapped[str] = mapped_column(Text, default="")
+    links: Mapped[list] = mapped_column(ARRAY(String), default=list)
+    chunks: Mapped[list] = mapped_column(JSONB, default=list)
+    depth: Mapped[int] = mapped_column(Integer, default=0)
+    etag: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    last_modified: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+    crawl_task: Mapped["CrawlTask"] = relationship(back_populates="pages")
