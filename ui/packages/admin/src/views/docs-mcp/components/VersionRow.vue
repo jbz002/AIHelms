@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { DocsMcpVersion } from '@aihelms/shared'
-import { RefreshCw, Trash2, Loader2 } from 'lucide-vue-next'
+import { RefreshCw, Trash2, Eraser, Loader2 } from 'lucide-vue-next'
 
 interface Props {
   version: DocsMcpVersion
@@ -11,6 +11,7 @@ interface Props {
 interface Emits {
   refresh: [library: string, version: string, versionId: number]
   delete: [library: string, version: string]
+  clearDocuments: [library: string, version: string]
 }
 
 const props = defineProps<Props>()
@@ -18,6 +19,7 @@ const emit = defineEmits<Emits>()
 
 const refreshing = ref(false)
 const showDeleteConfirm = ref(false)
+const showClearConfirm = ref(false)
 
 const statusColor: Record<string, string> = {
   completed: 'bg-emerald-100 text-emerald-700',
@@ -39,6 +41,10 @@ async function handleRefresh(): Promise<void> {
 
 function handleDelete(): void {
   emit('delete', props.libraryName, props.version.ref.version)
+}
+
+function handleClearDocuments(): void {
+  emit('clearDocuments', props.libraryName, props.version.ref.version)
 }
 </script>
 
@@ -80,19 +86,43 @@ function handleDelete(): void {
         <RefreshCw v-else class="h-3.5 w-3.5" />
       </button>
       <button
-        v-if="!showDeleteConfirm"
+        v-if="version.counts?.documents ?? 0 > 0"
+        class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-orange-500"
+        title="清除文档（保留版本记录，可重新抓取）"
+        @click="showClearConfirm = true"
+      >
+        <Eraser class="h-3.5 w-3.5" />
+      </button>
+      <button
+        v-if="!showDeleteConfirm && !showClearConfirm"
         class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-red-500"
         title="删除版本"
         @click="showDeleteConfirm = true"
       >
         <Trash2 class="h-3.5 w-3.5" />
       </button>
-      <template v-else>
+      <!-- Clear documents confirm -->
+      <template v-if="showClearConfirm">
+        <button
+          class="rounded-md bg-orange-500 px-2 py-1 text-xs font-medium text-white hover:bg-orange-600"
+          @click="handleClearDocuments"
+        >
+          清除文档
+        </button>
+        <button
+          class="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"
+          @click="showClearConfirm = false"
+        >
+          取消
+        </button>
+      </template>
+      <!-- Delete confirm -->
+      <template v-if="showDeleteConfirm && !showClearConfirm">
         <button
           class="rounded-md bg-red-500 px-2 py-1 text-xs font-medium text-white hover:bg-red-600"
           @click="handleDelete"
         >
-          确认
+          确认删除
         </button>
         <button
           class="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"

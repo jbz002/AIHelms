@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import type { DocsMcpScrapeOptions } from '@aihelms/shared'
-import { X, ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-vue-next'
+import { checkDocsMcpLibraryExists, findDocsMcpVersionsByUrl } from '@aihelms/shared'
+import { X, ChevronDown, ChevronUp, Plus, Trash2, AlertTriangle } from 'lucide-vue-next'
 
 interface Props {
   visible: boolean
@@ -30,6 +31,67 @@ const scrapeMode = ref<'fetch' | 'playwright' | 'auto'>('auto')
 const includePatterns = ref<string[]>([])
 const excludePatterns = ref<string[]>([])
 const customHeaders = ref<{ key: string; value: string }[]>([])
+
+// Debounce check state
+const libraryCheckState = ref<'idle' | 'checking' | 'exists' | 'not_found'>('idle')
+const urlCheckState = ref<'idle' | 'checking' | 'exists' | 'not_found'>('idle')
+const urlCheckLibName = ref<string>('')
+let checkTimer: ReturnType<typeof setTimeout> | null = null
+
+function debounceCheck(): void {
+  if (checkTimer) clearTimeout(checkTimer)
+  checkTimer = setTimeout(doCheck, 600)
+}
+
+async function doCheck(): Promise<void> {
+  const libVal = library.value.trim()
+  const urlVal = url.value.trim()
+
+  // Check library existence
+  if (libVal) {
+    libraryCheckState.value = 'checking'
+    try {
+      const res = await checkDocsMcpLibraryExists(libVal)
+      libraryCheckState.value = res.exists ? 'exists' : 'not_found'
+    } catch {
+      libraryCheckState.value = 'idle'
+    }
+  } else {
+    libraryCheckState.value = 'idle'
+  }
+
+  // Check URL already indexed
+  if (urlVal) {
+    urlCheckState.value = 'checking'
+    try {
+      const versions = await findDocsMcpVersionsByUrl(urlVal)
+      if (versions.length > 0) {
+        urlCheckState.value = 'exists'
+        urlCheckLibName.value = versions[0].library_name ?? ''
+      } else {
+        urlCheckState.value = 'not_found'
+      }
+    } catch {
+      urlCheckState.value = 'idle'
+    }
+  } else {
+    urlCheckState.value = 'idle'
+  }
+}
+
+// Watch inputs for debounced validation
+watch([library, url], () => {
+  debounceCheck()
+})
+
+// Reset state when dialog opens
+watch(() => props.visible, (v) => {
+  if (v) {
+    libraryCheckState.value = 'idle'
+    urlCheckState.value = 'idle'
+    urlCheckLibName.value = ''
+  }
+})
 
 const inputCls = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
 const smInputCls = 'w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none'
@@ -84,11 +146,24 @@ function handleSubmit(): void {
           <div>
             <label class="mb-1 block text-sm font-medium text-gray-700">文档 URL *</label>
             <input v-model="url" type="url" placeholder="https://docs.example.com" :class="inputCls" />
+            <!-- URL already indexed warning -->
+            <div v-if="urlCheckState === 'exists'" class="mt-1 flex items-center gap-1 text-xs text-amber-600">
+              <AlertTriangle class="h-3 w-3" />
+              该 URL 已在文档库「{{ urlCheckLibName }}」中索引
+            </div>
           </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">库名 *</label>
               <input v-model="library" type="text" placeholder="my-docs" :class="inputCls" />
+              <!-- Library exists warning -->
+              <div v-if="libraryCheckState === 'exists'" class="mt-1 flex items-center gap-1 text-xs text-amber-600">
+                <AlertTriangle class="h-3 w-3" />
+                该文档库已存在，爬取将新增版本
+              </div>
+              <div v-else-if="libraryCheckState === 'not_found'" class="mt-1 text-xs text-emerald-600">
+                新文档库
+              </div>
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">版本</label>

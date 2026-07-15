@@ -1,14 +1,11 @@
-"""docs-mcp-server tRPC client。
+"""docs-mcp-server REST client。
 
-docs-mcp-server 的 tRPC 端点挂载在 /api 前缀下，采用单 procedure 请求格式：
-- query procedure: GET /api/{name}?input=[superjson]
-- mutation procedure: POST /api/{name}，body {"input": superjson}
-- 返回值: {"result":{"data":{"json": ...}}}（superjson 变换包装）
+docs-mcp-server 提供 RESTful JSON API，路径以 /api 为前缀。
+所有请求/响应均为标准 JSON，无需 superjson 包装。
 """
 
 import json
 import logging
-from urllib.parse import quote, urlencode
 
 import httpx
 
@@ -19,131 +16,80 @@ logger = logging.getLogger(__name__)
 DOCS_MCP_TIMEOUT = 30.0
 
 
-def _wrap_superjson(data: object) -> str:
-    """将 Python 对象序列化为 superjson v2 格式的 JSON 字符串。
-
-    superjson v2 serialize() 始终返回 {"json": value}。
-    服务端 superjson.deserialize() 要求顶层有 "json" 键才能正确解包。
-
-    用于 GET query 参数时：服务端先 URL 解码 → JSON.parse → superjson.deserialize
-    用于 POST body 时：直接作为 JSON body 发给服务端 superjson.deserialize
-    """
-    return json.dumps({"json": data}, default=str, ensure_ascii=False)
-
-
-def _unwrap_result(raw: object) -> object:
-    """解包 tRPC 返回值: {"result":{"data": superjson_encoded}} → decoded。
-
-    superjson 可能带 meta 字段（{"json": value, "meta": {...}}），
-    也可能只有 {"json": value}，两种情况都要提取出 value。
-    """
-    if not isinstance(raw, dict):
-        return raw
-    result = raw.get("result")
-    if not isinstance(result, dict):
-        return raw
-    data = result.get("data")
-    if not isinstance(data, dict):
-        return raw
-    if "json" not in data:
-        return raw
-    return data["json"]
-
-
-# tRPC procedure 类型映射：哪些是 mutation（POST），哪些是 query（GET）
-_MUTATION_PROCEDURES = frozenset({
-    "enqueueScrapeJob",
-    "enqueueRefreshJob",
-    "cancelJob",
-    "clearCompletedJobs",
-    "removeVersion",
-})
-
-
 class DocsMcpError(Exception):
     pass
 
 
 class DocsMcpClient:
-    """调用 docs-mcp-server tRPC API 的客户端。"""
+    """调用 docs-mcp-server REST API 的客户端。"""
 
     def __init__(self) -> None:
         self._base_url = settings.docs_mcp_server_url.rstrip("/")
 
     async def _call(
         self,
-        procedure: str,
-        input_data: object | None = None,
-        method: str = "GET",
+        method: str,
+        path: str,
+        params: dict | None = None,
+        json_data: object | None = None,
     ) -> object:
-        """调用单个 tRPC procedure。
+        """调用 REST 接口。
 
         Args:
-            procedure: procedure 名称（如 "listLibraries"）。
-            input_data: 输入参数（dict 或 None）。
-            method: "GET" 或 "POST"。
+            method: HTTP 方法（GET, POST, DELETE 等）。
+            path: API 路径（如 "/api/libraries"）。
+            params: query 参数。
+            json_data: JSON body。
         """
-        url = f"{self._base_url}/api/{procedure}"
+        url = f"{self._base_url}{path}"
         try:
             async with httpx.AsyncClient(
                 timeout=DOCS_MCP_TIMEOUT, proxy=None
             ) as client:
-                if method == "GET":
-                    if input_data is not None:
-                        encoded = _wrap_superjson(input_data)
-                        # URL 编码 query 参数值（JSON 字符串含特殊字符/中文）
-                        url = f"{url}?input={quote(encoded, safe='')}"
-                    logger.info(f"docs-mcp GET: {url}")
-                    resp = await client.get(url)
-                else:
-                    # POST body 也是 superjson 格式 {"json": input_data}
-                    payload = {"json": input_data} if input_data is not None else {}
-                    logger.info(
-                        f"docs-mcp POST: {url}, payload: {json.dumps(payload, default=str, ensure_ascii=False)[:1000]}"
-                    )
-                    logger.debug(
-                        f"docs-mcp POST detailed: procedure={procedure}, input_data={json.dumps(input_data, default=str, ensure_ascii=False) if input_data else 'None'}, full_payload={json.dumps(payload, default=str, ensure_ascii=False)}"
-                    )
-                    resp = await client.post(url, json=payload)
+                logger.info(f"docs-mcp {method}: {url}")
+                resp = await client.request(
+                    method, url, params=params, json=json_data
+                )
 
                 if resp.status_code >= 400:
                     logger.error(
-                        "docs-mcp tRPC call failed",
+                        "docs-mcp REST call failed",
                         extra={
-                            "procedure": procedure,
                             "method": method,
+                            "path": path,
                             "status": resp.status_code,
                             "body": resp.text[:500],
                         },
                     )
                     raise DocsMcpError(
-                        f"docs-mcp {procedure} failed: {resp.status_code} {resp.text[:200]}"
+                        f"docs-mcp {method} {path} failed: {resp.status_code} {resp.text[:200]}"
                     )
 
-                raw = resp.json()
-                return _unwrap_result(raw)
+                return resp.json()
         except httpx.HTTPError as e:
-            logger.error("docs-mcp connection error: %s - %s", procedure, str(e))
+            logger.error("docs-mcp connection error: %s - %s", path, str(e))
             raise DocsMcpError(
-                f"docs-mcp {procedure} connection error: {e}"
+                f"docs-mcp {path} connection error: {e}"
             ) from e
 
-    # ---- procedure wrappers ----
+    # ---- REST wrappers ----
 
     async def ping(self) -> dict:
-        return await self._call("ping", method="GET")
+        return await self._call("GET", "/api/health")
 
     async def list_libraries(self) -> list[dict]:
-        return await self._call("listLibraries", method="GET")
+        return await self._call("GET", "/api/libraries")
 
     async def find_best_version(
         self, library: str, target_version: str | None = None
     ) -> dict:
         """查找最佳匹配版本。"""
-        input_data: dict = {"library": library}
+        params: dict = {"library": library}
         if target_version is not None:
-            input_data["targetVersion"] = target_version
-        return await self._call("findBestVersion", input_data, method="GET")
+            params["targetVersion"] = target_version
+        return await self._call(
+            "GET", f"/api/libraries/{library}/versions/best", params=params
+        )
 
     async def search(
         self,
@@ -152,7 +98,7 @@ class DocsMcpClient:
         version: str | None = None,
         limit: int = 10,
     ) -> list[dict]:
-        # 未指定版本时，先解析到实际版本（否则 searchStore 只查无版本号文档）
+        # 未指定版本时，先解析到实际版本（否则 search 只查无版本号文档）
         resolved_version: str | None = version
         if version is None:
             try:
@@ -161,28 +107,24 @@ class DocsMcpClient:
             except DocsMcpError:
                 resolved_version = None
 
-        return await self._call(
-            "search",
-            {
-                "library": library,
-                "query": query,
-                "version": resolved_version,
-                "limit": limit,
-            },
-            method="GET",
-        )
+        params: dict = {
+            "library": library,
+            "query": query,
+            "limit": str(limit),
+        }
+        if resolved_version is not None:
+            params["version"] = resolved_version
+        return await self._call("GET", "/api/search", params=params)
 
     async def get_jobs(self, status: str | None = None) -> dict:
-        input_data: dict | None = None
-        if status is not None:
-            input_data = {"status": status}
-        return await self._call("getJobs", input_data, method="GET")
+        params = {"status": status} if status else None
+        return await self._call("GET", "/api/jobs", params=params)
 
     async def cancel_job(self, job_id: str) -> dict:
-        return await self._call("cancelJob", {"id": job_id}, method="POST")
+        return await self._call("POST", f"/api/jobs/{job_id}/cancel")
 
     async def clear_completed_jobs(self) -> dict:
-        return await self._call("clearCompletedJobs", method="POST")
+        return await self._call("POST", "/api/jobs/clear-completed")
 
     async def enqueue_scrape_job(
         self,
@@ -190,16 +132,11 @@ class DocsMcpClient:
         version: str | None,
         options: dict,
     ) -> dict:
-        input_data = {
-            "library": library,
-            "version": version,
-            "options": options,
-        }
-        logger.info(f"enqueue_scrape_job input: {json.dumps(input_data, default=str, ensure_ascii=False)}")
+        logger.info(f"enqueue_scrape_job input: {json.dumps({'library': library, 'version': version, 'options': options}, default=str, ensure_ascii=False)}")
         return await self._call(
-            "enqueueScrapeJob",
-            input_data,
-            method="POST",
+            "POST",
+            "/api/jobs/scrape",
+            json_data={"library": library, "version": version or "", "options": options},
         )
 
     async def enqueue_refresh_job(
@@ -208,21 +145,49 @@ class DocsMcpClient:
         version: str | None,
         options: dict | None = None,
     ) -> dict:
-        return await self._call(
-            "enqueueRefreshJob",
-            {
-                "library": library,
-                "version": version,
-                "options": options,
-            },
-            method="POST",
-        )
+        body: dict = {"library": library, "version": version or ""}
+        if options:
+            body["options"] = options
+        return await self._call("POST", "/api/jobs/refresh", json_data=body)
+
+    async def get_job_detail(self, job_id: str) -> dict:
+        """获取单个作业详情。"""
+        return await self._call("GET", f"/api/jobs/{job_id}")
+
+    async def library_exists(self, library: str) -> bool:
+        """检查文档库是否存在。"""
+        try:
+            await self._call("GET", f"/api/libraries/{library}/exists")
+            return True
+        except DocsMcpError:
+            return False
+
+    async def list_versions(self, status: str | None = None) -> list[dict]:
+        """获取版本列表，可按状态筛选（逗号分隔）。"""
+        params = {"status": status} if status else None
+        return await self._call("GET", "/api/versions", params=params)
+
+    async def find_versions_by_url(self, url: str) -> list[dict]:
+        """根据 source URL 查找版本。"""
+        return await self._call("GET", "/api/versions/by-url", params={"url": url})
+
+    async def get_version_options(self, version_id: int) -> dict | None:
+        """获取版本的抓取配置。"""
+        return await self._call("GET", f"/api/versions/{version_id}/options")
+
+    async def update_version_options(self, version_id: int, options: dict) -> None:
+        """更新版本的抓取配置。"""
+        await self._call("PUT", f"/api/versions/{version_id}/options", json_data=options)
 
     async def remove_version(self, library: str, version: str) -> None:
         await self._call(
-            "removeVersion",
-            {"library": library, "version": version},
-            method="POST",
+            "DELETE", f"/api/libraries/{library}/versions/{version}"
+        )
+
+    async def remove_version_documents(self, library: str, version: str) -> None:
+        """删除版本下所有文档（保留版本记录）。"""
+        await self._call(
+            "DELETE", f"/api/libraries/{library}/versions/{version}/documents"
         )
 
 

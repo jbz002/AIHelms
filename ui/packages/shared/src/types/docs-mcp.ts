@@ -84,3 +84,24 @@ export interface DocsMcpCreateJobParams {
   version: string
   options: DocsMcpScrapeOptions
 }
+
+export interface DocsMcpDbVersion {
+  id: number
+  library_id: number
+  name: string | null
+  created_at: string
+  status: string
+  progress_pages: number
+  progress_max_pages: number
+  error_message: string | null
+  started_at: string | null
+  updated_at: string
+  source_url: string | null
+  scraper_options: string | null
+  library_name: string
+}
+
+export interface DocsMcpStoredScraperOptions {
+  sourceUrl: string
+  options: DocsMcpScrapeOptions
+}

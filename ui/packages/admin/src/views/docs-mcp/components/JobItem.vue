@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import type { DocsMcpJob } from '@aihelms/shared'
-import { XCircle, Loader2 } from 'lucide-vue-next'
+import { ref } from 'vue'
+import type { DocsMcpJob, DocsMcpScrapeOptions } from '@aihelms/shared'
+import { getDocsMcpJobDetail } from '@aihelms/shared'
+import { XCircle, ChevronDown, ChevronUp, Clock, Globe, Settings, Loader2 } from 'lucide-vue-next'
 
 interface Props {
   job: DocsMcpJob
@@ -12,6 +14,10 @@ interface Emits {
 
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
+
+const expanded = ref(false)
+const detailLoading = ref(false)
+const detail = ref<DocsMcpJob | null>(null)
 
 const statusColor: Record<string, string> = {
   completed: 'bg-emerald-100 text-emerald-700',
@@ -27,11 +33,32 @@ const progressPercent = () => {
   if (!p || p.totalPages <= 0) return 0
   return Math.round((p.pagesScraped / p.totalPages) * 100)
 }
+
+async function toggleDetail(): Promise<void> {
+  if (expanded.value) {
+    expanded.value = false
+    return
+  }
+  expanded.value = true
+  detailLoading.value = true
+  try {
+    detail.value = await getDocsMcpJobDetail(props.job.id)
+  } catch {
+    detail.value = null
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+function formatTime(iso: string | null): string {
+  if (!iso) return '-'
+  return new Date(iso).toLocaleString()
+}
 </script>
 
 <template>
-  <div class="rounded-lg border border-gray-200 bg-white p-4">
-    <div class="flex items-start justify-between">
+  <div class="rounded-lg border border-gray-200 bg-white">
+    <div class="flex items-start justify-between p-4">
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2">
           <span class="truncate text-sm font-medium text-gray-900">{{ job.library }}</span>
@@ -70,6 +97,14 @@ const progressPercent = () => {
           {{ new Date(job.startedAt).toLocaleString() }}
         </span>
         <button
+          class="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          title="查看详情"
+          @click="toggleDetail"
+        >
+          <ChevronUp v-if="expanded" class="h-4 w-4" />
+          <ChevronDown v-else class="h-4 w-4" />
+        </button>
+        <button
           v-if="job.status === 'queued' || job.status === 'running'"
           class="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-red-500"
           title="取消任务"
@@ -77,6 +112,62 @@ const progressPercent = () => {
         >
           <XCircle class="h-4 w-4" />
         </button>
+      </div>
+    </div>
+
+    <!-- Expandable detail panel -->
+    <div v-if="expanded" class="border-t border-gray-100 bg-gray-50/50 px-4 py-3">
+      <Loader2 v-if="detailLoading" class="mx-auto h-5 w-5 animate-spin text-gray-300" />
+      <div v-else-if="detail" class="space-y-3 text-xs">
+        <!-- Timeline -->
+        <div class="flex items-center gap-4 text-gray-500">
+          <span class="inline-flex items-center gap-1">
+            <Clock class="h-3 w-3" />
+            创建: {{ formatTime(detail.createdAt) }}
+          </span>
+          <span class="inline-flex items-center gap-1">
+            开始: {{ formatTime(detail.startedAt) }}
+          </span>
+          <span class="inline-flex items-center gap-1">
+            完成: {{ formatTime(detail.finishedAt) }}
+          </span>
+        </div>
+
+        <!-- Scraper options -->
+        <div v-if="detail.scraperOptions">
+          <div class="mb-1 inline-flex items-center gap-1 font-medium text-gray-600">
+            <Settings class="h-3 w-3" />
+            抓取配置
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <span v-if="detail.scraperOptions.maxPages" class="rounded bg-white px-1.5 py-0.5 border border-gray-200">
+              最大页数: {{ detail.scraperOptions.maxPages }}
+            </span>
+            <span v-if="detail.scraperOptions.maxDepth" class="rounded bg-white px-1.5 py-0.5 border border-gray-200">
+              最大深度: {{ detail.scraperOptions.maxDepth }}
+            </span>
+            <span v-if="detail.scraperOptions.scope" class="rounded bg-white px-1.5 py-0.5 border border-gray-200">
+              范围: {{ detail.scraperOptions.scope }}
+            </span>
+            <span v-if="detail.scraperOptions.scrapeMode" class="rounded bg-white px-1.5 py-0.5 border border-gray-200">
+              模式: {{ detail.scraperOptions.scrapeMode }}
+            </span>
+          </div>
+        </div>
+
+        <!-- Source URL -->
+        <div v-if="detail.sourceUrl" class="inline-flex items-center gap-1 text-gray-500">
+          <Globe class="h-3 w-3" />
+          <span class="break-all">{{ detail.sourceUrl }}</span>
+        </div>
+
+        <!-- Full error message -->
+        <div v-if="detail.errorMessage" class="rounded bg-red-50 px-2 py-1 text-red-600">
+          {{ detail.errorMessage }}
+        </div>
+      </div>
+      <div v-else class="text-xs text-gray-400">
+        无法加载详情
       </div>
     </div>
   </div>

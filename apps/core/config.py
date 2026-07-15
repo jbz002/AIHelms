@@ -77,9 +77,9 @@ class Settings(BaseSettings):
     crawl_timeout: int = 30  # 单页抓取超时（秒）
 
     # docs-mcp-server（API文档管理）
-    # tRPC API 在 worker 容器，SSE 事件流在 web 容器
-    docs_mcp_server_url: str = "http://localhost:8080/api"
-    docs_mcp_server_web_url: str = "http://localhost:6281"
+    # REST API + SSE 事件流均在 worker 容器
+    docs_mcp_server_url: str = "http://localhost:8080"
+    docs_mcp_server_web_url: str = "http://localhost:8080"
     docs_mcp_worker_port: int = 8080
     docs_mcp_server_port: int = 6280
     docs_mcp_web_port: int = 6281

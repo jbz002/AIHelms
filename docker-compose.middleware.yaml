@@ -29,7 +29,7 @@ services:
     image: ghcr.io/arabold/docs-mcp-server:latest
     restart: unless-stopped
     container_name: docs-mcp-server
-    command: ["mcp", "--protocol", "http", "--host", "0.0.0.0", "--port", "6280", "--server-url", "http://docs-mcp-worker:8080/api", "--no-logo"]
+    command: ["mcp", "--protocol", "http", "--host", "0.0.0.0", "--port", "6280", "--server-url", "http://docs-mcp-worker:8080", "--no-logo"]
     ports:
       - "${DOCS_MCP_SERVER_PORT:-6280}:6280"
     env_file:

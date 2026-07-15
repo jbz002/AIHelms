@@ -5,6 +5,7 @@ import {
   getDocsMcpLibraryDetail,
   searchDocsMcp,
   deleteDocsMcpVersion,
+  deleteDocsMcpVersionDocuments,
   refreshDocsMcpVersion,
   toast,
   type DocsMcpLibrary,
@@ -62,6 +63,16 @@ async function handleDeleteVersion(version: string): Promise<void> {
     await loadLibrary()
   } catch (e) {
     toast.error((e as Error).message || '删除失败')
+  }
+}
+
+async function handleClearDocuments(version: string): Promise<void> {
+  try {
+    await deleteDocsMcpVersionDocuments(libraryName, version)
+    toast.success('文档已清除，可重新抓取')
+    await loadLibrary()
+  } catch (e) {
+    toast.error((e as Error).message || '清除失败')
   }
 }
 
@@ -143,6 +154,7 @@ onMounted(() => {
             :library-name="libraryName"
             @refresh="handleRefreshVersion"
             @delete="handleDeleteVersion"
+            @clear-documents="handleClearDocuments"
           />
         </div>
       </div>

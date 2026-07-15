@@ -127,6 +127,15 @@ async def cancel_job(job_id: str, _: dict = Depends(get_current_user)):
         return {"code": 500, "message": str(e), "data": None}
 
 
+@router.get("/jobs/{job_id}", summary="获取任务详情")
+async def get_job_detail(job_id: str, _: dict = Depends(get_current_user)):
+    try:
+        result = await docs_mcp_client.get_job_detail(job_id)
+        return {"code": 200, "message": "ok", "data": result}
+    except DocsMcpError as e:
+        return {"code": 500, "message": str(e), "data": None}
+
+
 @router.post("/jobs/{job_id}/refresh", summary="刷新版本")
 async def refresh_version(
     job_id: str,
@@ -211,13 +220,84 @@ async def delete_version(
         return {"code": 500, "message": str(e), "data": None}
 
 
+@router.delete("/libraries/{library_name}/versions/{version}/documents", summary="删除版本所有文档")
+async def delete_version_documents(
+    library_name: str,
+    version: str,
+    _: dict = Depends(get_current_user),
+):
+    """删除版本下所有文档，保留版本记录本身。适用于清除后重新抓取。"""
+    try:
+        await docs_mcp_client.remove_version_documents(library_name, version)
+        return {"code": 200, "message": "文档已清除", "data": None}
+    except DocsMcpError as e:
+        return {"code": 500, "message": str(e), "data": None}
+
+
+@router.get("/libraries/{library_name}/exists", summary="检查文档库是否存在")
+async def check_library_exists(library_name: str, _: dict = Depends(get_current_user)):
+    try:
+        exists = await docs_mcp_client.library_exists(library_name)
+        return {"code": 200, "message": "ok", "data": {"exists": exists}}
+    except DocsMcpError as e:
+        return {"code": 500, "message": str(e), "data": None}
+
+
+@router.get("/versions", summary="获取版本列表")
+async def list_versions(
+    status: str | None = Query(None),
+    _: dict = Depends(get_current_user),
+):
+    try:
+        versions = await docs_mcp_client.list_versions(status=status)
+        return {"code": 200, "message": "ok", "data": versions}
+    except DocsMcpError as e:
+        return {"code": 500, "message": str(e), "data": []}
+
+
+@router.get("/versions/by-url", summary="根据 URL 查找版本")
+async def find_versions_by_url(
+    url: str = Query(...),
+    _: dict = Depends(get_current_user),
+):
+    try:
+        versions = await docs_mcp_client.find_versions_by_url(url)
+        return {"code": 200, "message": "ok", "data": versions}
+    except DocsMcpError as e:
+        return {"code": 500, "message": str(e), "data": []}
+
+
+@router.get("/versions/{version_id}/options", summary="获取版本抓取配置")
+async def get_version_options(
+    version_id: int,
+    _: dict = Depends(get_current_user),
+):
+    try:
+        options = await docs_mcp_client.get_version_options(version_id)
+        return {"code": 200, "message": "ok", "data": options}
+    except DocsMcpError as e:
+        return {"code": 500, "message": str(e), "data": None}
+
+
+@router.put("/versions/{version_id}/options", summary="更新版本抓取配置")
+async def update_version_options(
+    version_id: int,
+    body: dict,
+    _: dict = Depends(get_current_user),
+):
+    try:
+        await docs_mcp_client.update_version_options(version_id, body)
+        return {"code": 200, "message": "配置已更新", "data": None}
+    except DocsMcpError as e:
+        return {"code": 500, "message": str(e), "data": None}
+
+
 @router.get("/events", summary="SSE 实时事件代理")
 async def events_stream():
     """SSE 事件流代理（无需认证，EventSource 无法携带 Authorization）。"""
 
     async def generate():
-        web_url = settings.docs_mcp_server_web_url
-        upstream_url = f"{web_url}/web/events"
+        upstream_url = f"{settings.docs_mcp_server_url}/api/events"
         try:
             async with httpx.AsyncClient(timeout=60.0, proxy=None) as client:
                 async with client.stream("GET", upstream_url) as resp:
