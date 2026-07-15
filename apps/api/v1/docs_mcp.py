@@ -296,6 +296,29 @@ async def update_version_options(
 async def events_stream():
     """SSE 事件流代理（无需认证，EventSource 无法携带 Authorization）。"""
 
+
+@router.post("/fetch-url", summary="抓取 URL 转 Markdown")
+async def fetch_url(body: dict, _: dict = Depends(get_current_user)):
+    """调用 docs-mcp-server 的 fetch_url 工具，抓取单个 URL 并转换为 Markdown。"""
+    try:
+        url = body.get("url", "").strip()
+        if not url:
+            return {"code": 400, "message": "url 不能为空", "data": None}
+
+        follow_redirects = body.get("followRedirects", True)
+        scrape_mode = body.get("scrapeMode")
+        headers = body.get("headers")
+
+        result = await docs_mcp_client.fetch_url(
+            url=url,
+            follow_redirects=follow_redirects,
+            scrape_mode=scrape_mode,
+            headers=headers,
+        )
+        return {"code": 200, "message": "ok", "data": result}
+    except DocsMcpError as e:
+        return {"code": 500, "message": str(e), "data": None}
+
     async def generate():
         upstream_url = f"{settings.docs_mcp_server_url}/api/events"
         try:

@@ -190,5 +190,27 @@ class DocsMcpClient:
             "DELETE", f"/api/libraries/{library}/versions/{version}/documents"
         )
 
+    async def fetch_url(
+        self,
+        url: str,
+        follow_redirects: bool = True,
+        scrape_mode: str | None = None,
+        headers: dict[str, str] | None = None,
+    ) -> dict:
+        """抓取单个 URL 并转换为 Markdown。
+
+        Args:
+            url: 要抓取的 URL。
+            follow_redirects: 是否跟随重定向，默认 True。
+            scrape_mode: HTML 处理策略 (fetch / playwright / auto)。
+            headers: 自定义 HTTP 请求头。
+        """
+        body: dict = {"url": url, "followRedirects": follow_redirects}
+        if scrape_mode is not None:
+            body["scrapeMode"] = scrape_mode
+        if headers is not None:
+            body["headers"] = headers
+        return await self._call("POST", "/api/fetch-url", json_data=body)
+
 
 docs_mcp_client = DocsMcpClient()

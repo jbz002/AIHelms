@@ -105,3 +105,7 @@ export interface DocsMcpStoredScraperOptions {
   sourceUrl: string
   options: DocsMcpScrapeOptions
 }
+
+export interface DocsMcpFetchUrlResult {
+  content: string
+}

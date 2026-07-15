@@ -1,7 +1,7 @@
 services:
   # docs-mcp-server — 文档爬取 worker
   docs-mcp-worker:
-    image: ghcr.io/arabold/docs-mcp-server:latest
+    build: ../docs-mcp-server
     restart: unless-stopped
     container_name: docs-mcp-worker
     command: ["worker", "--host", "0.0.0.0", "--port", "8080"]
@@ -26,7 +26,7 @@ services:
 
   # docs-mcp-server — MCP 协议端点（供 AI 工具调用）
   docs-mcp-server:
-    image: ghcr.io/arabold/docs-mcp-server:latest
+    build: ../docs-mcp-server
     restart: unless-stopped
     container_name: docs-mcp-server
     command: ["mcp", "--protocol", "http", "--host", "0.0.0.0", "--port", "6280", "--server-url", "http://docs-mcp-worker:8080", "--no-logo"]
@@ -47,7 +47,7 @@ services:
 
   # docs-mcp-server — Web 管理界面 + SSE 事件流
   docs-mcp-web:
-    image: ghcr.io/arabold/docs-mcp-server:latest
+    build: ../docs-mcp-server
     restart: unless-stopped
     container_name: docs-mcp-web
     command: ["web", "--host", "0.0.0.0", "--port", "6281", "--server-url", "http://docs-mcp-worker:8080/api", "--no-logo"]

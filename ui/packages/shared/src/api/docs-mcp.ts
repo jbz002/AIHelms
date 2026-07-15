@@ -8,6 +8,7 @@ import type {
   DocsMcpDbVersion,
   DocsMcpStoredScraperOptions,
   DocsMcpScrapeOptions,
+  DocsMcpFetchUrlResult,
 } from '../types/docs-mcp'
 
 export function getDocsMcpStats() {
@@ -108,5 +109,12 @@ export function deleteDocsMcpVersionDocuments(libraryName: string, version: stri
     .replace('{name}', libraryName)
     .replace('{version}', version), {
     method: 'DELETE',
+  })
+}
+
+export function fetchDocsMcpUrl(url: string, followRedirects = true) {
+  return request<DocsMcpFetchUrlResult>('/api/v1/docs-mcp/fetch-url', {
+    method: 'POST',
+    body: { url, followRedirects },
   })
 }
