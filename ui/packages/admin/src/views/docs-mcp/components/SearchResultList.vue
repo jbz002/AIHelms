@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch, nextTick } from 'vue'
 import type { DocsMcpSearchResult } from '@aihelms/shared'
 import { MarkdownRenderer } from '@aihelms/shared'
 import { FileText, ExternalLink, ChevronDown, ChevronUp } from 'lucide-vue-next'
@@ -9,9 +9,19 @@ interface Props {
   loading?: boolean
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 
 const expandedSet = ref<Set<number>>(new Set())
+const overflowingSet = ref<Set<number>>(new Set())
+
+// 重置状态当搜索结果变化时
+watch(
+  () => props.results,
+  () => {
+    expandedSet.value = new Set()
+    overflowingSet.value = new Set()
+  },
+)
 
 function toggleExpand(index: number): void {
   const next = new Set(expandedSet.value)
@@ -25,6 +35,18 @@ function toggleExpand(index: number): void {
 
 function isExpanded(index: number): boolean {
   return expandedSet.value.has(index)
+}
+
+/** 挂载后检测内容是否超出折叠高度 */
+function onContentMount(index: number, el: unknown): void {
+  if (!el) return
+  nextTick(() => {
+    const htmlEl = el as HTMLElement
+    // 折叠时 max-height 为 7rem (112px)，scrollHeight > clientHeight 说明内容溢出
+    if (htmlEl.scrollHeight > htmlEl.clientHeight + 1) {
+      overflowingSet.value = new Set([...overflowingSet.value, index])
+    }
+  })
 }
 </script>
 
@@ -71,20 +93,21 @@ function isExpanded(index: number): boolean {
           </span>
         </div>
 
-        <div v-if="isExpanded(index)">
-          <MarkdownRenderer
-            :content="result.content"
-            :mime-type="result.mimeType"
-          />
-        </div>
-        <div v-else class="line-clamp-4">
+        <!-- 内容区：max-height 过渡实现展开/收起动画 -->
+        <div
+          :ref="(el) => onContentMount(index, el)"
+          class="overflow-hidden transition-[max-height] duration-300 ease-in-out"
+          :class="isExpanded(index) ? 'max-h-[4000px]' : 'max-h-28'"
+        >
           <MarkdownRenderer
             :content="result.content"
             :mime-type="result.mimeType"
           />
         </div>
 
+        <!-- 仅在内容确实溢出时才显示展开/收起按钮 -->
         <button
+          v-if="overflowingSet.has(index)"
           class="mt-2 inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700"
           @click="toggleExpand(index)"
         >
