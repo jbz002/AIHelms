@@ -1,9 +1,13 @@
 """doc_upload_records 表的数据库操作。"""
 
+from datetime import datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import DocUploadRecord
+
+_FINAL_STATUSES = {"completed", "failed"}
 
 
 async def create(session: AsyncSession, record: DocUploadRecord) -> DocUploadRecord:
@@ -45,6 +49,27 @@ async def count_by_library(session: AsyncSession, library: str) -> int:
     return result.scalar_one()
 
 
+async def list_all(
+    session: AsyncSession,
+    page: int = 1,
+    page_size: int = 20,
+) -> list[DocUploadRecord]:
+    stmt = (
+        select(DocUploadRecord)
+        .order_by(DocUploadRecord.id.desc())
+        .limit(page_size)
+        .offset((page - 1) * page_size)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def count_all(session: AsyncSession) -> int:
+    stmt = select(func.count(DocUploadRecord.id))
+    result = await session.execute(stmt)
+    return result.scalar_one()
+
+
 async def update_status(
     session: AsyncSession,
     record_id: int,
@@ -58,4 +83,18 @@ async def update_status(
     record.status = status
     record.chunk_count = chunk_count
     record.error_message = error_message
+    if status in _FINAL_STATUSES:
+        record.finished_at = datetime.now()
+    await session.flush()
+
+
+async def update_extracted_content(
+    session: AsyncSession,
+    record_id: int,
+    content: str,
+) -> None:
+    record = await find_by_id(session, record_id)
+    if record is None:
+        return
+    record.extracted_content = content
     await session.flush()

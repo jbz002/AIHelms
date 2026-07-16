@@ -76,10 +76,10 @@ def _is_binary_format(file_name: str) -> bool:
     return ext in BINARY_EXTENSIONS
 
 
-def _extract_text(file_bytes: bytes, file_name: str) -> str:
+async def _extract_text(file_bytes: bytes, file_name: str) -> str:
     """提取文本内容。纯文本直接解码，二进制格式通过 docling-serve 转换。"""
     if _is_binary_format(file_name):
-        return _extract_binary(file_bytes, file_name)
+        return await _extract_binary(file_bytes, file_name)
     return _extract_plain_text(file_bytes, file_name)
 
 
@@ -94,12 +94,12 @@ def _extract_plain_text(file_bytes: bytes, file_name: str) -> str:
     raise ValueError(f"无法解码文件 {file_name}，仅支持文本格式")
 
 
-def _extract_binary(file_bytes: bytes, file_name: str) -> str:
+async def _extract_binary(file_bytes: bytes, file_name: str) -> str:
     """二进制文件通过 docling-serve 转换为 Markdown。"""
     from services.docling_client import docling_client
 
     content_type = _detect_content_type(file_name)
-    return docling_client.convert_file(
+    return await docling_client.convert_file(
         file_bytes=file_bytes,
         file_name=file_name,
         content_type=content_type,
@@ -108,6 +108,9 @@ def _extract_binary(file_bytes: bytes, file_name: str) -> str:
 
 
 def _serialize_record(record: DocUploadRecord) -> dict:
+    extracted_preview = ""
+    if record.extracted_content:
+        extracted_preview = record.extracted_content[:200]
     return {
         "id": record.id,
         "library": record.library,
@@ -118,6 +121,7 @@ def _serialize_record(record: DocUploadRecord) -> dict:
         "status": record.status,
         "chunk_count": record.chunk_count,
         "error_message": record.error_message,
+        "extracted_content_preview": extracted_preview,
         "created_by": record.created_by,
         "created_at": record.created_at.isoformat() if record.created_at else None,
         "finished_at": record.finished_at.isoformat() if record.finished_at else None,
@@ -131,11 +135,15 @@ async def upload_document(
     library: str,
     version: str | None,
     created_by: int | None,
+    auto_ingest: bool = False,
 ) -> dict:
-    """上传文档：提取文本 → 入库 docs-mcp → 记录到平台 DB。"""
+    """上传文档：提取文本内容 → 存入平台 DB。
+
+    若 auto_ingest=True，提取后自动调用 ingest_upload 入库。
+    若 auto_ingest=False，仅提取并保存，返回 status=extracted 供后续手动入库。
+    """
     content_type = _detect_content_type(file_name)
 
-    # 创建 DB 记录
     record = DocUploadRecord(
         library=library,
         version=version or "",
@@ -148,21 +156,58 @@ async def upload_document(
     record = await doc_upload_repo.create(session, record)
 
     try:
-        # 提取文本
-        content = _extract_text(file_bytes, file_name)
+        await doc_upload_repo.update_status(session, record.id, "extracting")
+        content = await _extract_text(file_bytes, file_name)
 
-        # 调 docs-mcp ingest-raw（docs-mcp 负责分块 + embedding + 存储）
+        await doc_upload_repo.update_extracted_content(
+            session, record.id, content
+        )
+        await doc_upload_repo.update_status(session, record.id, "extracted")
+        await session.refresh(record)
+
+        if auto_ingest:
+            return await ingest_upload(session, record.id)
+
+        return _serialize_record(record)
+
+    except Exception as e:
+        logger.error("document extraction failed: %s", str(e), exc_info=True)
+        await doc_upload_repo.update_status(
+            session, record.id, "failed", error_message=str(e)[:500]
+        )
+        await session.refresh(record)
+        return _serialize_record(record)
+
+
+async def ingest_upload(
+    session: AsyncSession, record_id: int
+) -> dict:
+    """将已提取内容的上传记录入库到 docs-mcp。"""
+    record = await doc_upload_repo.find_by_id(session, record_id)
+    if record is None:
+        raise ValueError(f"upload record {record_id} not found")
+    if record.status != "extracted":
+        raise ValueError(
+            f"upload record status is {record.status}, expected 'extracted'"
+        )
+
+    await doc_upload_repo.update_status(session, record_id, "ingesting")
+    await session.refresh(record)
+
+    try:
+        documents = [
+            {
+                "url": f"local://{record.file_name}",
+                "title": record.file_name,
+                "contentType": record.content_type,
+                "content": record.extracted_content,
+            }
+        ]
+
         result = await docs_mcp_client.ingest_raw(
-            library=library,
-            version=version,
-            documents=[
-                {
-                    "url": f"local://{file_name}",
-                    "title": file_name,
-                    "contentType": content_type,
-                    "content": content,
-                }
-            ],
+            library=record.library,
+            version=record.version or None,
+            documents=documents,
         )
 
         ingested = result.get("ingested", 1) if isinstance(result, dict) else 1
@@ -174,19 +219,6 @@ async def upload_document(
 
     except DocsMcpError as e:
         logger.error("docs-mcp ingest-raw failed: %s", str(e))
-        await doc_upload_repo.update_status(
-            session, record.id, "failed", error_message=str(e)[:500]
-        )
-        await session.refresh(record)
-        return _serialize_record(record)
-
-    except Exception as e:
-        from services.docling_client import DoclingError
-
-        if isinstance(e, DoclingError):
-            logger.error("docling-serve convert failed: %s", str(e))
-        else:
-            logger.error("document upload failed: %s", str(e), exc_info=True)
         await doc_upload_repo.update_status(
             session, record.id, "failed", error_message=str(e)[:500]
         )
@@ -205,21 +237,8 @@ async def list_upload_records(
         items = await doc_upload_repo.list_by_library(session, library, page, page_size)
         total = await doc_upload_repo.count_by_library(session, library)
     else:
-        # 按 ID 倒序查全部
-        from sqlalchemy import select
-
-        stmt = (
-            select(DocUploadRecord)
-            .order_by(DocUploadRecord.id.desc())
-            .limit(page_size)
-            .offset((page - 1) * page_size)
-        )
-        result = await session.execute(stmt)
-        items = list(result.scalars().all())
-
-        count_stmt = select(DocUploadRecord.id)
-        count_result = await session.execute(count_stmt)
-        total = len(count_result.scalars().all())
+        items = await doc_upload_repo.list_all(session, page, page_size)
+        total = await doc_upload_repo.count_all(session)
 
     return {
         "items": [_serialize_record(r) for r in items],

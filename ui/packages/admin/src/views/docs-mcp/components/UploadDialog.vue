@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { uploadDocument, toast } from '@aihelms/shared'
 import type { DocUploadRecord } from '@aihelms/shared'
 import { X, Upload, Loader2, FileText, CheckCircle2, AlertCircle } from 'lucide-vue-next'
+
+type IngestMode = 'direct' | 'extract-only'
 
 interface Props {
   visible: boolean
@@ -20,9 +22,16 @@ const emit = defineEmits<Emits>()
 const library = ref(props.defaultLibrary ?? '')
 const version = ref('')
 const file = ref<File | null>(null)
+const ingestMode = ref<IngestMode>('direct')
 const uploading = ref(false)
 const uploadResult = ref<DocUploadRecord | null>(null)
 const uploadError = ref<string | null>(null)
+
+watch(() => props.visible, (v) => {
+  if (v) {
+    ingestMode.value = 'direct'
+  }
+})
 
 function handleFileChange(e: Event): void {
   const input = e.target as HTMLInputElement
@@ -43,12 +52,16 @@ async function handleSubmit(): Promise<void> {
       library.value.trim(),
       file.value,
       version.value.trim() || undefined,
+      ingestMode.value === 'direct',
     )
     uploadResult.value = record
     if (record.status === 'failed') {
-      uploadError.value = record.error_message || '入库失败'
+      uploadError.value = record.error_message || '处理失败'
+    } else if (record.status === 'completed') {
+      toast.success(`入库成功，已生成 ${record.chunk_count} 个文档块`)
+      emit('uploaded', record)
     } else {
-      toast.success(`上传成功，已生成 ${record.chunk_count} 个文档块`)
+      toast.success('文档提取成功，可稍后手动入库')
       emit('uploaded', record)
     }
   } catch (e) {
@@ -85,9 +98,27 @@ function formatFileSize(bytes: number): string {
           <X class="h-5 w-5" />
         </button>
 
-        <h3 class="mb-4 text-lg font-semibold text-gray-900">上传文档入库</h3>
+        <h3 class="mb-4 text-lg font-semibold text-gray-900">上传文档</h3>
 
         <div class="space-y-4">
+          <!-- 入库模式 -->
+          <div class="flex items-center gap-6 rounded-md border border-gray-200 px-4 py-3">
+            <label class="flex cursor-pointer items-center gap-2">
+              <input v-model="ingestMode" type="radio" name="uploadIngestMode" value="direct" class="accent-blue-600" />
+              <div>
+                <span class="text-sm font-medium text-gray-900">直接入库</span>
+                <p class="text-xs text-gray-500">提取后自动入库，可立即搜索</p>
+              </div>
+            </label>
+            <label class="flex cursor-pointer items-center gap-2">
+              <input v-model="ingestMode" type="radio" name="uploadIngestMode" value="extract-only" class="accent-emerald-600" />
+              <div>
+                <span class="text-sm font-medium text-gray-900">仅提取</span>
+                <p class="text-xs text-gray-500">先提取内容，可预览后手动入库</p>
+              </div>
+            </label>
+          </div>
+
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">文档库 *</label>
@@ -133,7 +164,7 @@ function formatFileSize(bytes: number): string {
               <CheckCircle2 v-if="!uploadError" class="h-4 w-4 text-green-600" />
               <AlertCircle v-else class="h-4 w-4 text-red-600" />
               <span :class="uploadError ? 'text-red-700' : 'text-green-700'">
-                {{ uploadError || `入库成功，共 ${uploadResult.chunk_count} 个文档块` }}
+                {{ uploadError || (uploadResult.status === 'completed' ? `入库成功，共 ${uploadResult.chunk_count} 个文档块` : '提取成功') }}
               </span>
             </div>
           </div>
@@ -153,13 +184,14 @@ function formatFileSize(bytes: number): string {
             关闭
           </button>
           <button
-            class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            class="inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+            :class="ingestMode === 'extract-only' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'"
             :disabled="!library.trim() || !file || uploading"
             @click="handleSubmit"
           >
             <Loader2 v-if="uploading" class="h-4 w-4 animate-spin" />
             <Upload v-else class="h-4 w-4" />
-            {{ uploading ? '上传中...' : '上传入库' }}
+            {{ uploading ? '处理中...' : (ingestMode === 'extract-only' ? '提取' : '上传入库') }}
           </button>
         </div>
       </div>

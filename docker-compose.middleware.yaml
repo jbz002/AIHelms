@@ -2,15 +2,19 @@ services:
   # docs-mcp-server — 文档爬取 worker
   # docling-serve（文档格式转换：PDF/DOCX/PPTX 等 → Markdown）
   docling-serve:
-    image: ghcr.io/docling-project/docling-serve:v2.4.0
+    build:
+      context: ../docling-serve
+      dockerfile: Dockerfile.local
+    image: docling-serve:local
     restart: unless-stopped
     container_name: docling-serve
     ports:
       - "${DOCLING_SERVE_PORT:-5001}:5001"
     environment:
       DOCLING_CONVERT_TIMEOUT: ${DOCLING_CONVERT_TIMEOUT:-60}
+      HF_HUB_DISABLE_XET_DOWNLOAD: "1"
     healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5001/v1/health')\""]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5001/health')\""]
       interval: 10s
       timeout: 5s
       retries: 5

@@ -407,15 +407,16 @@ async def fetch_url(body: dict, _: dict = Depends(get_current_user)):
         return {"code": 500, "message": str(e), "data": None}
 
 
-@router.post("/upload", summary="上传文档入库")
+@router.post("/upload", summary="上传文档")
 async def upload_document(
     library: str = Form(...),
     version: str = Form(""),
+    auto_ingest: bool = Form(True),
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
     session = Depends(get_db),
 ):
-    """上传本地文档，提取内容后提交到 docs-mcp 进行分块入库。"""
+    """上传本地文档，提取内容。auto_ingest=true 时自动入库，false 时仅提取。"""
     if not library.strip():
         return {"code": 400, "message": "library 不能为空", "data": None}
     if not file.filename:
@@ -443,16 +444,44 @@ async def upload_document(
         library=library.strip(),
         version=version.strip() or None,
         created_by=created_by,
+        auto_ingest=auto_ingest,
     )
 
     if record["status"] == "failed":
         return {
             "code": 500,
-            "message": f"入库失败: {record['error_message']}",
+            "message": f"文档处理失败: {record['error_message']}",
             "data": record,
         }
 
-    return {"code": 200, "message": "文档入库成功", "data": record}
+    msg = "文档入库成功" if auto_ingest else "文档提取成功"
+    return {"code": 200, "message": msg, "data": record}
+
+
+@router.post("/uploads/{record_id}/ingest", summary="上传文档入库")
+async def ingest_upload(
+    record_id: int,
+    current_user: dict = Depends(get_current_user),
+):
+    """将已提取内容的上传记录入库到 docs-mcp。"""
+    from core.database import async_session
+    from services import doc_upload_service
+
+    async with async_session() as session:
+        try:
+            result = await doc_upload_service.ingest_upload(
+                session, record_id
+            )
+            await session.commit()
+            if result["status"] == "failed":
+                return {
+                    "code": 500,
+                    "message": f"入库失败: {result['error_message']}",
+                    "data": result,
+                }
+            return {"code": 200, "message": "文档入库成功", "data": result}
+        except ValueError as e:
+            return {"code": 400, "message": str(e), "data": None}
 
 
 @router.get("/uploads", summary="查询文档上传记录")

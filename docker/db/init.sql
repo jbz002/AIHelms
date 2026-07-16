@@ -1194,6 +1194,7 @@ CREATE TABLE IF NOT EXISTS aihelms.doc_upload_records (
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     chunk_count INT DEFAULT 0,
     error_message TEXT DEFAULT '',
+    extracted_content TEXT DEFAULT '',
     created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     finished_at TIMESTAMPTZ

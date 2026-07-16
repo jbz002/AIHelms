@@ -1288,6 +1288,7 @@ class DocUploadRecord(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")
     chunk_count: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str] = mapped_column(Text, default="")
+    extracted_content: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
     )

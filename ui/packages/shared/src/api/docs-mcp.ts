@@ -124,14 +124,21 @@ export function fetchDocsMcpUrl(url: string, followRedirects = true) {
   })
 }
 
-export function uploadDocument(library: string, file: File, version?: string) {
+export function uploadDocument(library: string, file: File, version?: string, autoIngest?: boolean) {
   const formData = new FormData()
   formData.append('library', library)
   formData.append('file', file)
   if (version) formData.append('version', version)
+  if (autoIngest !== undefined) formData.append('auto_ingest', String(autoIngest))
   return request<DocUploadRecord>('/api/v1/docs-mcp/upload', {
     method: 'POST',
     body: formData,
+  })
+}
+
+export function ingestUploadRecord(recordId: number) {
+  return request<DocUploadRecord>(`/api/v1/docs-mcp/uploads/${recordId}/ingest`, {
+    method: 'POST',
   })
 }
 

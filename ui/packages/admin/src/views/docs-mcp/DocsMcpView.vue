@@ -20,11 +20,13 @@ import LibraryList from './components/LibraryList.vue'
 import ScrapeJobDialog from './components/ScrapeJobDialog.vue'
 import UploadDialog from './components/UploadDialog.vue'
 import CrawlTaskList from './components/CrawlTaskList.vue'
+import UploadRecordList from './components/UploadRecordList.vue'
 
 const stats = ref<DocsMcpStats | null>(null)
 const libraries = ref<DocsMcpLibrary[]>([])
 const showScrapeDialog = ref(false)
 const showUploadDialog = ref(false)
+const uploadRecordListRef = ref<InstanceType<typeof UploadRecordList> | null>(null)
 let eventSource: EventSource | null = null
 
 // Fetch URL state
@@ -142,6 +144,7 @@ async function handleSubmitJob(params: { url: string; library: string; version: 
 async function handleUploaded(_record: DocUploadRecord): Promise<void> {
   await loadLibraries()
   await loadStats()
+  uploadRecordListRef.value?.loadRecords()
 }
 
 onMounted(() => {
@@ -243,6 +246,8 @@ onUnmounted(() => {
     </div>
 
     <CrawlTaskList />
+
+    <UploadRecordList ref="uploadRecordListRef" @refresh="loadLibraries(); loadStats()" />
 
     <LibraryList :libraries="libraries" />
 

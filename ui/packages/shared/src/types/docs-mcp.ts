@@ -117,9 +117,10 @@ export interface DocUploadRecord {
   file_name: string
   file_size: number
   content_type: string
-  status: 'pending' | 'processing' | 'completed' | 'failed'
+  status: 'pending' | 'extracting' | 'extracted' | 'ingesting' | 'completed' | 'failed'
   chunk_count: number
   error_message: string
+  extracted_content_preview: string
   created_by: number | null
   created_at: string
   finished_at: string | null
