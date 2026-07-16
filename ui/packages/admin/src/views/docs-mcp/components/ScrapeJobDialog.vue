@@ -27,13 +27,51 @@ const version = ref(props.defaultVersion ?? '')
 const ingestMode = ref<IngestMode>('direct')
 const showAdvanced = ref(false)
 const submitting = ref(false)
-const maxPages = ref<number | undefined>(undefined)
-const maxDepth = ref<number | undefined>(undefined)
+const maxPages = ref(1000)
+const maxDepth = ref(3)
 const scope = ref<'subpages' | 'hostname' | 'domain'>('subpages')
 const scrapeMode = ref<'fetch' | 'playwright' | 'auto'>('auto')
 const includePatterns = ref<string[]>([])
-const excludePatterns = ref<string[]>([])
+const DEFAULT_EXCLUDE_PATTERNS = [
+  '**/CHANGELOG.md',
+  '**/CHANGELOG/**',
+  '**/LICENSE',
+  '**/LICENSE/**',
+  '**/*.lock',
+  '**/package-lock.json',
+  '**/yarn.lock',
+  '**/pnpm-lock.yaml',
+  '**/go.sum',
+  '**/*.min.js',
+  '**/*.min.css',
+  '**/*.map',
+  '**/*.d.ts',
+  '**/.DS_Store',
+  '**/Thumbs.db',
+  '**/archive/**',
+  '**/archived/**',
+  '**/deprecated/**',
+  '**/legacy/**',
+  '**/old/**',
+  '**/test/**',
+  '**/tests/**',
+  '**/__tests__/**',
+  '**/spec/**',
+  '**/dist/**',
+  '**/build/**',
+  '**/out/**',
+  '**/target/**',
+  '**/.next/**',
+  '**/.nuxt/**',
+  '**/.vscode/**',
+  '**/.idea/**',
+  '**/docs/old/**',
+]
+
+const excludePatterns = ref<string[]>([...DEFAULT_EXCLUDE_PATTERNS])
 const customHeaders = ref<{ key: string; value: string }[]>([])
+const followRedirects = ref(true)
+const ignoreErrors = ref(true)
 
 // Debounce check state
 const libraryCheckState = ref<'idle' | 'checking' | 'exists' | 'not_found'>('idle')
@@ -129,6 +167,8 @@ function handleSubmit(): void {
     if (h.key.trim()) headers[h.key.trim()] = h.value
   }
   if (Object.keys(headers).length > 0) options.headers = headers
+  if (!followRedirects.value) options.followRedirects = false
+  if (!ignoreErrors.value) options.ignoreErrors = false
   emit('submit', { url: url.value, library: library.value, version: version.value, options, ingestMode: ingestMode.value })
   submitting.value = false
 }
@@ -243,6 +283,16 @@ function handleSubmit(): void {
                     <Trash2 class="h-3 w-3" />
                   </button>
                 </div>
+              </div>
+              <div class="flex items-center gap-6">
+                <label class="flex cursor-pointer items-center gap-2">
+                  <input v-model="followRedirects" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                  <span class="text-xs text-gray-600">跟随重定向</span>
+                </label>
+                <label class="flex cursor-pointer items-center gap-2">
+                  <input v-model="ignoreErrors" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+                  <span class="text-xs text-gray-600">忽略抓取错误</span>
+                </label>
               </div>
             </div>
           </div>

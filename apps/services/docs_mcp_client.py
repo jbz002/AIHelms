@@ -132,11 +132,12 @@ class DocsMcpClient:
         version: str | None,
         options: dict,
     ) -> dict:
-        logger.info(f"enqueue_scrape_job input: {json.dumps({'library': library, 'version': version, 'options': options}, default=str, ensure_ascii=False)}")
+        logger.info("enqueue_scrape_job input: %s", json.dumps({"library": library, "version": version, "options": options}, default=str, ensure_ascii=False))
+        body = {"library": library, "version": version, "options": options}
         return await self._call(
             "POST",
             "/api/jobs/scrape",
-            json_data={"library": library, "version": version or "", "options": options},
+            json_data=body,
         )
 
     async def enqueue_refresh_job(
@@ -145,7 +146,7 @@ class DocsMcpClient:
         version: str | None,
         options: dict | None = None,
     ) -> dict:
-        body: dict = {"library": library, "version": version or ""}
+        body: dict = {"library": library, "version": version}
         if options:
             body["options"] = options
         return await self._call("POST", "/api/jobs/refresh", json_data=body)
