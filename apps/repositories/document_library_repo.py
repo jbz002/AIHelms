@@ -1,6 +1,6 @@
 """document_libraries 表的数据库操作。"""
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import DocumentLibrary
@@ -51,5 +51,54 @@ async def update_source_url(
         update(DocumentLibrary)
         .where(DocumentLibrary.id == library_id)
         .values(source_url=source_url)
+    )
+    await session.flush()
+
+
+async def update_library_info(
+    session: AsyncSession,
+    library_id: int,
+    name: str | None = None,
+    description: str | None = None,
+) -> None:
+    values = {}
+    if name is not None:
+        values["name"] = name
+    if description is not None:
+        values["description"] = description
+    if not values:
+        return
+    await session.execute(
+        update(DocumentLibrary).where(DocumentLibrary.id == library_id).values(**values)
+    )
+    await session.flush()
+
+
+async def search(
+    session: AsyncSession,
+    keyword: str,
+    page: int = 1,
+    page_size: int = 20,
+) -> list[DocumentLibrary]:
+    stmt = (
+        select(DocumentLibrary)
+        .where(DocumentLibrary.name.ilike(f"%{keyword}%"))
+        .order_by(DocumentLibrary.id.desc())
+        .limit(page_size)
+        .offset((page - 1) * page_size)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def count_search(session: AsyncSession, keyword: str) -> int:
+    stmt = select(func.count()).where(DocumentLibrary.name.ilike(f"%{keyword}%"))
+    result = await session.execute(stmt)
+    return result.scalar_one()
+
+
+async def delete_library(session: AsyncSession, library_id: int) -> None:
+    await session.execute(
+        delete(DocumentLibrary).where(DocumentLibrary.id == library_id)
     )
     await session.flush()

@@ -14,6 +14,8 @@ from api.v1.custom_entities import router as custom_entities_router
 from api.v1.dashboard import router as dashboard_router
 from api.v1.departments import router as departments_router
 from api.v1.docs_mcp import router as docs_mcp_router
+from api.v1.documents import document_router as document_crud_router
+from api.v1.documents import library_router as document_library_router
 from api.v1.efficiency import router as efficiency_router
 from api.v1.export_tasks import router as export_tasks_router
 from api.v1.key_scenarios import router as key_scenarios_router
@@ -60,6 +62,8 @@ router.include_router(business_scenarios_router, tags=["AI 身份"])
 router.include_router(efficiency_router, tags=["AI 效能"])
 router.include_router(crawl_router, tags=["系统"])
 router.include_router(docs_mcp_router, tags=["AI实验室"])
+router.include_router(document_library_router, tags=["AI实验室"])
+router.include_router(document_crud_router, tags=["AI实验室"])
 router.include_router(dashboard_router, tags=["系统"])
 
 

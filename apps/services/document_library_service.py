@@ -4,10 +4,25 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from exceptions import ConflictError, NotFoundError
 from models.db import DocumentLibrary
 from repositories import document_library_repo, document_repo
 
 logger = logging.getLogger(__name__)
+
+
+def _serialize_library(lib: DocumentLibrary) -> dict:
+    return {
+        "id": lib.id,
+        "name": lib.name,
+        "description": lib.description,
+        "document_count": lib.document_count,
+        "total_chunks": lib.total_chunks,
+        "source_url": lib.source_url,
+        "created_by": lib.created_by,
+        "created_at": lib.created_at.isoformat() if lib.created_at else None,
+        "updated_at": lib.updated_at.isoformat() if lib.updated_at else None,
+    }
 
 
 async def ensure_library_exists(
@@ -33,9 +48,7 @@ async def ensure_library_exists(
     return await document_library_repo.create(session, library)
 
 
-async def refresh_document_counts(
-    session: AsyncSession, library_name: str
-) -> None:
+async def refresh_document_counts(session: AsyncSession, library_name: str) -> None:
     """从 documents 表重新计算文档计数，写回 document_libraries。"""
     library = await document_library_repo.find_by_name(session, library_name)
     if library is None:
@@ -47,17 +60,87 @@ async def refresh_document_counts(
 async def list_libraries(session: AsyncSession) -> list[dict]:
     """获取所有知识库列表，返回序列化字典。"""
     libraries = await document_library_repo.list_all(session)
-    return [
-        {
-            "id": lib.id,
-            "name": lib.name,
-            "description": lib.description,
-            "document_count": lib.document_count,
-            "total_chunks": lib.total_chunks,
-            "source_url": lib.source_url,
-            "created_by": lib.created_by,
-            "created_at": lib.created_at.isoformat() if lib.created_at else None,
-            "updated_at": lib.updated_at.isoformat() if lib.updated_at else None,
-        }
-        for lib in libraries
-    ]
+    return [_serialize_library(lib) for lib in libraries]
+
+
+async def search_libraries(
+    session: AsyncSession,
+    keyword: str,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    """关键字搜索知识库，返回分页结果。"""
+    total = await document_library_repo.count_search(session, keyword)
+    items = await document_library_repo.search(session, keyword, page, page_size)
+    return {
+        "items": [_serialize_library(lib) for lib in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+async def get_library_by_id(session: AsyncSession, library_id: int) -> dict:
+    """根据 ID 获取知识库详情。"""
+    library = await document_library_repo.find_by_id(session, library_id)
+    if library is None:
+        raise NotFoundError("document_library", library_id)
+    return _serialize_library(library)
+
+
+async def create_library(
+    session: AsyncSession,
+    name: str,
+    description: str = "",
+    created_by: int | None = None,
+) -> dict:
+    """创建知识库。"""
+    existing = await document_library_repo.find_by_name(session, name)
+    if existing is not None:
+        raise ConflictError("知识库名称已存在")
+    library = DocumentLibrary(
+        name=name,
+        description=description,
+        created_by=created_by,
+    )
+    library = await document_library_repo.create(session, library)
+    await session.commit()
+    await session.refresh(library)
+    return _serialize_library(library)
+
+
+async def update_library(
+    session: AsyncSession,
+    library_id: int,
+    name: str | None = None,
+    description: str | None = None,
+) -> dict:
+    """更新知识库。"""
+    library = await document_library_repo.find_by_id(session, library_id)
+    if library is None:
+        raise NotFoundError("document_library", library_id)
+    if name is not None and name.lower() != library.name.lower():
+        existing = await document_library_repo.find_by_name(session, name)
+        if existing is not None:
+            raise ConflictError("知识库名称已存在")
+    await document_library_repo.update_library_info(
+        session, library_id, name, description
+    )
+    await session.commit()
+    await session.refresh(library)
+    return _serialize_library(library)
+
+
+async def delete_library(session: AsyncSession, library_id: int) -> None:
+    """删除知识库及其下所有文档。"""
+    library = await document_library_repo.find_by_id(session, library_id)
+    if library is None:
+        raise NotFoundError("document_library", library_id)
+    # 先删该知识库下所有文档
+    docs = await document_repo.list_by_library(
+        session, library.name, page=1, page_size=999999
+    )
+    for doc in docs:
+        await document_repo.delete_document(session, doc.id)
+    await document_library_repo.delete_library(session, library_id)
+    await session.commit()
