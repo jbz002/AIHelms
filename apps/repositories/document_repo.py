@@ -132,6 +132,57 @@ async def count_all(
     return result.scalar_one()
 
 
+async def count_grouped_by_status(
+    session: AsyncSession,
+    library: str | None = None,
+) -> list[dict]:
+    stmt = select(
+        Document.ingest_status,
+        func.count().label("count"),
+        func.coalesce(func.sum(Document.chunk_count), 0).label("total_chunks"),
+    ).group_by(Document.ingest_status)
+    if library:
+        stmt = stmt.where(func.lower(Document.library) == library.lower())
+    result = await session.execute(stmt)
+    return [
+        {
+            "ingest_status": row.ingest_status,
+            "count": row.count,
+            "total_chunks": row.total_chunks,
+        }
+        for row in result.all()
+    ]
+
+
+async def list_by_ingest_status(
+    session: AsyncSession,
+    statuses: list[str],
+    library: str | None = None,
+    source_type: str | None = None,
+) -> list[Document]:
+    stmt = select(Document).where(Document.ingest_status.in_(statuses))
+    if library:
+        stmt = stmt.where(func.lower(Document.library) == library.lower())
+    if source_type:
+        stmt = stmt.where(Document.source_type == source_type)
+    stmt = stmt.order_by(Document.id.asc())
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def update_content_hash(
+    session: AsyncSession,
+    document_id: int,
+    content_hash: str,
+) -> None:
+    await session.execute(
+        update(Document)
+        .where(Document.id == document_id)
+        .values(content_hash=content_hash)
+    )
+    await session.flush()
+
+
 async def delete_document(session: AsyncSession, document_id: int) -> None:
     await session.execute(delete(Document).where(Document.id == document_id))
     await session.flush()

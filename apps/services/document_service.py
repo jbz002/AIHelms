@@ -1,12 +1,15 @@
 """文档查询/更新/删除服务。文档创建由 upload/crawl 流程自动完成。"""
 
+import hashlib
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from exceptions import NotFoundError
+from services.docs_mcp_client import DocsMcpError
 from models.db import Document
 from repositories import document_repo
+from services import docs_mcp_client, document_library_service
 
 logger = logging.getLogger(__name__)
 
@@ -69,13 +72,18 @@ async def update_document(
     content: str | None = None,
     metadata_: dict | None = None,
 ) -> dict:
-    """更新文档标题/内容/元数据。"""
+    """更新文档标题/内容/元数据。内容变更时自动重置入库状态。"""
     doc = await document_repo.find_by_id(session, document_id)
     if doc is None:
         raise NotFoundError("document", document_id)
     await document_repo.update_document_fields(
         session, document_id, title=title, content=content, metadata_=metadata_
     )
+    if content is not None:
+        new_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        if new_hash != doc.content_hash:
+            await document_repo.update_content_hash(session, document_id, new_hash)
+            await document_repo.update_ingest_status(session, document_id, "pending")
     await session.commit()
     await session.refresh(doc)
     return _serialize_document(doc)
@@ -88,3 +96,129 @@ async def delete_document(session: AsyncSession, document_id: int) -> None:
         raise NotFoundError("document", document_id)
     await document_repo.delete_document(session, document_id)
     await session.commit()
+
+
+async def ingest_document(
+    session: AsyncSession,
+    document_id: int,
+) -> dict:
+    """单文档入库到 docs-mcp。内容未变且已入库时跳过。"""
+    doc = await document_repo.find_by_id(session, document_id)
+    if doc is None:
+        raise NotFoundError("document", document_id)
+
+    if not doc.content:
+        await document_repo.update_ingest_status(
+            session, document_id, "failed", error_message="文档内容为空"
+        )
+        raise ValueError("文档内容为空，无法入库")
+
+    current_hash = hashlib.sha256(doc.content.encode("utf-8")).hexdigest()
+    if current_hash == doc.content_hash and doc.ingest_status == "ingested":
+        result = {
+            **_serialize_document(doc),
+            "skipped": True,
+            "reason": "content_unchanged",
+        }
+        return result
+
+    await document_repo.update_ingest_status(session, document_id, "ingesting")
+
+    try:
+        result = await docs_mcp_client.ingest_raw(
+            library=doc.library,
+            version=doc.version or None,
+            documents=[
+                {
+                    "url": "",
+                    "title": doc.title or "untitled",
+                    "contentType": "text/markdown",
+                    "content": doc.content,
+                }
+            ],
+        )
+        chunk_count = result.get("chunkCount", 0)
+        await document_repo.update_ingest_status(
+            session, document_id, "ingested", chunk_count=chunk_count
+        )
+        await document_repo.update_content_hash(session, document_id, current_hash)
+        await document_library_service.refresh_document_counts(session, doc.library)
+        await session.flush()
+        await session.refresh(doc)
+        return _serialize_document(doc)
+
+    except DocsMcpError as e:
+        await document_repo.update_ingest_status(
+            session, document_id, "failed", error_message=str(e)[:500]
+        )
+        await session.flush()
+        raise
+
+
+async def ingest_batch(
+    session: AsyncSession,
+    library: str | None = None,
+    source_type: str | None = None,
+) -> dict:
+    """批量入库 pending/failed 文档，逐个处理、失败不中断。"""
+    docs = await document_repo.list_by_ingest_status(
+        session,
+        statuses=["pending", "failed"],
+        library=library,
+        source_type=source_type,
+    )
+    total = len(docs)
+    if total == 0:
+        return {"total": 0, "ingested": 0, "failed": 0, "skipped": 0}
+
+    ingested, failed, skipped = 0, 0, 0
+    for doc in docs:
+        current_hash = hashlib.sha256(doc.content.encode("utf-8")).hexdigest()
+        if current_hash == doc.content_hash and doc.ingest_status == "pending":
+            skipped += 1
+            continue
+
+        try:
+            await document_repo.update_ingest_status(session, doc.id, "ingesting")
+            await docs_mcp_client.ingest_raw(
+                library=doc.library,
+                version=doc.version or None,
+                documents=[
+                    {
+                        "url": "",
+                        "title": doc.title or "untitled",
+                        "contentType": "text/markdown",
+                        "content": doc.content,
+                    }
+                ],
+            )
+            await document_repo.update_ingest_status(session, doc.id, "ingested")
+            await document_repo.update_content_hash(session, doc.id, current_hash)
+            ingested += 1
+        except DocsMcpError as e:
+            await document_repo.update_ingest_status(
+                session, doc.id, "failed", error_message=str(e)[:500]
+            )
+            logger.warning("batch ingest failed for doc %s: %s", doc.id, str(e))
+            failed += 1
+
+    await document_library_service.refresh_document_counts(session, library)
+    await session.flush()
+    return {"total": total, "ingested": ingested, "failed": failed, "skipped": skipped}
+
+
+async def get_ingest_stats(
+    session: AsyncSession,
+    library: str | None = None,
+) -> dict:
+    """获取文档入库统计。"""
+    rows = await document_repo.count_grouped_by_status(session, library)
+    by_status = {r["ingest_status"]: r["count"] for r in rows}
+    total_documents = sum(r["count"] for r in rows)
+    total_chunks = sum(r["total_chunks"] for r in rows)
+    return {
+        "by_status": by_status,
+        "total_documents": total_documents,
+        "total_chunks": total_chunks,
+        "library": library,
+    }

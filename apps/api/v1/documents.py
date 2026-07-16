@@ -131,6 +131,11 @@ async def delete_library(
 document_router = APIRouter(prefix="/documents", tags=["AI实验室"])
 
 
+class IngestBatchRequest(BaseModel):
+    library: str | None = Field(default=None, max_length=200)
+    source_type: str | None = Field(default=None, max_length=20)
+
+
 @document_router.get("")
 async def list_documents(
     library: str | None = Query(None, max_length=200),
@@ -150,6 +155,28 @@ async def list_documents(
         page_size=page_size,
     )
     return {"code": 200, "message": "ok", "data": result}
+
+
+@document_router.get("/stats")
+async def get_ingest_stats(
+    library: str | None = Query(None, max_length=200),
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("document:read")),
+):
+    result = await document_service.get_ingest_stats(session, library=library)
+    return {"code": 200, "message": "ok", "data": result}
+
+
+@document_router.post("/ingest-batch", summary="批量入库文档")
+async def ingest_batch(
+    req: IngestBatchRequest,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("document:update")),
+):
+    from tasks.doc_tasks import ingest_batch_task
+
+    task = ingest_batch_task.delay(library=req.library, source_type=req.source_type)
+    return {"code": 200, "message": "批量入库任务已提交", "data": {"task_id": task.id}}
 
 
 @document_router.get("/{document_id}")
@@ -196,3 +223,15 @@ async def delete_document(
     except NotFoundError:
         raise HTTPException(status_code=404, detail="文档不存在")
     return {"code": 200, "message": "文档删除成功", "data": None}
+
+
+@document_router.post("/{document_id}/ingest", summary="入库文档")
+async def ingest_document(
+    document_id: int,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("document:update")),
+):
+    from tasks.doc_tasks import ingest_document_task
+
+    task = ingest_document_task.delay(document_id)
+    return {"code": 200, "message": "入库任务已提交", "data": {"task_id": task.id}}

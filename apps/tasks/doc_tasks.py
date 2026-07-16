@@ -60,3 +60,54 @@ def ingest_upload_task(record_id: int) -> None:
     except Exception:
         logger.exception("celery ingest_upload_task failed: record_id=%s", record_id)
         raise
+
+
+@celery_app.task(name="doc.ingest_document")
+def ingest_document_task(document_id: int) -> dict:
+    """单文档入库到 docs-mcp。"""
+    from services import document_service
+
+    async def _run() -> dict:
+        async with get_worker_session_factory()() as session:
+            try:
+                result = await document_service.ingest_document(session, document_id)
+                await session.commit()
+                return result
+            except Exception:
+                await session.rollback()
+                raise
+
+    try:
+        return _run_async(_run())
+    except Exception:
+        logger.exception(
+            "celery ingest_document_task failed: document_id=%s", document_id
+        )
+        raise
+
+
+@celery_app.task(name="doc.ingest_batch")
+def ingest_batch_task(
+    library: str | None = None,
+    source_type: str | None = None,
+) -> dict:
+    """批量入库：所有 pending/failed 文档。"""
+    from services import document_service
+
+    async def _run() -> dict:
+        async with get_worker_session_factory()() as session:
+            try:
+                result = await document_service.ingest_batch(
+                    session, library=library, source_type=source_type
+                )
+                await session.commit()
+                return result
+            except Exception:
+                await session.rollback()
+                raise
+
+    try:
+        return _run_async(_run())
+    except Exception:
+        logger.exception("celery ingest_batch_task failed: library=%s", library)
+        raise
