@@ -1350,3 +1350,43 @@ class CrawledPage(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     crawl_task: Mapped["CrawlTask"] = relationship(back_populates="pages")
+
+
+class DocumentLibrary(Base):
+    __tablename__ = "document_libraries"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[str] = mapped_column(String(500), default="")
+    document_count: Mapped[int] = mapped_column(Integer, default=0)
+    total_chunks: Mapped[int] = mapped_column(Integer, default=0)
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class Document(Base):
+    __tablename__ = "documents"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    title: Mapped[str] = mapped_column(String(500), default="")
+    content: Mapped[str] = mapped_column(Text, default="")
+    library: Mapped[str] = mapped_column(String(200), nullable=False)
+    version: Mapped[str] = mapped_column(String(200), default="")
+    source_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    ingest_status: Mapped[str] = mapped_column(String(20), default="pending")
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)

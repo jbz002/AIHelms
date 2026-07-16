@@ -1,11 +1,13 @@
 """文档上传服务：提取文件内容，调用 docs-mcp ingest-raw 入库。"""
 
+import hashlib
 import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.db import DocUploadRecord
-from repositories import doc_upload_repo
+from models.db import DocUploadRecord, Document
+from repositories import doc_upload_repo, document_repo
+from services import document_library_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
 logger = logging.getLogger(__name__)
@@ -155,6 +157,11 @@ async def upload_document(
     )
     record = await doc_upload_repo.create(session, record)
 
+    # 同步知识库到平台 DB
+    await document_library_service.ensure_library_exists(
+        session=session, name=library, created_by=created_by
+    )
+
     try:
         await doc_upload_repo.update_status(session, record.id, "extracting")
         content = await _extract_text(file_bytes, file_name)
@@ -213,6 +220,34 @@ async def ingest_upload(session: AsyncSession, record_id: int) -> dict:
             session, record.id, "completed", chunk_count=ingested
         )
         await session.refresh(record)
+
+        # 同步文档记录到平台 DB
+        content_hash = hashlib.sha256(
+            record.extracted_content.encode("utf-8")
+        ).hexdigest()
+        existing = await document_repo.find_by_source(session, "upload", record.id)
+        if existing is None:
+            doc = Document(
+                title=record.file_name,
+                content=record.extracted_content,
+                library=record.library,
+                version=record.version,
+                source_type="upload",
+                source_id=record.id,
+                chunk_count=ingested,
+                ingest_status="ingested",
+                content_hash=content_hash,
+                created_by=record.created_by,
+                metadata_={
+                    "file_name": record.file_name,
+                    "content_type": record.content_type,
+                    "file_size": record.file_size,
+                },
+            )
+            await document_repo.create(session, doc)
+
+        await document_library_service.refresh_document_counts(session, record.library)
+
         return _serialize_record(record)
 
     except DocsMcpError as e:

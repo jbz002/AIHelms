@@ -1,12 +1,14 @@
 """爬取任务服务：crawl-only 模式的任务管理、页面收集、批量入库。"""
 
+import hashlib
 import logging
 
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.db import CrawledPage, CrawlTask
-from repositories import crawl_task_repo, crawled_page_repo
+from models.db import CrawledPage, CrawlTask, Document
+from repositories import crawl_task_repo, crawled_page_repo, document_repo
+from services import document_library_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
 logger = logging.getLogger(__name__)
@@ -122,6 +124,12 @@ async def create_crawl_task(
     task = await crawl_task_repo.create(session, task)
     await crawl_task_repo.update_status(session, task.id, "crawling")
     await session.refresh(task)
+
+    # 同步知识库到平台 DB
+    await document_library_service.ensure_library_exists(
+        session=session, name=library, created_by=created_by, source_url=url
+    )
+
     return _serialize_task(task)
 
 
@@ -266,12 +274,45 @@ async def ingest_crawl_task(
                 documents=documents,
             )
             await crawled_page_repo.mark_ingested(session, [p.id for p in batch])
+
+            # 同步文档记录到平台 DB
+            for p in batch:
+                existing = await document_repo.find_by_source(session, "crawl", p.id)
+                content_hash = hashlib.sha256(
+                    (p.text_content or "").encode("utf-8")
+                ).hexdigest()
+                if existing is None:
+                    doc = Document(
+                        title=p.title or p.url,
+                        content=p.text_content or "",
+                        library=task.library,
+                        version=task.version or "",
+                        source_type="crawl",
+                        source_id=p.id,
+                        ingest_status="ingested",
+                        content_hash=content_hash,
+                        created_by=task.created_by,
+                        metadata_={
+                            "url": p.url,
+                            "crawl_task_id": p.crawl_task_id,
+                            "depth": p.depth,
+                        },
+                    )
+                    await document_repo.create(session, doc)
+                else:
+                    await document_repo.update_ingest_status(
+                        session, existing.id, "ingested"
+                    )
+
             await crawl_task_repo.update_progress(
                 session,
                 task_id,
                 pages_ingested=task.pages_ingested + len(batch),
             )
             await session.refresh(task)
+
+        # 刷新知识库文档计数
+        await document_library_service.refresh_document_counts(session, task.library)
 
         await crawl_task_repo.update_status(session, task_id, "ingested")
         await session.refresh(task)
