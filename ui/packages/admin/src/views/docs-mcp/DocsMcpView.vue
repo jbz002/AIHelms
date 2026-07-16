@@ -3,30 +3,26 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import {
   getDocsMcpStats,
   getDocsMcpLibraries,
-  createDocsMcpJob,
   createCrawlTask,
   getDocsMcpEventSourceUrl,
   fetchDocsMcpUrl,
   toast,
   type DocsMcpStats,
   type DocsMcpLibrary,
-  type DocsMcpCreateJobParams,
   type DocsMcpScrapeOptions,
-  type DocUploadRecord,
 } from '@aihelms/shared'
 import { Loader2, Globe, Copy, X, ChevronDown, Plus, Upload } from 'lucide-vue-next'
 import AnalyticsCards from './components/AnalyticsCards.vue'
 import LibraryList from './components/LibraryList.vue'
 import ScrapeJobDialog from './components/ScrapeJobDialog.vue'
 import UploadDialog from './components/UploadDialog.vue'
-import CrawlTaskList from './components/CrawlTaskList.vue'
-import UploadRecordList from './components/UploadRecordList.vue'
+import TaskRecordList from './components/TaskRecordList.vue'
 
 const stats = ref<DocsMcpStats | null>(null)
 const libraries = ref<DocsMcpLibrary[]>([])
 const showScrapeDialog = ref(false)
 const showUploadDialog = ref(false)
-const uploadRecordListRef = ref<InstanceType<typeof UploadRecordList> | null>(null)
+const taskRecordListRef = ref<InstanceType<typeof TaskRecordList> | null>(null)
 let eventSource: EventSource | null = null
 
 // Fetch URL state
@@ -83,12 +79,14 @@ function connectSSE(): void {
   eventSource.addEventListener('job-status-change', () => {
     loadLibraries()
     loadStats()
+    taskRecordListRef.value?.loadTasks()
   })
   eventSource.addEventListener('job-progress', () => {
     loadLibraries()
   })
   eventSource.addEventListener('job-list-change', () => {
     loadLibraries()
+    taskRecordListRef.value?.loadTasks()
   })
   eventSource.addEventListener('library-change', () => {
     loadLibraries()
@@ -114,37 +112,21 @@ async function loadStats(): Promise<void> {
   } catch { /* silent */ }
 }
 
-async function handleSubmitJob(params: { url: string; library: string; version: string; options: DocsMcpScrapeOptions; ingestMode: 'direct' | 'crawl-only' }): Promise<void> {
-  if (params.ingestMode === 'crawl-only') {
-    try {
-      await createCrawlTask({ url: params.url, library: params.library, version: params.version, options: params.options })
-      toast.success('爬取任务已创建（仅爬取，不入库）')
-      showScrapeDialog.value = false
-    } catch (e) {
-      toast.error((e as Error).message || '创建失败')
-    }
-    return
-  }
-
-  const createParams: DocsMcpCreateJobParams = {
-    url: params.url,
-    library: params.library,
-    version: params.version,
-    options: params.options,
-  }
+async function handleSubmitJob(params: { url: string; library: string; version: string; options: DocsMcpScrapeOptions }): Promise<void> {
   try {
-    await createDocsMcpJob(createParams)
+    await createCrawlTask({ url: params.url, library: params.library, version: params.version, options: params.options })
     toast.success('爬取任务已创建')
     showScrapeDialog.value = false
+    taskRecordListRef.value?.loadTasks()
   } catch (e) {
     toast.error((e as Error).message || '创建失败')
   }
 }
 
-async function handleUploaded(_record: DocUploadRecord): Promise<void> {
+async function handleUploaded(): Promise<void> {
   await loadLibraries()
   await loadStats()
-  uploadRecordListRef.value?.loadRecords()
+  taskRecordListRef.value?.loadTasks()
 }
 
 onMounted(() => {
@@ -245,9 +227,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <CrawlTaskList />
-
-    <UploadRecordList ref="uploadRecordListRef" @refresh="loadLibraries(); loadStats()" />
+    <TaskRecordList ref="taskRecordListRef" @refresh="loadLibraries(); loadStats()" />
 
     <LibraryList :libraries="libraries" />
 

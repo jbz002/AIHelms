@@ -159,9 +159,7 @@ async def upload_document(
         await doc_upload_repo.update_status(session, record.id, "extracting")
         content = await _extract_text(file_bytes, file_name)
 
-        await doc_upload_repo.update_extracted_content(
-            session, record.id, content
-        )
+        await doc_upload_repo.update_extracted_content(session, record.id, content)
         await doc_upload_repo.update_status(session, record.id, "extracted")
         await session.refresh(record)
 
@@ -179,9 +177,7 @@ async def upload_document(
         return _serialize_record(record)
 
 
-async def ingest_upload(
-    session: AsyncSession, record_id: int
-) -> dict:
+async def ingest_upload(session: AsyncSession, record_id: int) -> dict:
     """将已提取内容的上传记录入库到 docs-mcp。"""
     record = await doc_upload_repo.find_by_id(session, record_id)
     if record is None:
@@ -224,6 +220,11 @@ async def ingest_upload(
         )
         await session.refresh(record)
         return _serialize_record(record)
+
+
+async def delete_upload(session: AsyncSession, record_id: int) -> None:
+    """删除一条上传记录。"""
+    await doc_upload_repo.delete(session, record_id)
 
 
 async def list_upload_records(

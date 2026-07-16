@@ -14,6 +14,9 @@ import type {
   CrawlTask,
   CrawlTaskListResult,
   CrawlPageListResult,
+  DocTaskSource,
+  DocTaskStatus,
+  DocTaskListResult,
 } from '../types/docs-mcp'
 
 export function getDocsMcpStats() {
@@ -179,6 +182,18 @@ export function ingestCrawlTask(taskId: number) {
 
 export function deleteCrawlTask(taskId: number) {
   return request<void>('/api/v1/docs-mcp/crawl-tasks/{taskId}'.replace('{taskId}', String(taskId)), {
+    method: 'DELETE',
+  })
+}
+
+export function getDocTasks(source?: DocTaskSource, status?: DocTaskStatus, page?: number, pageSize?: number) {
+  return request<DocTaskListResult>('/api/v1/docs-mcp/tasks', {
+    params: { source, status, page, page_size: pageSize } as Record<string, string | number | undefined>,
+  })
+}
+
+export function deleteUploadRecord(recordId: number) {
+  return request<void>(`/api/v1/docs-mcp/uploads/${recordId}`, {
     method: 'DELETE',
   })
 }

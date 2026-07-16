@@ -175,3 +175,32 @@ export interface CrawlPageListResult {
   page: number
   page_size: number
 }
+
+export type DocTaskSource = 'external_crawl' | 'internal_upload'
+export type DocTaskStatus = 'pending' | 'processing' | 'ready' | 'ingesting' | 'ingested' | 'failed'
+
+export interface DocTask {
+  key: string
+  source: DocTaskSource
+  raw_id: number
+  library: string
+  version: string
+  title: string
+  subtitle: string
+  status_raw: string
+  status: DocTaskStatus
+  progress_text: string
+  extracted_content_preview: string
+  error_message: string
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  can_ingest: boolean
+}
+
+export interface DocTaskListResult {
+  items: DocTask[]
+  total: number
+  page: number
+  page_size: number
+}

@@ -93,9 +93,7 @@ async def create_job(body: dict, _: dict = Depends(get_current_user)):
             **additional_options,
         }
 
-        logger.info(
-            "create_job: library=%s, version=%s", library, version
-        )
+        logger.info("create_job: library=%s, version=%s", library, version)
 
         result = await docs_mcp_client.enqueue_scrape_job(
             library=library,
@@ -414,7 +412,6 @@ async def upload_document(
     auto_ingest: bool = Form(True),
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user),
-    session = Depends(get_db),
 ):
     """上传本地文档，提取内容。auto_ingest=true 时自动入库，false 时仅提取。"""
     if not library.strip():
@@ -431,21 +428,25 @@ async def upload_document(
         return {"code": 400, "message": "文件内容为空", "data": None}
 
     import os
+
     _, ext = os.path.splitext(file.filename.lower())
     from services.doc_upload_service import ALL_SUPPORTED_EXTENSIONS
+
     if ext not in ALL_SUPPORTED_EXTENSIONS:
         return {"code": 400, "message": f"不支持的文件格式: {ext}", "data": None}
 
     created_by = current_user.get("id") if isinstance(current_user, dict) else None
-    record = await doc_upload_service.upload_document(
-        session=session,
-        file_bytes=file_bytes,
-        file_name=file.filename,
-        library=library.strip(),
-        version=version.strip() or None,
-        created_by=created_by,
-        auto_ingest=auto_ingest,
-    )
+    async with async_session() as session:
+        record = await doc_upload_service.upload_document(
+            session=session,
+            file_bytes=file_bytes,
+            file_name=file.filename,
+            library=library.strip(),
+            version=version.strip() or None,
+            created_by=created_by,
+            auto_ingest=auto_ingest,
+        )
+        await session.commit()
 
     if record["status"] == "failed":
         return {
@@ -469,9 +470,7 @@ async def ingest_upload(
 
     async with async_session() as session:
         try:
-            result = await doc_upload_service.ingest_upload(
-                session, record_id
-            )
+            result = await doc_upload_service.ingest_upload(session, record_id)
             await session.commit()
             if result["status"] == "failed":
                 return {
@@ -490,7 +489,7 @@ async def list_uploads(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     _: dict = Depends(get_current_user),
-    session = Depends(get_db),
+    session=Depends(get_db),
 ):
     """查询文档上传记录，可按文档库筛选。"""
     result = await doc_upload_service.list_upload_records(
@@ -500,6 +499,40 @@ async def list_uploads(
         page_size=page_size,
     )
     return {"code": 200, "message": "ok", "data": result}
+
+
+@router.get("/tasks", summary="查询文档任务列表")
+async def list_doc_tasks(
+    source: str | None = Query(None),
+    status: str | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    _: dict = Depends(get_current_user),
+):
+    """合并查询爬取任务与上传记录，按创建时间倒序统一分页。"""
+    from services import doc_task_service
+
+    async with async_session() as session:
+        result = await doc_task_service.list_tasks(
+            session=session,
+            source=source,
+            status=status,
+            page=page,
+            page_size=page_size,
+        )
+    return {"code": 200, "message": "ok", "data": result}
+
+
+@router.delete("/uploads/{record_id}", summary="删除上传记录")
+async def delete_upload(
+    record_id: int,
+    _: dict = Depends(get_current_user),
+):
+    """删除一条上传记录。"""
+    async with async_session() as session:
+        await doc_upload_service.delete_upload(session, record_id)
+        await session.commit()
+    return {"code": 200, "message": "上传记录已删除", "data": None}
 
 
 # ── Crawl Tasks（crawl-only 解耦模式） ──

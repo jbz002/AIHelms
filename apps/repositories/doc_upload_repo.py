@@ -2,6 +2,7 @@
 
 from datetime import datetime
 
+from sqlalchemy import delete as sql_delete
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,9 +18,7 @@ async def create(session: AsyncSession, record: DocUploadRecord) -> DocUploadRec
     return record
 
 
-async def find_by_id(
-    session: AsyncSession, record_id: int
-) -> DocUploadRecord | None:
+async def find_by_id(session: AsyncSession, record_id: int) -> DocUploadRecord | None:
     result = await session.execute(
         select(DocUploadRecord).where(DocUploadRecord.id == record_id)
     )
@@ -97,4 +96,11 @@ async def update_extracted_content(
     if record is None:
         return
     record.extracted_content = content
+    await session.flush()
+
+
+async def delete(session: AsyncSession, record_id: int) -> None:
+    await session.execute(
+        sql_delete(DocUploadRecord).where(DocUploadRecord.id == record_id)
+    )
     await session.flush()
