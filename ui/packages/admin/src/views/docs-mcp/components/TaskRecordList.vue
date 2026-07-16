@@ -73,6 +73,33 @@ function fmtTime(iso: string | null): string {
   return iso.replace('T', ' ').slice(0, 19)
 }
 
+function displayUrl(currentUrl: string, sourceUrl: string): string {
+  if (!currentUrl || !sourceUrl) return currentUrl
+  const base = sourceUrl.replace(/\/+$/, '')
+  if (currentUrl.startsWith(base + '/')) {
+    const rel = currentUrl.slice(base.length)
+    // 剥离后只剩 "/" 或空，说明当前 URL 就是起始页，显示完整 URL 最后一段路径
+    if (!rel || rel === '/') {
+      try {
+        return new URL(currentUrl).pathname
+      } catch {
+        return currentUrl
+      }
+    }
+    return rel
+  }
+  // 按路径段找公共前缀
+  const curParts = currentUrl.split('/')
+  const srcParts = base.split('/')
+  let common = 0
+  for (let i = 0; i < curParts.length && i < srcParts.length; i++) {
+    if (curParts[i] === srcParts[i]) common++
+    else break
+  }
+  if (common >= 3) return '/' + curParts.slice(common).join('/')
+  return currentUrl
+}
+
 async function loadTasks(): Promise<void> {
   loading.value = true
   try {
@@ -196,6 +223,13 @@ defineExpose({ loadTasks })
               <a v-if="task.source === 'external_crawl'" :href="task.subtitle" target="_blank" class="truncate max-w-[220px] hover:text-blue-600">{{ task.subtitle }}</a>
               <span v-else class="truncate">{{ task.subtitle }}</span>
               <span v-if="task.progress_text">{{ task.progress_text }}</span>
+            </div>
+            <div v-if="task.source === 'external_crawl' && task.status === 'processing' && task.current_url" class="mt-0.5 flex items-center gap-1.5 text-xs text-blue-600">
+              <span class="relative flex h-2 w-2">
+                <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+                <span class="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+              </span>
+              <a :href="task.current_url" target="_blank" class="truncate max-w-[280px] hover:text-blue-800">{{ displayUrl(task.current_url, task.subtitle) }}</a>
             </div>
           </div>
           <span :class="['shrink-0 rounded-full px-2 py-0.5 text-xs font-medium', statusConfig[task.status].cls]">

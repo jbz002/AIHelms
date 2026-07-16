@@ -1214,6 +1214,8 @@ CREATE TABLE IF NOT EXISTS aihelms.crawl_tasks (
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     pages_total INT DEFAULT 0,
     pages_crawled INT DEFAULT 0,
+    current_url TEXT NOT NULL DEFAULT '',
+    pages_ingested INT NOT NULL DEFAULT 0,
     error_message TEXT DEFAULT '',
     scraper_options JSONB DEFAULT '{}',
     auto_ingest BOOLEAN NOT NULL DEFAULT FALSE,

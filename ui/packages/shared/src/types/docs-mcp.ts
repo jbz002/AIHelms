@@ -142,6 +142,8 @@ export interface CrawlTask {
   status: 'pending' | 'crawling' | 'crawled' | 'ingesting' | 'ingested' | 'failed'
   pages_total: number
   pages_crawled: number
+  pages_ingested: number
+  current_url: string
   error_message: string
   created_by: number | null
   created_at: string
@@ -190,6 +192,7 @@ export interface DocTask {
   status_raw: string
   status: DocTaskStatus
   progress_text: string
+  current_url: string
   extracted_content_preview: string
   error_message: string
   created_at: string

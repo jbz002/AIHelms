@@ -25,6 +25,10 @@ _ADVISORY_KEY = 91020250716
 _RECONNECT_BACKOFF = 2.0
 _RECONNECT_MAX = 60.0
 
+# 调试：记录最近 N 条 SSE 原始事件
+_DEBUG_LAST_EVENTS: list[str] = []
+_DEBUG_MAX = 20
+
 
 async def run_docs_mcp_event_subscriber() -> None:
     """订阅器入口：抢 advisory lock，抢到才跑消费循环，否则退出。"""
@@ -51,6 +55,7 @@ async def run_docs_mcp_event_subscriber() -> None:
 
 async def _consume_loop() -> None:
     url = f"{settings.docs_mcp_server_url.rstrip('/')}/api/events"
+    logger.info("docs-mcp subscriber: connecting to %s", url)
     backoff = _RECONNECT_BACKOFF
 
     while True:
@@ -60,6 +65,7 @@ async def _consume_loop() -> None:
                 async with client.stream("GET", url) as resp:
                     if resp.status_code >= 400:
                         raise RuntimeError(f"upstream {resp.status_code}")
+                    logger.info("docs-mcp subscriber: connected, status=%d", resp.status_code)
                     backoff = _RECONNECT_BACKOFF
                     current_event: str | None = None
                     current_data = ""
@@ -69,6 +75,11 @@ async def _consume_loop() -> None:
                         elif line.startswith("data: "):
                             current_data = line[6:]
                         elif line == "" and current_event:
+                            logger.debug(
+                                "[SSE raw] event=%s data=%s",
+                                current_event,
+                                current_data[:500],
+                            )
                             await _dispatch_event(current_event, current_data)
                             current_event = None
                             current_data = ""
@@ -83,11 +94,21 @@ async def _consume_loop() -> None:
 
 
 async def _dispatch_event(event_name: str, data_str: str) -> None:
-    if event_name not in ("page-scraped", "job-status-change"):
+    # 调试：记录所有事件
+    _DEBUG_LAST_EVENTS.append(f"[{event_name}] {data_str[:300]}")
+    if len(_DEBUG_LAST_EVENTS) > _DEBUG_MAX:
+        _DEBUG_LAST_EVENTS.pop(0)
+
+    if event_name not in ("page-scraped", "job-status-change", "job-progress"):
+        logger.info("[SSE ignored] event=%s data=%s", event_name, data_str[:300])
         return
+
+    logger.info("[SSE received] event=%s data=%s", event_name, data_str[:500])
+
     try:
         payload = json.loads(data_str)
     except (json.JSONDecodeError, TypeError):
+        logger.warning("[SSE] json parse failed for event=%s: %s", event_name, data_str[:200])
         return
 
     if event_name == "page-scraped":
@@ -103,26 +124,49 @@ async def _dispatch_event(event_name: str, data_str: str) -> None:
             logger.exception("handle page-scraped failed: job=%s", job_id)
         return
 
-    # job-status-change
-    job_id = payload.get("id")
-    status = payload.get("status")
-    if not job_id or not status:
+    if event_name == "job-status-change":
+        job_id = payload.get("id")
+        status = payload.get("status")
+        if not job_id or not status:
+            return
+        error = payload.get("error")
+        error_message = error.get("message") if isinstance(error, dict) else None
+
+        task = None
+        try:
+            async with async_session() as session:
+                task = await crawl_task_service.handle_job_completed(
+                    session, job_id, status, error_message
+                )
+                await session.commit()
+        except Exception:
+            logger.exception("handle job-status-change failed: job=%s", job_id)
+
+        if task is not None and status == "completed" and task.auto_ingest:
+            from tasks.doc_tasks import ingest_crawl_task
+
+            ingest_crawl_task.delay(task.id)
+            logger.info("auto ingest dispatched for crawl task %s", task.id)
         return
-    error = payload.get("error")
-    error_message = error.get("message") if isinstance(error, dict) else None
 
-    task = None
-    try:
-        async with async_session() as session:
-            task = await crawl_task_service.handle_job_completed(
-                session, job_id, status, error_message
-            )
-            await session.commit()
-    except Exception:
-        logger.exception("handle job-status-change failed: job=%s", job_id)
-
-    if task is not None and status == "completed" and task.auto_ingest:
-        from tasks.doc_tasks import ingest_crawl_task
-
-        ingest_crawl_task.delay(task.id)
-        logger.info("auto ingest dispatched for crawl task %s", task.id)
+    if event_name == "job-progress":
+        job_id = payload.get("id")
+        logger.info(
+            "[job-progress] job_id=%s progress=%s",
+            job_id,
+            json.dumps(payload.get("progress"), ensure_ascii=False)[:500],
+        )
+        if not job_id:
+            return
+        progress = payload.get("progress")
+        if not progress or not isinstance(progress, dict):
+            logger.warning("[job-progress] missing/invalid progress in payload: %s", data_str[:300])
+            return
+        try:
+            async with async_session() as session:
+                await crawl_task_service.handle_job_progress(session, job_id, progress)
+                await session.commit()
+            logger.info("[job-progress] handled OK for job=%s", job_id)
+        except Exception:
+            logger.exception("handle job-progress failed: job=%s", job_id)
+        return

@@ -83,6 +83,7 @@ function connectSSE(): void {
   })
   eventSource.addEventListener('job-progress', () => {
     loadLibraries()
+    taskRecordListRef.value?.loadTasks()
   })
   eventSource.addEventListener('job-list-change', () => {
     loadLibraries()

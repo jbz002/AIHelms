@@ -15,9 +15,7 @@ logger = logging.getLogger(__name__)
 INGEST_BYTE_BUDGET = 512 * 1024
 
 
-def _chunk_by_bytes(
-    pages: list[CrawledPage], budget: int
-) -> list[list[CrawledPage]]:
+def _chunk_by_bytes(pages: list[CrawledPage], budget: int) -> list[list[CrawledPage]]:
     """按累计 text_content 字节切批，单批 ≤ budget；单页超 budget 自成一批。"""
     batches: list[list[CrawledPage]] = []
     batch: list[CrawledPage] = []
@@ -46,6 +44,8 @@ def _serialize_task(task: CrawlTask) -> dict:
         "status": task.status,
         "pages_total": task.pages_total,
         "pages_crawled": task.pages_crawled,
+        "pages_ingested": task.pages_ingested,
+        "current_url": task.current_url,
         "error_message": task.error_message,
         "created_by": task.created_by,
         "created_at": task.created_at.isoformat() if task.created_at else None,
@@ -125,6 +125,43 @@ async def create_crawl_task(
     return _serialize_task(task)
 
 
+async def handle_job_progress(
+    session: AsyncSession,
+    job_id: str,
+    progress: dict,
+) -> None:
+    """处理 job-progress SSE 事件：更新进度字段。
+
+    progress 包含 pagesScraped, totalPages, totalDiscovered, currentUrl。
+    totalPages 受 scraper_options.maxPages 限制。
+    """
+    logger.info(
+        "handle_job_progress: job_id=%s progress_keys=%s",
+        job_id,
+        list(progress.keys()),
+    )
+    task = await crawl_task_repo.find_by_job_id(session, job_id)
+    if task is None:
+        logger.warning("handle_job_progress: task not found for job_id=%s", job_id)
+        return
+
+    total_pages = progress.get("totalPages", 0)
+    pages_scraped = progress.get("pagesScraped", 0)
+    current_url = progress.get("currentUrl", "")
+
+    max_pages = task.scraper_options.get("maxPages") if task.scraper_options else None
+    if max_pages and total_pages > 0:
+        total_pages = min(total_pages, max_pages)
+
+    await crawl_task_repo.update_progress(
+        session,
+        task.id,
+        pages_total=total_pages,
+        pages_crawled=pages_scraped,
+        current_url=current_url,
+    )
+
+
 async def handle_page_scraped(
     session: AsyncSession,
     job_id: str,
@@ -152,7 +189,6 @@ async def handle_page_scraped(
         etag=page.get("etag"),
         last_modified=page.get("lastModified"),
     )
-    await crawl_task_repo.increment_pages_crawled(session, task.id)
 
 
 async def handle_job_completed(
@@ -230,6 +266,12 @@ async def ingest_crawl_task(
                 documents=documents,
             )
             await crawled_page_repo.mark_ingested(session, [p.id for p in batch])
+            await crawl_task_repo.update_progress(
+                session,
+                task_id,
+                pages_ingested=task.pages_ingested + len(batch),
+            )
+            await session.refresh(task)
 
         await crawl_task_repo.update_status(session, task_id, "ingested")
         await session.refresh(task)
