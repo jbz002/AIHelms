@@ -576,6 +576,7 @@ async def create_crawl_task(
                 version=version or None,
                 scraper_options=scraper_options,
                 created_by=created_by,
+                auto_ingest=body.get("auto_ingest", False),
             )
             await session.commit()
             return {"code": 200, "message": "爬取任务创建成功", "data": result}

@@ -1216,6 +1216,7 @@ CREATE TABLE IF NOT EXISTS aihelms.crawl_tasks (
     pages_crawled INT DEFAULT 0,
     error_message TEXT DEFAULT '',
     scraper_options JSONB DEFAULT '{}',
+    auto_ingest BOOLEAN NOT NULL DEFAULT FALSE,
     created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     started_at TIMESTAMPTZ,

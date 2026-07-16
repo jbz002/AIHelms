@@ -54,6 +54,7 @@ async def create_crawl_task(
     version: str | None,
     scraper_options: dict,
     created_by: int | None,
+    auto_ingest: bool = False,
 ) -> dict:
     """创建 crawl-only 任务：写入平台 DB → 调 docs-mcp scrape（crawlOnly=true）。"""
     task = CrawlTask(
@@ -63,6 +64,7 @@ async def create_crawl_task(
         status="pending",
         scraper_options=scraper_options,
         created_by=created_by,
+        auto_ingest=auto_ingest,
     )
     task = await crawl_task_repo.create(session, task)
 
@@ -131,6 +133,12 @@ async def handle_job_completed(
     if status == "completed":
         new_status = "crawled"
         await crawl_task_repo.update_status(session, task.id, new_status)
+        await session.refresh(task)
+        if task.auto_ingest:
+            try:
+                await ingest_crawl_task(session, task.id)
+            except Exception as e:
+                logger.error("auto ingest failed for crawl task %s: %s", task.id, str(e))
     elif status == "failed":
         await crawl_task_repo.update_status(
             session,

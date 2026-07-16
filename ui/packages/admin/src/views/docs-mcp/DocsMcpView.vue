@@ -112,9 +112,9 @@ async function loadStats(): Promise<void> {
   } catch { /* silent */ }
 }
 
-async function handleSubmitJob(params: { url: string; library: string; version: string; options: DocsMcpScrapeOptions }): Promise<void> {
+async function handleSubmitJob(params: { url: string; library: string; version: string; options: DocsMcpScrapeOptions; ingestMode: string }): Promise<void> {
   try {
-    await createCrawlTask({ url: params.url, library: params.library, version: params.version, options: params.options })
+    await createCrawlTask({ url: params.url, library: params.library, version: params.version, options: params.options, auto_ingest: params.ingestMode === 'direct' })
     toast.success('爬取任务已创建')
     showScrapeDialog.value = false
     taskRecordListRef.value?.loadTasks()

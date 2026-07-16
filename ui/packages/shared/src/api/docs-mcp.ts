@@ -151,7 +151,7 @@ export function getDocUploadRecords(library?: string, page = 1, pageSize = 20) {
   })
 }
 
-export function createCrawlTask(params: { url: string; library: string; version: string; options: DocsMcpScrapeOptions }) {
+export function createCrawlTask(params: { url: string; library: string; version: string; options: DocsMcpScrapeOptions; auto_ingest?: boolean }) {
   return request<CrawlTask>('/api/v1/docs-mcp/crawl-tasks', {
     method: 'POST',
     body: params,

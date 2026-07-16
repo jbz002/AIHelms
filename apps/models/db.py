@@ -1313,6 +1313,7 @@ class CrawlTask(Base):
     created_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
     )
+    auto_ingest: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
