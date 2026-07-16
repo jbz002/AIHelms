@@ -115,13 +115,13 @@ function formatFileSize(bytes: number): string {
                 </template>
                 <template v-else>
                   <p class="text-gray-500">点击选择文件或拖拽到此处</p>
-                  <p class="text-xs text-gray-400 mt-0.5">支持 Markdown、TXT、CSV、JSON、YAML、HTML、代码文件</p>
+                  <p class="text-xs text-gray-400 mt-0.5">支持 Markdown、TXT、CSV、JSON、YAML、HTML、代码文件、PDF、Office 文档、图片</p>
                 </template>
               </div>
               <input
                 type="file"
                 class="hidden"
-                accept=".md,.markdown,.txt,.csv,.json,.yaml,.yml,.xml,.html,.htm,.log,.py,.js,.ts,.sql,.sh,.rst,.toml,.ini,.cfg"
+                accept=".md,.markdown,.txt,.csv,.json,.yaml,.yml,.xml,.html,.htm,.log,.py,.js,.ts,.sql,.sh,.rst,.toml,.ini,.cfg,.pdf,.docx,.xlsx,.pptx,.odt,.ods,.odp,.epub,.png,.jpg,.jpeg,.tiff,.bmp,.webp"
                 @change="handleFileChange"
               />
             </label>

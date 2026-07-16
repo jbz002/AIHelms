@@ -10,7 +10,7 @@ from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
 logger = logging.getLogger(__name__)
 
-# v1 支持的纯文本格式（无需额外依赖即可提取）
+# 纯文本格式（直接解码，无需 docling）
 SUPPORTED_EXTENSIONS: dict[str, str] = {
     ".md": "text/markdown",
     ".markdown": "text/markdown",
@@ -37,19 +37,54 @@ SUPPORTED_EXTENSIONS: dict[str, str] = {
     ".dockerignore": "text/plain",
 }
 
+# 二进制格式（需要 docling-serve 转换）
+BINARY_EXTENSIONS: dict[str, str] = {
+    ".pdf": "application/pdf",
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ".pptx": (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    ),
+    ".odt": "application/vnd.oasis.opendocument.text",
+    ".ods": "application/vnd.oasis.opendocument.spreadsheet",
+    ".odp": "application/vnd.oasis.opendocument.presentation",
+    ".epub": "application/epub+zip",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".tiff": "image/tiff",
+    ".bmp": "image/bmp",
+    ".webp": "image/webp",
+}
+
+ALL_SUPPORTED_EXTENSIONS: dict[str, str] = {**SUPPORTED_EXTENSIONS, **BINARY_EXTENSIONS}
+
 
 def _detect_content_type(file_name: str) -> str:
     """根据文件扩展名推断 MIME 类型。"""
     import os
 
     _, ext = os.path.splitext(file_name.lower())
-    return SUPPORTED_EXTENSIONS.get(ext, "text/plain")
+    return ALL_SUPPORTED_EXTENSIONS.get(ext, "application/octet-stream")
+
+
+def _is_binary_format(file_name: str) -> bool:
+    """判断文件是否为二进制格式（需要 docling-serve 转换）。"""
+    import os
+
+    _, ext = os.path.splitext(file_name.lower())
+    return ext in BINARY_EXTENSIONS
 
 
 def _extract_text(file_bytes: bytes, file_name: str) -> str:
-    """从文件字节中提取文本内容。v1 仅支持纯文本格式。"""
+    """提取文本内容。纯文本直接解码，二进制格式通过 docling-serve 转换。"""
+    if _is_binary_format(file_name):
+        return _extract_binary(file_bytes, file_name)
+    return _extract_plain_text(file_bytes, file_name)
 
-    # 尝试 UTF-8 解码，失败则尝试 GBK（中文文档常见）
+
+def _extract_plain_text(file_bytes: bytes, file_name: str) -> str:
+    """纯文本文件直接解码。"""
     for encoding in ("utf-8", "gbk", "latin-1"):
         try:
             return file_bytes.decode(encoding)
@@ -57,6 +92,19 @@ def _extract_text(file_bytes: bytes, file_name: str) -> str:
             continue
 
     raise ValueError(f"无法解码文件 {file_name}，仅支持文本格式")
+
+
+def _extract_binary(file_bytes: bytes, file_name: str) -> str:
+    """二进制文件通过 docling-serve 转换为 Markdown。"""
+    from services.docling_client import docling_client
+
+    content_type = _detect_content_type(file_name)
+    return docling_client.convert_file(
+        file_bytes=file_bytes,
+        file_name=file_name,
+        content_type=content_type,
+        do_ocr=True,
+    )
 
 
 def _serialize_record(record: DocUploadRecord) -> dict:
@@ -133,7 +181,12 @@ async def upload_document(
         return _serialize_record(record)
 
     except Exception as e:
-        logger.error("document upload failed: %s", str(e), exc_info=True)
+        from services.docling_client import DoclingError
+
+        if isinstance(e, DoclingError):
+            logger.error("docling-serve convert failed: %s", str(e))
+        else:
+            logger.error("document upload failed: %s", str(e), exc_info=True)
         await doc_upload_repo.update_status(
             session, record.id, "failed", error_message=str(e)[:500]
         )

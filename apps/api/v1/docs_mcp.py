@@ -429,6 +429,12 @@ async def upload_document(
     if len(file_bytes) == 0:
         return {"code": 400, "message": "文件内容为空", "data": None}
 
+    import os
+    _, ext = os.path.splitext(file.filename.lower())
+    from services.doc_upload_service import ALL_SUPPORTED_EXTENSIONS
+    if ext not in ALL_SUPPORTED_EXTENSIONS:
+        return {"code": 400, "message": f"不支持的文件格式: {ext}", "data": None}
+
     created_by = current_user.get("id") if isinstance(current_user, dict) else None
     record = await doc_upload_service.upload_document(
         session=session,

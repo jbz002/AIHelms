@@ -324,6 +324,9 @@ onMounted(loadData)
               ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-sm'
               : 'text-slate-600 hover:text-slate-900'"
             @click="typeFilter = opt.key as 'all' | 'skill' | 'mcp'"
+          >
+            {{ opt.label }}
+          </button>
         </div>
         <div class="relative flex-1 max-w-xs">
           <Search class="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />

@@ -83,3 +83,6 @@ dev/test/
 
 # Claude Code worktrees (local only)
 .claude/worktrees/
+
+# Code graph (local tool database)
+.codegraph/

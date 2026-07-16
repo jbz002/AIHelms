@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     docs_mcp_server_port: int = 6280
     docs_mcp_web_port: int = 6281
 
+    # docling-serve（文档格式转换：PDF/DOCX/PPTX 等 → Markdown）
+    docling_serve_url: str = "http://localhost:5001"
+    docling_serve_port: int = 5001
+    docling_convert_timeout: int = 60  # 单文件转换超时（秒）
+
     # LLM 调用日志同步与清理
     llm_log_sync_interval_minutes: int = 5
     llm_log_retention_days: int = 0  # 0 = 不清理

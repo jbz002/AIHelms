@@ -70,7 +70,7 @@ async function loadApplications(): Promise<void> {
 
 async function loadUsers(): Promise<void> {
   try {
-    const res = await getUsers(1, 200)
+    const res = await getUsers(1, 100)
     users.value = res.items
   } catch (e) {
     toast.error((e as { message?: string }).message || '申请人列表加载失败')
