@@ -91,6 +91,7 @@ function connectSSE(): void {
   eventSource.addEventListener('library-change', () => {
     loadLibraries()
     loadStats()
+    taskRecordListRef.value?.loadTasks()
   })
   eventSource.onerror = () => {
     if (eventSource) {

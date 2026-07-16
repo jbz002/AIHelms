@@ -178,14 +178,16 @@ async def upload_document(
 
 
 async def ingest_upload(session: AsyncSession, record_id: int) -> dict:
-    """将已提取内容的上传记录入库到 docs-mcp。"""
+    """将已提取内容的上传记录入库到 docs-mcp。支持 failed 状态重试。"""
     record = await doc_upload_repo.find_by_id(session, record_id)
     if record is None:
         raise ValueError(f"upload record {record_id} not found")
-    if record.status != "extracted":
+    if record.status not in ("extracted", "failed"):
         raise ValueError(
-            f"upload record status is {record.status}, expected 'extracted'"
+            f"upload record status is {record.status}, expected extracted or failed"
         )
+    if not record.extracted_content:
+        raise ValueError("文档内容为空，请重新上传")
 
     await doc_upload_repo.update_status(session, record_id, "ingesting")
     await session.refresh(record)

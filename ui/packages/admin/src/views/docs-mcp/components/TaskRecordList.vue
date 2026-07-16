@@ -8,6 +8,7 @@ import {
   ingestUploadRecord,
   deleteCrawlTask,
   deleteUploadRecord,
+  toast,
 } from '@aihelms/shared'
 import {
   ListChecks,
@@ -115,18 +116,15 @@ async function handleIngest(task: DocTask): Promise<void> {
   ingestingKey.value = task.key
   try {
     if (task.source === 'external_crawl') {
-      const res = await ingestCrawlTask(task.raw_id)
-      if (res.status === 'ingested') {
-        await loadTasks()
-        emit('refresh')
-      }
+      await ingestCrawlTask(task.raw_id)
     } else {
-      const res = await ingestUploadRecord(task.raw_id)
-      if (res.status === 'completed') {
-        await loadTasks()
-        emit('refresh')
-      }
+      await ingestUploadRecord(task.raw_id)
     }
+    toast.success('入库任务已提交，后台处理中')
+    await loadTasks()
+    emit('refresh')
+  } catch (e) {
+    toast.error((e as Error).message || '提交入库失败')
   } finally {
     ingestingKey.value = null
   }

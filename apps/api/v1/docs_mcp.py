@@ -1,6 +1,5 @@
 """API文档管理 — docs-mcp-server 反向代理路由。"""
 
-import json
 import logging
 
 import httpx
@@ -296,40 +295,26 @@ async def update_version_options(
 
 @router.get("/events", summary="SSE 实时事件代理")
 async def events_stream():
-    """SSE 事件流代理（无需认证，EventSource 无法携带 Authorization）。
-    拦截 page-scraped 事件持久化到平台 DB，其他事件原样转发给前端。
+    """SSE 事件流纯转发（无需认证，EventSource 无法携带 Authorization）。
+
+    落库由后台订阅器（services/docs_mcp_event_subscriber.py）负责，本端点仅向前端透传进度。
     """
     upstream_url = f"{settings.docs_mcp_server_url}/api/events"
 
     async def generate():
         try:
-            async with httpx.AsyncClient(timeout=60.0, proxy=None) as client:
+            timeout = httpx.Timeout(connect=10.0, read=None, write=10.0, pool=10.0)
+            async with httpx.AsyncClient(timeout=timeout, proxy=None) as client:
                 async with client.stream("GET", upstream_url) as resp:
                     if resp.status_code >= 400:
                         logger.error(
-                            "docs-mcp SSE upstream failed: %d",
-                            resp.status_code,
+                            "docs-mcp SSE upstream failed: %d", resp.status_code
                         )
                         msg = f"upstream {resp.status_code}"
                         yield f'event: error\ndata: {{"message": "{msg}"}}\n\n'
                         return
-
-                    current_event = None
-                    current_data = ""
-
                     async for line in resp.aiter_lines():
-                        if line.startswith("event: "):
-                            current_event = line[7:]
-                        elif line.startswith("data: "):
-                            current_data = line[6:]
-                        elif line == "" and current_event:
-                            await _handle_sse_event(current_event, current_data)
-                            yield f"event: {current_event}\ndata: {current_data}\n\n"
-                            current_event = None
-                            current_data = ""
-                        else:
-                            yield line + "\n"
-
+                        yield line + "\n"
         except httpx.HTTPError as e:
             logger.error("docs-mcp SSE connection error: %s", str(e))
             yield f'event: error\ndata: {{"message": "{str(e)}"}}\n\n'
@@ -343,43 +328,6 @@ async def events_stream():
             "X-Accel-Buffering": "no",
         },
     )
-
-
-async def _handle_sse_event(event_name: str, data: str) -> None:
-    """处理需要服务端动作的 SSE 事件。"""
-    if event_name not in ("page-scraped", "job-status-change"):
-        return
-
-    try:
-        payload = json.loads(data)
-    except (json.JSONDecodeError, TypeError):
-        return
-
-    if event_name == "page-scraped":
-        job_id = payload.get("id")
-        if not job_id:
-            return
-        page = payload.get("page", {})
-        from services import crawl_task_service
-
-        async with async_session() as session:
-            await crawl_task_service.handle_page_scraped(session, job_id, page)
-            await session.commit()
-
-    elif event_name == "job-status-change":
-        job_id = payload.get("id")
-        status = payload.get("status")
-        if not job_id or not status:
-            return
-        error = payload.get("error")
-        error_message = error.get("message") if error else None
-        from services import crawl_task_service
-
-        async with async_session() as session:
-            await crawl_task_service.handle_job_completed(
-                session, job_id, status, error_message
-            )
-            await session.commit()
 
 
 @router.post("/fetch-url", summary="抓取 URL 转 Markdown")
@@ -464,23 +412,11 @@ async def ingest_upload(
     record_id: int,
     current_user: dict = Depends(get_current_user),
 ):
-    """将已提取内容的上传记录入库到 docs-mcp。"""
-    from core.database import async_session
-    from services import doc_upload_service
+    """异步派发上传文档入库任务到 Celery，立即返回。"""
+    from tasks.doc_tasks import ingest_upload_task
 
-    async with async_session() as session:
-        try:
-            result = await doc_upload_service.ingest_upload(session, record_id)
-            await session.commit()
-            if result["status"] == "failed":
-                return {
-                    "code": 500,
-                    "message": f"入库失败: {result['error_message']}",
-                    "data": result,
-                }
-            return {"code": 200, "message": "文档入库成功", "data": result}
-        except ValueError as e:
-            return {"code": 400, "message": str(e), "data": None}
+    ingest_upload_task.delay(record_id)
+    return {"code": 200, "message": "入库任务已提交", "data": None}
 
 
 @router.get("/uploads", summary="查询文档上传记录")
@@ -644,22 +580,16 @@ async def ingest_crawl_task(
     task_id: int,
     _: dict = Depends(get_current_user),
 ):
-    """将 crawl task 的所有页面批量入库到 docs-mcp。"""
+    """异步派发 crawl task 入库任务到 Celery，立即返回。"""
     from services import crawl_task_service
+    from tasks.doc_tasks import ingest_crawl_task as ingest_crawl_task_celery
 
     async with async_session() as session:
-        try:
-            result = await crawl_task_service.ingest_crawl_task(session, task_id)
-            await session.commit()
-            if result["status"] == "ingested":
-                return {"code": 200, "message": "入库成功", "data": result}
-            return {
-                "code": 500,
-                "message": f"入库失败: {result['error_message']}",
-                "data": result,
-            }
-        except ValueError as e:
-            return {"code": 400, "message": str(e), "data": None}
+        task = await crawl_task_service.get_crawl_task(session, task_id)
+    if task is None:
+        return {"code": 404, "message": "爬取任务不存在", "data": None}
+    ingest_crawl_task_celery.delay(task_id)
+    return {"code": 200, "message": "入库任务已提交", "data": task}
 
 
 @router.delete("/crawl-tasks/{task_id}", summary="删除爬取任务")

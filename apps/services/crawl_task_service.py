@@ -11,7 +11,29 @@ from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
 logger = logging.getLogger(__name__)
 
-INGEST_BATCH_SIZE = 50
+# docs-mcp Fastify 默认 bodyLimit 1MB，留半给 JSON/url/title 开销
+INGEST_BYTE_BUDGET = 512 * 1024
+
+
+def _chunk_by_bytes(
+    pages: list[CrawledPage], budget: int
+) -> list[list[CrawledPage]]:
+    """按累计 text_content 字节切批，单批 ≤ budget；单页超 budget 自成一批。"""
+    batches: list[list[CrawledPage]] = []
+    batch: list[CrawledPage] = []
+    size = 0
+    for p in pages:
+        psize = len((p.text_content or "").encode("utf-8"))
+        if batch and size + psize > budget:
+            batches.append(batch)
+            batch = [p]
+            size = psize
+        else:
+            batch.append(p)
+            size += psize
+    if batch:
+        batches.append(batch)
+    return batches
 
 
 def _serialize_task(task: CrawlTask) -> dict:
@@ -56,52 +78,66 @@ async def create_crawl_task(
     created_by: int | None,
     auto_ingest: bool = False,
 ) -> dict:
-    """创建 crawl-only 任务：写入平台 DB → 调 docs-mcp scrape（crawlOnly=true）。"""
-    task = CrawlTask(
-        library=library,
-        version=version or "",
-        source_url=url,
-        status="pending",
-        scraper_options=scraper_options,
-        created_by=created_by,
-        auto_ingest=auto_ingest,
-    )
-    task = await crawl_task_repo.create(session, task)
+    """创建 crawl-only 任务：先 enqueue 拿 job_id（crawlOnly=true），再写平台 DB。
+
+    job_id 为 NOT NULL，必须先拿到再落库。
+    """
+    options = dict(scraper_options)
+    options["crawlOnly"] = True
 
     try:
-        options = dict(scraper_options)
-        options["crawlOnly"] = True
         result = await docs_mcp_client.enqueue_scrape_job(
             library=library,
             version=version,
             options=options,
         )
         job_id = result.get("jobId", "") if isinstance(result, dict) else ""
-        await crawl_task_repo.update_status(session, task.id, "crawling")
-        task.job_id = job_id
-        await session.flush()
-        await session.refresh(task)
     except DocsMcpError as e:
         logger.error("create crawl task failed: %s", str(e))
-        await crawl_task_repo.update_status(
-            session, task.id, "failed", error_message=str(e)[:500]
+        task = CrawlTask(
+            library=library,
+            version=version or "",
+            source_url=url,
+            job_id="",
+            status="failed",
+            error_message=str(e)[:500],
+            scraper_options=scraper_options,
+            created_by=created_by,
+            auto_ingest=auto_ingest,
         )
+        task = await crawl_task_repo.create(session, task)
         await session.refresh(task)
+        return _serialize_task(task)
 
+    task = CrawlTask(
+        library=library,
+        version=version or "",
+        source_url=url,
+        job_id=job_id,
+        status="pending",
+        scraper_options=scraper_options,
+        created_by=created_by,
+        auto_ingest=auto_ingest,
+    )
+    task = await crawl_task_repo.create(session, task)
+    await crawl_task_repo.update_status(session, task.id, "crawling")
+    await session.refresh(task)
     return _serialize_task(task)
 
 
 async def handle_page_scraped(
     session: AsyncSession,
     job_id: str,
-    page_data: dict,
+    page: dict,
 ) -> None:
-    """处理 page-scraped SSE 事件：持久化页面数据。"""
+    """处理 page-scraped SSE 事件：持久化页面数据。
+
+    page 为 SSE 事件里的 page 对象（url/title/textContent 等）。
+    """
     task = await crawl_task_repo.find_by_job_id(session, job_id)
     if task is None:
         return
 
-    page = page_data.get("page", {})
     await crawled_page_repo.upsert_by_task_url(
         session,
         crawl_task_id=task.id,
@@ -124,21 +160,17 @@ async def handle_job_completed(
     job_id: str,
     status: str,
     error_message: str | None = None,
-) -> None:
-    """处理 job-status-change SSE 事件：更新爬取任务状态。"""
+) -> CrawlTask | None:
+    """处理 job-status-change SSE 事件：更新爬取任务状态。
+
+    返回 task 供调用方（后台订阅器）决定是否触发自动入库。
+    """
     task = await crawl_task_repo.find_by_job_id(session, job_id)
     if task is None:
-        return
+        return None
 
     if status == "completed":
-        new_status = "crawled"
-        await crawl_task_repo.update_status(session, task.id, new_status)
-        await session.refresh(task)
-        if task.auto_ingest:
-            try:
-                await ingest_crawl_task(session, task.id)
-            except Exception as e:
-                logger.error("auto ingest failed for crawl task %s: %s", task.id, str(e))
+        await crawl_task_repo.update_status(session, task.id, "crawled")
     elif status == "failed":
         await crawl_task_repo.update_status(
             session,
@@ -150,48 +182,54 @@ async def handle_job_completed(
         await crawl_task_repo.update_status(
             session, task.id, "failed", error_message="cancelled"
         )
+    else:
+        return task
+
+    await session.refresh(task)
+    return task
 
 
 async def ingest_crawl_task(
     session: AsyncSession,
     task_id: int,
 ) -> dict:
-    """批量入库：读取 crawled_pages → 调 docs-mcp ingest-raw。"""
+    """批量入库：读 crawled_pages(仅 pending)，按字节分批调 ingest-raw，按批标记。
+
+    按字节分批避免单请求超 docs-mcp bodyLimit(1MB)。
+    支持失败重试：只取 ingest_status='pending' 的页，已入库页跳过。
+    """
     task = await crawl_task_repo.find_by_id(session, task_id)
     if task is None:
         raise ValueError(f"crawl task {task_id} not found")
-    if task.status != "crawled":
-        raise ValueError(f"crawl task status is {task.status}, expected 'crawled'")
+    if task.status not in ("crawled", "failed", "ingesting"):
+        raise ValueError(f"crawl task status is {task.status}, expected crawled/failed")
 
     await crawl_task_repo.update_status(session, task_id, "ingesting")
     await session.refresh(task)
 
     pages = await crawled_page_repo.get_for_ingest(session, task_id)
     if not pages:
-        await crawl_task_repo.update_status(
-            session, task_id, "ingested"
-        )
+        await crawl_task_repo.update_status(session, task_id, "ingested")
         await session.refresh(task)
         return _serialize_task(task)
 
     try:
-        documents = [
-            {
-                "url": p.url,
-                "title": p.title,
-                "contentType": p.content_type or "text/markdown",
-                "content": p.text_content,
-            }
-            for p in pages
-        ]
-
-        for i in range(0, len(documents), INGEST_BATCH_SIZE):
-            batch = documents[i : i + INGEST_BATCH_SIZE]
+        for batch in _chunk_by_bytes(pages, INGEST_BYTE_BUDGET):
+            documents = [
+                {
+                    "url": p.url,
+                    "title": p.title,
+                    "contentType": p.content_type or "text/markdown",
+                    "content": p.text_content,
+                }
+                for p in batch
+            ]
             await docs_mcp_client.ingest_raw(
                 library=task.library,
                 version=task.version or None,
-                documents=batch,
+                documents=documents,
             )
+            await crawled_page_repo.mark_ingested(session, [p.id for p in batch])
 
         await crawl_task_repo.update_status(session, task_id, "ingested")
         await session.refresh(task)
@@ -247,7 +285,5 @@ async def list_crawl_pages(
 
 async def delete_crawl_task(session: AsyncSession, task_id: int) -> None:
     await crawled_page_repo.delete_by_task_id(session, task_id)
-    await session.execute(
-        delete(CrawlTask).where(CrawlTask.id == task_id)
-    )
+    await session.execute(delete(CrawlTask).where(CrawlTask.id == task_id))
     await session.flush()

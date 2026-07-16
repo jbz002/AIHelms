@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ from core.exception_handlers import register_exception_handlers
 from core.logging import setup_logging
 from core.migrate import run_migrations
 from services.auth_service import ensure_super_admin
+from services.docs_mcp_event_subscriber import run_docs_mcp_event_subscriber
 
 # Initialize logging before anything else
 setup_logging()
@@ -19,7 +21,13 @@ setup_logging()
 async def lifespan(app: FastAPI):
     await run_migrations()
     await ensure_super_admin(settings.super_admin_password)
+    subscriber_task = asyncio.create_task(run_docs_mcp_event_subscriber())
     yield
+    subscriber_task.cancel()
+    try:
+        await subscriber_task
+    except asyncio.CancelledError:
+        pass
     await close_engine()
 
 

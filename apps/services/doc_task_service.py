@@ -59,7 +59,8 @@ def _from_crawl(task: object) -> dict:
         "created_at": _fmt_dt(task.created_at),
         "started_at": _fmt_dt(task.started_at),
         "finished_at": _fmt_dt(task.finished_at),
-        "can_ingest": task.status == "crawled",
+        "can_ingest": task.status == "crawled"
+        or (task.status == "failed" and task.pages_crawled > 0),
     }
 
 
@@ -81,7 +82,8 @@ def _from_upload(record: object) -> dict:
         "created_at": _fmt_dt(record.created_at),
         "started_at": None,
         "finished_at": _fmt_dt(record.finished_at),
-        "can_ingest": record.status == "extracted",
+        "can_ingest": record.status == "extracted"
+        or (record.status == "failed" and bool(record.extracted_content)),
     }
 
 

@@ -56,13 +56,31 @@ async def count_by_task_id(session: AsyncSession, crawl_task_id: int) -> int:
 async def get_for_ingest(
     session: AsyncSession, crawl_task_id: int
 ) -> list[CrawledPage]:
+    """取待入库页面（ingest_status='pending'），支持失败后按页幂等重试。"""
     stmt = (
         select(CrawledPage)
-        .where(CrawledPage.crawl_task_id == crawl_task_id)
+        .where(
+            CrawledPage.crawl_task_id == crawl_task_id,
+            CrawledPage.ingest_status == "pending",
+        )
         .order_by(CrawledPage.id.asc())
     )
     result = await session.execute(stmt)
     return list(result.scalars().all())
+
+
+async def mark_ingested(session: AsyncSession, page_ids: list[int]) -> None:
+    """标记页面已入库，重试时跳过这些页。"""
+    from sqlalchemy import update
+
+    if not page_ids:
+        return
+    await session.execute(
+        update(CrawledPage)
+        .where(CrawledPage.id.in_(page_ids))
+        .values(ingest_status="ingested")
+    )
+    await session.flush()
 
 
 async def delete_by_task_id(session: AsyncSession, crawl_task_id: int) -> None:

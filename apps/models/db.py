@@ -1344,6 +1344,7 @@ class CrawledPage(Base):
     depth: Mapped[int] = mapped_column(Integer, default=0)
     etag: Mapped[str | None] = mapped_column(String(200), nullable=True)
     last_modified: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    ingest_status: Mapped[str] = mapped_column(String(20), default="pending")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
     crawl_task: Mapped["CrawlTask"] = relationship(back_populates="pages")

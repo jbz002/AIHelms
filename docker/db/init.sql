@@ -1241,8 +1241,10 @@ CREATE TABLE IF NOT EXISTS aihelms.crawled_pages (
     depth INT DEFAULT 0,
     etag VARCHAR(200),
     last_modified VARCHAR(200),
+    ingest_status VARCHAR(20) NOT NULL DEFAULT 'pending',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE(crawl_task_id, url)
 );
 
 CREATE INDEX IF NOT EXISTS idx_crawled_pages_task_id ON aihelms.crawled_pages(crawl_task_id);
+CREATE INDEX IF NOT EXISTS idx_crawled_pages_ingest_status ON aihelms.crawled_pages(ingest_status);
