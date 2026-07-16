@@ -11,7 +11,7 @@ import {
   type DocsMcpLibrary,
   type DocsMcpSearchResult,
 } from '@aihelms/shared'
-import { ArrowLeft, ExternalLink, Plus, Loader2 } from 'lucide-vue-next'
+import { ArrowLeft, ExternalLink, Plus, Loader2, FileText } from 'lucide-vue-next'
 import SearchCard from './components/SearchCard.vue'
 import SearchResultList from './components/SearchResultList.vue'
 import VersionRow from './components/VersionRow.vue'
@@ -157,6 +157,19 @@ onMounted(() => {
             @clear-documents="handleClearDocuments"
           />
         </div>
+      </div>
+
+      <div class="mt-6 flex items-center justify-between">
+        <div class="flex items-center gap-2 text-sm font-semibold text-gray-700">
+          <FileText class="h-4 w-4" />
+          文档列表
+        </div>
+        <button
+          class="text-sm text-blue-600 hover:text-blue-700"
+          @click="router.push({ name: 'DocumentList', params: { libraryName } })"
+        >
+          查看全部
+        </button>
       </div>
     </template>
 

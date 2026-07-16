@@ -17,6 +17,10 @@ import type {
   DocTaskSource,
   DocTaskStatus,
   DocTaskListResult,
+  Document,
+  DocumentListResult,
+  IngestStats,
+  IngestBatchParams,
 } from '../types/docs-mcp'
 
 export function getDocsMcpStats() {
@@ -195,5 +199,66 @@ export function getDocTasks(source?: DocTaskSource, status?: DocTaskStatus, page
 export function deleteUploadRecord(recordId: number) {
   return request<void>(`/api/v1/docs-mcp/uploads/${recordId}`, {
     method: 'DELETE',
+  })
+}
+
+// ── 统一文档表 CRUD ──
+
+export function getDocuments(
+  library?: string,
+  sourceType?: string,
+  ingestStatus?: string,
+  page?: number,
+  pageSize?: number,
+) {
+  return request<DocumentListResult>('/api/v1/documents', {
+    params: {
+      library,
+      source_type: sourceType,
+      ingest_status: ingestStatus,
+      page,
+      page_size: pageSize,
+    } as Record<string, string | number | undefined>,
+  })
+}
+
+export function getDocument(documentId: number) {
+  return request<Document>(`/api/v1/documents/${documentId}`)
+}
+
+export function updateDocument(
+  documentId: number,
+  params: { title?: string; content?: string; metadata_?: Record<string, unknown> },
+) {
+  return request<Document>(`/api/v1/documents/${documentId}`, {
+    method: 'PUT',
+    body: params,
+  })
+}
+
+export function deleteDocument(documentId: number) {
+  return request<void>(`/api/v1/documents/${documentId}`, {
+    method: 'DELETE',
+  })
+}
+
+// ── 文档入库 ──
+
+export function getDocumentStats(library?: string) {
+  return request<IngestStats>('/api/v1/documents/stats', {
+    params: library ? { library } : undefined,
+  })
+}
+
+export function ingestDocument(documentId: number) {
+  return request<{ task_id: string }>(`/api/v1/documents/${documentId}/ingest`, {
+    method: 'POST',
+  })
+}
+
+export function ingestDocumentBatch(params?: IngestBatchParams) {
+  return request<{ task_id: string }>('/api/v1/documents/ingest-batch', {
+    method: 'POST',
+    body: params || {},
   })
 }

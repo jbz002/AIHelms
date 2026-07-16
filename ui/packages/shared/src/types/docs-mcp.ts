@@ -207,3 +207,40 @@ export interface DocTaskListResult {
   page: number
   page_size: number
 }
+
+export interface Document {
+  id: number
+  title: string
+  content: string
+  library: string
+  version: string
+  source_type: string
+  source_id: number | null
+  chunk_count: number
+  ingest_status: 'pending' | 'ingesting' | 'ingested' | 'failed'
+  content_hash: string
+  error_message: string
+  created_by: number | null
+  created_at: string
+  updated_at: string
+  metadata: Record<string, unknown>
+}
+
+export interface DocumentListResult {
+  items: Document[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface IngestStats {
+  by_status: Record<string, number>
+  total_documents: number
+  total_chunks: number
+  library: string | null
+}
+
+export interface IngestBatchParams {
+  library?: string
+  source_type?: string
+}
