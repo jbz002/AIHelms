@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import CrawlTask
@@ -106,3 +106,13 @@ async def update_progress(
             update(CrawlTask).where(CrawlTask.id == task_id).values(**values)
         )
         await session.flush()
+
+
+async def delete_by_library(session: AsyncSession, library: str) -> int:
+    """按 library 批量删除爬取任务，返回删除行数。"""
+    stmt = delete(CrawlTask).where(
+        func.lower(CrawlTask.library) == library.lower()
+    )
+    result = await session.execute(stmt)
+    await session.flush()
+    return result.rowcount

@@ -90,3 +90,19 @@ async def delete_by_task_id(session: AsyncSession, crawl_task_id: int) -> None:
         delete(CrawledPage).where(CrawledPage.crawl_task_id == crawl_task_id)
     )
     await session.flush()
+
+
+async def delete_by_library(session: AsyncSession, library: str) -> int:
+    """按 library 删除该库下所有爬取页面（通过 CrawlTask 关联），返回删除行数。"""
+    from sqlalchemy import delete
+    from sqlalchemy import func
+
+    from models.db import CrawlTask
+
+    task_ids_stmt = select(CrawlTask.id).where(
+        func.lower(CrawlTask.library) == library.lower()
+    )
+    stmt = delete(CrawledPage).where(CrawledPage.crawl_task_id.in_(task_ids_stmt))
+    result = await session.execute(stmt)
+    await session.flush()
+    return result.rowcount

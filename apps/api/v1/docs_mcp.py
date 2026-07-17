@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from core.database import async_session
 from core.deps import get_current_user, get_db
-from repositories import document_repo
+from repositories import crawled_page_repo, crawl_task_repo, doc_upload_repo, document_repo
 from services import doc_upload_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
@@ -187,7 +187,10 @@ async def delete_version(
 ):
     try:
         await docs_mcp_client.remove_version(library_name, version)
-        await document_repo.delete_by_library_version(db, library_name, version)
+        await doc_upload_repo.delete_by_library(db, library_name)
+        await crawled_page_repo.delete_by_library(db, library_name)
+        await crawl_task_repo.delete_by_library(db, library_name)
+        await document_repo.delete_by_library(db, library_name)
         await db.commit()
         return {"code": 200, "message": "版本已删除", "data": None}
     except DocsMcpError as e:
@@ -207,7 +210,8 @@ async def delete_version_documents(
     """删除版本下所有文档，保留版本记录本身。适用于清除后重新抓取。"""
     try:
         await docs_mcp_client.remove_version_documents(library_name, version)
-        await document_repo.delete_by_library_version(db, library_name, version)
+        await crawled_page_repo.delete_by_library(db, library_name)
+        await document_repo.delete_by_library(db, library_name)
         await db.commit()
         return {"code": 200, "message": "文档已清除", "data": None}
     except DocsMcpError as e:

@@ -104,3 +104,15 @@ async def delete(session: AsyncSession, record_id: int) -> None:
         sql_delete(DocUploadRecord).where(DocUploadRecord.id == record_id)
     )
     await session.flush()
+
+
+async def delete_by_library(session: AsyncSession, library: str) -> int:
+    """按 library 批量删除上传记录，返回删除行数。"""
+    from sqlalchemy import func
+
+    stmt = sql_delete(DocUploadRecord).where(
+        func.lower(DocUploadRecord.library) == library.lower()
+    )
+    result = await session.execute(stmt)
+    await session.flush()
+    return result.rowcount
