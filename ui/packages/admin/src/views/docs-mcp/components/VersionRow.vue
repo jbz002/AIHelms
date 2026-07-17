@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { DocsMcpVersion } from '@aihelms/shared'
-import { Trash2, Eraser } from 'lucide-vue-next'
+import { Trash2, Eraser, FileText } from 'lucide-vue-next'
 
 interface Props {
   version: DocsMcpVersion
@@ -12,6 +12,7 @@ interface Props {
 interface Emits {
   delete: [library: string, version: string]
   clearDocuments: [library: string, version: string]
+  viewDocuments: [library: string, version: string]
 }
 
 const props = defineProps<Props>()
@@ -36,6 +37,10 @@ function handleDelete(): void {
 
 function handleClearDocuments(): void {
   emit('clearDocuments', props.libraryName, props.version.ref.version)
+}
+
+function handleViewDocuments(): void {
+  emit('viewDocuments', props.libraryName, props.version.ref.version)
 }
 </script>
 
@@ -67,6 +72,13 @@ function handleClearDocuments(): void {
       </div>
     </div>
     <div class="flex items-center gap-1">
+      <button
+        class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-blue-500"
+        title="查看全部文档"
+        @click="handleViewDocuments"
+      >
+        <FileText class="h-3.5 w-3.5" />
+      </button>
       <button
         v-if="version.counts?.documents ?? 0 > 0"
         class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-orange-500"

@@ -5,10 +5,12 @@ import logging
 import httpx
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.database import async_session
 from core.deps import get_current_user, get_db
+from repositories import document_repo
 from services import doc_upload_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
@@ -181,9 +183,12 @@ async def delete_version(
     library_name: str,
     version: str,
     _: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     try:
         await docs_mcp_client.remove_version(library_name, version)
+        await document_repo.delete_by_library_version(db, library_name, version)
+        await db.commit()
         return {"code": 200, "message": "版本已删除", "data": None}
     except DocsMcpError as e:
         return {"code": 500, "message": str(e), "data": None}
@@ -197,10 +202,13 @@ async def delete_version_documents(
     library_name: str,
     version: str,
     _: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
     """删除版本下所有文档，保留版本记录本身。适用于清除后重新抓取。"""
     try:
         await docs_mcp_client.remove_version_documents(library_name, version)
+        await document_repo.delete_by_library_version(db, library_name, version)
+        await db.commit()
         return {"code": 200, "message": "文档已清除", "data": None}
     except DocsMcpError as e:
         return {"code": 500, "message": str(e), "data": None}

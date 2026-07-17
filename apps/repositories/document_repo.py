@@ -250,3 +250,26 @@ async def update_content_hash(
 async def delete_document(session: AsyncSession, document_id: int) -> None:
     await session.execute(delete(Document).where(Document.id == document_id))
     await session.flush()
+
+
+async def delete_by_library_version(
+    session: AsyncSession,
+    library: str,
+    version: str,
+) -> int:
+    """按 library + version 批量删除文档，返回删除行数。"""
+    stmt = delete(Document).where(
+        func.lower(Document.library) == library.lower(),
+        Document.version == version,
+    )
+    result = await session.execute(stmt)
+    await session.flush()
+    return result.rowcount
+
+
+async def delete_by_library(session: AsyncSession, library: str) -> int:
+    """按 library 批量删除所有文档，返回删除行数。用于删除整个文档库。"""
+    stmt = delete(Document).where(func.lower(Document.library) == library.lower())
+    result = await session.execute(stmt)
+    await session.flush()
+    return result.rowcount

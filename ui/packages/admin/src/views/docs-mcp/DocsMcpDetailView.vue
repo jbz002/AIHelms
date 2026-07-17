@@ -12,7 +12,7 @@ import {
   type DocsMcpSearchResult,
   type DocsMcpScrapeOptions,
 } from '@aihelms/shared'
-import { ArrowLeft, ExternalLink, Plus, Loader2, FileText } from 'lucide-vue-next'
+import { ArrowLeft, ExternalLink, Plus, Loader2 } from 'lucide-vue-next'
 import SearchCard from './components/SearchCard.vue'
 import SearchResultList from './components/SearchResultList.vue'
 import VersionRow from './components/VersionRow.vue'
@@ -149,7 +149,7 @@ onMounted(() => {
 
     <template v-if="library">
       <SearchCard :versions="library.versions" @search="handleSearch" />
-      <SearchResultList :results="searchResults" :loading="searchLoading" />
+      <SearchResultList v-if="hasSearched" :results="searchResults" :loading="searchLoading" />
 
       <div>
         <h3 class="mb-3 text-sm font-semibold text-gray-700">
@@ -168,21 +168,9 @@ onMounted(() => {
             :is-last-version="library.versions.length === 1"
             @delete="handleDeleteVersion"
             @clear-documents="handleClearDocuments"
+            @view-documents="(lib, ver) => router.push({ name: 'DocumentList', params: { libraryName: lib }, query: { version: ver } })"
           />
         </div>
-      </div>
-
-      <div class="mt-6 flex items-center justify-between">
-        <div class="flex items-center gap-2 text-sm font-semibold text-gray-700">
-          <FileText class="h-4 w-4" />
-          文档列表
-        </div>
-        <button
-          class="text-sm text-blue-600 hover:text-blue-700"
-          @click="router.push({ name: 'DocumentList', params: { libraryName } })"
-        >
-          查看全部
-        </button>
       </div>
     </template>
 
