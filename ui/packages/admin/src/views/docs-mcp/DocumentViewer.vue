@@ -6,7 +6,7 @@ import 'md-editor-v3/lib/style.css'
 import type { Document } from '@aihelms/shared'
 import { getDocument, updateDocument, toast } from '@aihelms/shared'
 import { ArrowLeft, Save, X, Loader2, Pencil } from 'lucide-vue-next'
-import MarkdownRenderer from '@aihelms/shared/components/MarkdownRenderer.vue'
+import { MarkdownRenderer } from '@aihelms/shared'
 
 const route = useRoute()
 const router = useRouter()

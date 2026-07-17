@@ -6,12 +6,41 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from exceptions import NotFoundError
-from services.docs_mcp_client import DocsMcpError
 from models.db import Document
-from repositories import document_repo
-from services import docs_mcp_client, document_library_service
+from repositories import crawled_page_repo, doc_upload_repo, document_repo
+from services import document_library_service
+from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
 logger = logging.getLogger(__name__)
+
+
+async def _sync_source_status(
+    session: AsyncSession, doc: Document, chunk_count: int
+) -> None:
+    """单文档入库成功后按来源同步源表状态。
+
+    避免文档列表的「单条入库」与任务列表的「批量入库」两套入口真相漂移
+    （否则 crawl 页 crawled_pages.ingest_status 留 pending，批量重试会重复向量化）。
+    """
+    if doc.source_type == "crawl" and doc.source_id:
+        await crawled_page_repo.mark_ingested(session, [doc.source_id])
+    elif doc.source_type == "upload" and doc.source_id:
+        await doc_upload_repo.update_status(
+            session, doc.source_id, "completed", chunk_count=chunk_count
+        )
+
+
+def _ingest_url(doc: Document) -> str:
+    """推导文档入库时提交给 docs-mcp 的 url（必填，min 1 字符）。
+
+    crawl 文档取 metadata.url；upload 取 local://文件名；都没有用稳定占位。
+    """
+    meta = doc.metadata_ or {}
+    if doc.source_type == "crawl" and meta.get("url"):
+        return str(meta["url"])
+    if doc.source_type == "upload" and meta.get("file_name"):
+        return f"local://{meta['file_name']}"
+    return f"aihelms://document/{doc.id}"
 
 
 def _serialize_document(doc: Document) -> dict:
@@ -130,19 +159,20 @@ async def ingest_document(
             version=doc.version or None,
             documents=[
                 {
-                    "url": "",
+                    "url": _ingest_url(doc),
                     "title": doc.title or "untitled",
                     "contentType": "text/markdown",
                     "content": doc.content,
                 }
             ],
         )
-        chunk_count = result.get("chunkCount", 0)
+        chunk_count = result.get("ingested", 0)
         await document_repo.update_ingest_status(
             session, document_id, "ingested", chunk_count=chunk_count
         )
         await document_repo.update_content_hash(session, document_id, current_hash)
         await document_library_service.refresh_document_counts(session, doc.library)
+        await _sync_source_status(session, doc, chunk_count)
         await session.flush()
         await session.refresh(doc)
         return _serialize_document(doc)
@@ -180,20 +210,24 @@ async def ingest_batch(
 
         try:
             await document_repo.update_ingest_status(session, doc.id, "ingesting")
-            await docs_mcp_client.ingest_raw(
+            result = await docs_mcp_client.ingest_raw(
                 library=doc.library,
                 version=doc.version or None,
                 documents=[
                     {
-                        "url": "",
+                        "url": _ingest_url(doc),
                         "title": doc.title or "untitled",
                         "contentType": "text/markdown",
                         "content": doc.content,
                     }
                 ],
             )
-            await document_repo.update_ingest_status(session, doc.id, "ingested")
+            chunk_count = result.get("ingested", 0) if isinstance(result, dict) else 0
+            await document_repo.update_ingest_status(
+                session, doc.id, "ingested", chunk_count=chunk_count
+            )
             await document_repo.update_content_hash(session, doc.id, current_hash)
+            await _sync_source_status(session, doc, chunk_count)
             ingested += 1
         except DocsMcpError as e:
             await document_repo.update_ingest_status(

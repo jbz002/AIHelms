@@ -5,7 +5,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.db import DocUploadRecord, Document
+from models.db import Document, DocUploadRecord
 from repositories import doc_upload_repo, document_repo
 from services import document_library_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
@@ -170,6 +170,24 @@ async def upload_document(
         await doc_upload_repo.update_status(session, record.id, "extracted")
         await session.refresh(record)
 
+        # 同步建立 Document（ingest_status='pending'），让文档列表/统计可见入库状态
+        await document_repo.upsert_by_source(
+            session,
+            "upload",
+            record.id,
+            title=record.file_name,
+            content=content,
+            library=record.library,
+            version=record.version or "",
+            created_by=record.created_by,
+            chunk_count=0,
+            metadata_={
+                "file_name": record.file_name,
+                "content_type": record.content_type,
+                "file_size": record.file_size,
+            },
+        )
+
         if auto_ingest:
             return await ingest_upload(session, record.id)
 
@@ -221,12 +239,13 @@ async def ingest_upload(session: AsyncSession, record_id: int) -> dict:
         )
         await session.refresh(record)
 
-        # 同步文档记录到平台 DB
-        content_hash = hashlib.sha256(
-            record.extracted_content.encode("utf-8")
-        ).hexdigest()
+        # 同步文档记录到平台 DB：翻转 upload 阶段建立的 pending Document
         existing = await document_repo.find_by_source(session, "upload", record.id)
         if existing is None:
+            # 兜底：upload 阶段未建 Document 时补建为 ingested
+            content_hash = hashlib.sha256(
+                record.extracted_content.encode("utf-8")
+            ).hexdigest()
             doc = Document(
                 title=record.file_name,
                 content=record.extracted_content,
@@ -245,6 +264,10 @@ async def ingest_upload(session: AsyncSession, record_id: int) -> dict:
                 },
             )
             await document_repo.create(session, doc)
+        else:
+            await document_repo.update_ingest_status(
+                session, existing.id, "ingested", chunk_count=ingested
+            )
 
         await document_library_service.refresh_document_counts(session, record.library)
 

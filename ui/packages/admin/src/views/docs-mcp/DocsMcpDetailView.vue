@@ -7,9 +7,11 @@ import {
   deleteDocsMcpVersion,
   deleteDocsMcpVersionDocuments,
   refreshDocsMcpVersion,
+  createCrawlTask,
   toast,
   type DocsMcpLibrary,
   type DocsMcpSearchResult,
+  type DocsMcpScrapeOptions,
 } from '@aihelms/shared'
 import { ArrowLeft, ExternalLink, Plus, Loader2, FileText } from 'lucide-vue-next'
 import SearchCard from './components/SearchCard.vue'
@@ -96,6 +98,29 @@ function goBack(): void {
   router.push({ name: 'DocsMcp' })
 }
 
+async function handleSubmitJob(params: {
+  url: string
+  library: string
+  version: string
+  options: DocsMcpScrapeOptions
+  ingestMode: string
+}): Promise<void> {
+  try {
+    await createCrawlTask({
+      url: params.url,
+      library: params.library,
+      version: params.version,
+      options: params.options,
+      auto_ingest: params.ingestMode === 'direct',
+    })
+    toast.success('爬取任务已创建')
+    showAddVersionDialog.value = false
+    await loadLibrary()
+  } catch (e) {
+    toast.error((e as Error).message || '创建失败')
+  }
+}
+
 onMounted(() => {
   loadLibrary()
 })
@@ -177,7 +202,7 @@ onMounted(() => {
       :visible="showAddVersionDialog"
       :default-library="libraryName"
       @close="showAddVersionDialog = false"
-      @submit="() => { showAddVersionDialog = false; loadLibrary() }"
+      @submit="handleSubmitJob"
     />
   </div>
 </template>

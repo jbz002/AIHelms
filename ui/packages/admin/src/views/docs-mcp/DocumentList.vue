@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import type { Document, IngestStats } from '@aihelms/shared'
 import {
   getDocuments,
+  getDocument,
   getDocumentStats,
   ingestDocument,
   ingestDocumentBatch,
@@ -93,18 +94,59 @@ async function loadStats(): Promise<void> {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function pollDocStatus(docId: number): Promise<void> {
+  // 入库走 Celery 异步，派发后轮询单文档状态直到终态
+  const maxAttempts = 40
+  for (let i = 0; i < maxAttempts; i++) {
+    await sleep(1500)
+    try {
+      const d = await getDocument(docId)
+      if (d.ingest_status === 'ingested' || d.ingest_status === 'failed') {
+        await loadDocuments()
+        await loadStats()
+        if (d.ingest_status === 'ingested') {
+          toast.success('入库成功')
+        } else {
+          toast.error(`入库失败：${d.error_message || '未知原因'}`)
+        }
+        return
+      }
+      await loadDocuments()
+    } catch {
+      // 单次查询失败不中断轮询
+    }
+  }
+  await loadDocuments()
+  await loadStats()
+}
+
 async function handleIngest(doc: Document): Promise<void> {
   if (ingestingId.value) return
   ingestingId.value = doc.id
   try {
     await ingestDocument(doc.id)
     toast.success('入库任务已提交')
-    await loadDocuments()
-    await loadStats()
+    await pollDocStatus(doc.id)
   } catch (e) {
     toast.error((e as Error).message || '提交入库失败')
   } finally {
     ingestingId.value = null
+  }
+}
+
+async function pollBatchStatus(): Promise<void> {
+  const maxAttempts = 60
+  for (let i = 0; i < maxAttempts; i++) {
+    await sleep(1500)
+    await loadStats()
+    await loadDocuments()
+    if ((stats.value?.by_status?.pending ?? 0) === 0) {
+      return
+    }
   }
 }
 
@@ -114,8 +156,7 @@ async function handleBatchIngest(): Promise<void> {
   try {
     await ingestDocumentBatch({ library: libraryName.value })
     toast.success('批量入库任务已提交')
-    await loadDocuments()
-    await loadStats()
+    await pollBatchStatus()
   } catch (e) {
     toast.error((e as Error).message || '提交批量入库失败')
   } finally {
@@ -264,6 +305,7 @@ onMounted(() => {
                     <Pencil class="h-4 w-4" />
                   </button>
                   <button
+                    v-if="doc.ingest_status === 'pending' || doc.ingest_status === 'failed'"
                     class="rounded-md p-1.5 text-emerald-600 hover:bg-emerald-50"
                     title="入库"
                     :disabled="ingestingId === doc.id"

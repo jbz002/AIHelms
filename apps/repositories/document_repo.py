@@ -1,5 +1,7 @@
 """documents 表的数据库操作。"""
 
+import hashlib
+
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -57,16 +59,78 @@ async def update_ingest_status(
     session: AsyncSession,
     document_id: int,
     status: str,
-    chunk_count: int = 0,
+    chunk_count: int | None = None,
     error_message: str = "",
 ) -> None:
-    values: dict = {"ingest_status": status, "chunk_count": chunk_count}
+    values: dict = {"ingest_status": status}
+    if chunk_count is not None:
+        values["chunk_count"] = chunk_count
     if error_message:
         values["error_message"] = error_message
     await session.execute(
         update(Document).where(Document.id == document_id).values(**values)
     )
     await session.flush()
+
+
+async def upsert_by_source(
+    session: AsyncSession,
+    source_type: str,
+    source_id: int,
+    *,
+    title: str,
+    content: str,
+    library: str,
+    version: str,
+    created_by: int | None,
+    chunk_count: int = 0,
+    metadata_: dict,
+    reset_to_pending_on_content_change: bool = True,
+) -> Document:
+    """幂等 upsert：按 (source_type, source_id) 维护 Document。
+
+    不存在则创建（ingest_status='pending'）；存在则更新 title/content/
+    chunk_count/metadata/content_hash，并在内容变化且当前为 'ingested' 时
+    回退为 'pending'（镜像 document_service.update_document 语义，支持
+    重新入库）。返回持久化后的 Document。
+    """
+    content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    existing = await find_by_source(session, source_type, source_id)
+    if existing is None:
+        doc = Document(
+            title=title,
+            content=content,
+            library=library,
+            version=version,
+            source_type=source_type,
+            source_id=source_id,
+            chunk_count=chunk_count,
+            ingest_status="pending",
+            content_hash=content_hash,
+            created_by=created_by,
+            metadata_=metadata_,
+        )
+        session.add(doc)
+        await session.flush()
+        await session.refresh(doc)
+        return doc
+
+    content_changed = existing.content_hash != content_hash
+    existing.title = title
+    existing.content = content
+    existing.chunk_count = chunk_count
+    existing.metadata_ = metadata_
+    existing.content_hash = content_hash
+    if (
+        reset_to_pending_on_content_change
+        and content_changed
+        and existing.ingest_status == "ingested"
+    ):
+        existing.ingest_status = "pending"
+        existing.error_message = ""
+    await session.flush()
+    await session.refresh(existing)
+    return existing
 
 
 async def update_document_fields(

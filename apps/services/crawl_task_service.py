@@ -183,7 +183,7 @@ async def handle_page_scraped(
     if task is None:
         return
 
-    await crawled_page_repo.upsert_by_task_url(
+    crawled = await crawled_page_repo.upsert_by_task_url(
         session,
         crawl_task_id=task.id,
         url=page.get("url", ""),
@@ -197,6 +197,28 @@ async def handle_page_scraped(
         etag=page.get("etag"),
         last_modified=page.get("lastModified"),
     )
+
+    # 同步建立 Document（ingest_status='pending'），让文档列表/统计可见入库状态
+    doc = await document_repo.upsert_by_source(
+        session,
+        "crawl",
+        crawled.id,
+        title=crawled.title or crawled.url,
+        content=crawled.text_content or "",
+        library=task.library,
+        version=task.version or "",
+        created_by=task.created_by,
+        chunk_count=len(crawled.chunks or []),
+        metadata_={
+            "url": crawled.url,
+            "crawl_task_id": crawled.crawl_task_id,
+            "depth": crawled.depth,
+        },
+    )
+    # 内容变更导致 Document 回退 pending 时，同步重置 crawled_page，
+    # 否则批量入库（get_for_ingest 只取 pending 页）会跳过它
+    if doc.ingest_status == "pending":
+        crawled.ingest_status = "pending"
 
 
 async def handle_job_completed(
@@ -275,13 +297,15 @@ async def ingest_crawl_task(
             )
             await crawled_page_repo.mark_ingested(session, [p.id for p in batch])
 
-            # 同步文档记录到平台 DB
+            # 同步文档记录到平台 DB：翻转 crawl 阶段建立的 pending Document
             for p in batch:
                 existing = await document_repo.find_by_source(session, "crawl", p.id)
-                content_hash = hashlib.sha256(
-                    (p.text_content or "").encode("utf-8")
-                ).hexdigest()
+                chunk_count = len(p.chunks or [])
                 if existing is None:
+                    # 兜底：crawl 阶段未建 Document（023 之前的旧数据）时补建为 ingested
+                    content_hash = hashlib.sha256(
+                        (p.text_content or "").encode("utf-8")
+                    ).hexdigest()
                     doc = Document(
                         title=p.title or p.url,
                         content=p.text_content or "",
@@ -289,6 +313,7 @@ async def ingest_crawl_task(
                         version=task.version or "",
                         source_type="crawl",
                         source_id=p.id,
+                        chunk_count=chunk_count,
                         ingest_status="ingested",
                         content_hash=content_hash,
                         created_by=task.created_by,
@@ -301,7 +326,7 @@ async def ingest_crawl_task(
                     await document_repo.create(session, doc)
                 else:
                     await document_repo.update_ingest_status(
-                        session, existing.id, "ingested"
+                        session, existing.id, "ingested", chunk_count=chunk_count
                     )
 
             await crawl_task_repo.update_progress(
