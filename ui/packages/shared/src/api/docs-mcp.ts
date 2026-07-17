@@ -52,13 +52,6 @@ export function clearCompletedDocsMcpJobs() {
   })
 }
 
-export function refreshDocsMcpVersion(jobId: string, body: { library: string; version: string | null; options?: unknown }) {
-  return request<{ jobId: string }>('/api/v1/docs-mcp/jobs/{jobId}/refresh'.replace('{jobId}', jobId), {
-    method: 'POST',
-    body,
-  })
-}
-
 export function getDocsMcpLibraries() {
   return request<DocsMcpLibrary[]>('/api/v1/docs-mcp/libraries')
 }
@@ -74,9 +67,10 @@ export function searchDocsMcp(libraryName: string, query: string, version?: stri
 }
 
 export function deleteDocsMcpVersion(libraryName: string, version: string) {
+  const versionParam = version || 'latest'
   return request<void>('/api/v1/docs-mcp/libraries/{name}/versions/{version}'
     .replace('{name}', libraryName)
-    .replace('{version}', version), {
+    .replace('{version}', versionParam), {
     method: 'DELETE',
   })
 }
@@ -117,9 +111,10 @@ export function updateDocsMcpVersionOptions(versionId: number, options: DocsMcpS
 }
 
 export function deleteDocsMcpVersionDocuments(libraryName: string, version: string) {
+  const versionParam = version || 'latest'
   return request<void>('/api/v1/docs-mcp/libraries/{name}/versions/{version}/documents'
     .replace('{name}', libraryName)
-    .replace('{version}', version), {
+    .replace('{version}', versionParam), {
     method: 'DELETE',
   })
 }

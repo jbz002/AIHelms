@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import type { DocsMcpVersion } from '@aihelms/shared'
-import { RefreshCw, Trash2, Eraser, Loader2 } from 'lucide-vue-next'
+import { Trash2, Eraser } from 'lucide-vue-next'
 
 interface Props {
   version: DocsMcpVersion
   libraryName: string
+  isLastVersion?: boolean
 }
 
 interface Emits {
-  refresh: [library: string, version: string, versionId: number]
   delete: [library: string, version: string]
   clearDocuments: [library: string, version: string]
 }
@@ -17,7 +17,6 @@ interface Emits {
 const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
-const refreshing = ref(false)
 const showDeleteConfirm = ref(false)
 const showClearConfirm = ref(false)
 
@@ -29,14 +28,6 @@ const statusColor: Record<string, string> = {
   cancelled: 'bg-gray-100 text-gray-700',
   updating: 'bg-blue-100 text-blue-700',
   not_indexed: 'bg-gray-100 text-gray-600',
-}
-
-async function handleRefresh(): Promise<void> {
-  refreshing.value = true
-  emit('refresh', props.libraryName, props.version.ref.version, props.version.id)
-  setTimeout(() => {
-    refreshing.value = false
-  }, 1000)
 }
 
 function handleDelete(): void {
@@ -77,15 +68,6 @@ function handleClearDocuments(): void {
     </div>
     <div class="flex items-center gap-1">
       <button
-        class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-blue-600"
-        title="刷新版本"
-        :disabled="refreshing"
-        @click="handleRefresh"
-      >
-        <Loader2 v-if="refreshing" class="h-3.5 w-3.5 animate-spin" />
-        <RefreshCw v-else class="h-3.5 w-3.5" />
-      </button>
-      <button
         v-if="version.counts?.documents ?? 0 > 0"
         class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-orange-500"
         title="清除文档（保留版本记录，可重新抓取）"
@@ -96,7 +78,7 @@ function handleClearDocuments(): void {
       <button
         v-if="!showDeleteConfirm && !showClearConfirm"
         class="rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-red-500"
-        title="删除版本"
+        :title="isLastVersion ? '删除版本（最后一个版本，将移除整个文档库）' : '删除版本'"
         @click="showDeleteConfirm = true"
       >
         <Trash2 class="h-3.5 w-3.5" />
@@ -118,11 +100,14 @@ function handleClearDocuments(): void {
       </template>
       <!-- Delete confirm -->
       <template v-if="showDeleteConfirm && !showClearConfirm">
+        <span v-if="isLastVersion" class="text-xs font-medium text-red-600">
+          最后一个版本，删除将移除整个文档库
+        </span>
         <button
           class="rounded-md bg-red-500 px-2 py-1 text-xs font-medium text-white hover:bg-red-600"
           @click="handleDelete"
         >
-          确认删除
+          {{ isLastVersion ? '确认删除文档库' : '确认删除' }}
         </button>
         <button
           class="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100"

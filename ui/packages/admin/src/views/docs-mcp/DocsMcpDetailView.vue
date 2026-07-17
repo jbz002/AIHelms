@@ -6,7 +6,6 @@ import {
   searchDocsMcp,
   deleteDocsMcpVersion,
   deleteDocsMcpVersionDocuments,
-  refreshDocsMcpVersion,
   createCrawlTask,
   toast,
   type DocsMcpLibrary,
@@ -58,39 +57,28 @@ async function handleSearch(query: string, version: string | null): Promise<void
   }
 }
 
-async function handleDeleteVersion(version: string): Promise<void> {
+async function handleDeleteVersion(_library: string, version: string): Promise<void> {
+  const wasLastVersion = (library.value?.versions.length ?? 0) <= 1
   try {
     await deleteDocsMcpVersion(libraryName, version)
-    toast.success('版本已删除')
-    await loadLibrary()
+    toast.success(wasLastVersion ? '文档库已删除' : '版本已删除')
+    if (wasLastVersion) {
+      goBack()
+    } else {
+      await loadLibrary()
+    }
   } catch (e) {
     toast.error((e as Error).message || '删除失败')
   }
 }
 
-async function handleClearDocuments(version: string): Promise<void> {
+async function handleClearDocuments(_library: string, version: string): Promise<void> {
   try {
     await deleteDocsMcpVersionDocuments(libraryName, version)
     toast.success('文档已清除，可重新抓取')
     await loadLibrary()
   } catch (e) {
     toast.error((e as Error).message || '清除失败')
-  }
-}
-
-async function handleRefreshVersion(
-  _library: string,
-  version: string,
-  versionId: number,
-): Promise<void> {
-  try {
-    await refreshDocsMcpVersion(String(versionId), {
-      library: libraryName,
-      version: version || null,
-    })
-    toast.success('刷新任务已创建')
-  } catch (e) {
-    toast.error((e as Error).message || '刷新失败')
   }
 }
 
@@ -177,7 +165,7 @@ onMounted(() => {
             :key="ver.ref.version || '_default'"
             :version="ver"
             :library-name="libraryName"
-            @refresh="handleRefreshVersion"
+            :is-last-version="library.versions.length === 1"
             @delete="handleDeleteVersion"
             @clear-documents="handleClearDocuments"
           />

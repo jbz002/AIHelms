@@ -140,17 +140,6 @@ class DocsMcpClient:
             json_data=body,
         )
 
-    async def enqueue_refresh_job(
-        self,
-        library: str,
-        version: str | None,
-        options: dict | None = None,
-    ) -> dict:
-        body: dict = {"library": library, "version": version}
-        if options:
-            body["options"] = options
-        return await self._call("POST", "/api/jobs/refresh", json_data=body)
-
     async def get_job_detail(self, job_id: str) -> dict:
         """获取单个作业详情。"""
         return await self._call("GET", f"/api/jobs/{job_id}")

@@ -135,35 +135,6 @@ async def get_job_detail(job_id: str, _: dict = Depends(get_current_user)):
         return {"code": 500, "message": str(e), "data": None}
 
 
-@router.post("/jobs/{job_id}/refresh", summary="刷新版本")
-async def refresh_version(
-    job_id: str,
-    body: dict | None = None,
-    _: dict = Depends(get_current_user),
-):
-    """根据 job 信息刷新对应版本的文档。body 需包含 library 和 version。"""
-    try:
-        if not body:
-            return {"code": 400, "message": "请求体不能为空", "data": None}
-
-        library = body.get("library", "").strip()
-        version = body.get("version", "").strip() or None
-
-        if not library:
-            return {"code": 400, "message": "library 不能为空", "data": None}
-
-        refresh_options = body.get("options", {})
-
-        result = await docs_mcp_client.enqueue_refresh_job(
-            library=library,
-            version=version,
-            options=refresh_options,
-        )
-        return {"code": 200, "message": "刷新任务已创建", "data": result}
-    except DocsMcpError as e:
-        return {"code": 500, "message": str(e), "data": None}
-
-
 @router.get("/libraries", summary="获取文档库列表")
 async def list_libraries(_: dict = Depends(get_current_user)):
     try:
