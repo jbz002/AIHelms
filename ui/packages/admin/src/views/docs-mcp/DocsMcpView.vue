@@ -229,9 +229,9 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <TaskRecordList ref="taskRecordListRef" @refresh="loadLibraries(); loadStats()" />
-
     <LibraryList :libraries="libraries" />
+
+    <TaskRecordList ref="taskRecordListRef" @refresh="loadLibraries(); loadStats()" />
 
     <ScrapeJobDialog
       :visible="showScrapeDialog"

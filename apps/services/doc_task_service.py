@@ -1,6 +1,7 @@
 """文档任务统一视图：合并爬取与上传任务列表与状态。"""
 
 import logging
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +31,17 @@ _UPLOAD_STATUS_MAP: dict[str, str] = {
 
 # 单表拉取上限（任务记录量级小，内存合并即可）
 _FETCH_CAP = 1000
+
+
+def _date_cutoff(date_range: str) -> str | None:
+    from datetime import timedelta
+
+    now = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    deltas: dict[str, int] = {"today": 0, "7d": 7, "30d": 30}
+    days = deltas.get(date_range)
+    if days is None:
+        return None
+    return (now - timedelta(days=days)).isoformat()
 
 
 def _fmt_dt(dt: object) -> str | None:
@@ -109,6 +121,7 @@ async def list_tasks(
     session: AsyncSession,
     source: str | None = None,
     status: str | None = None,
+    date_range: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
@@ -125,6 +138,14 @@ async def list_tasks(
 
     if status:
         unified = [u for u in unified if u["status"] == status]
+
+    if date_range:
+        cutoff = _date_cutoff(date_range)
+        if cutoff:
+            unified = [
+                u for u in unified
+                if u["created_at"] and u["created_at"] >= cutoff
+            ]
 
     unified.sort(key=lambda x: x["created_at"] or "", reverse=True)
 

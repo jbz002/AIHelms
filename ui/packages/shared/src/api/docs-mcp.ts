@@ -185,9 +185,9 @@ export function deleteCrawlTask(taskId: number) {
   })
 }
 
-export function getDocTasks(source?: DocTaskSource, status?: DocTaskStatus, page?: number, pageSize?: number) {
+export function getDocTasks(source?: DocTaskSource, status?: DocTaskStatus, page?: number, pageSize?: number, dateRange?: string) {
   return request<DocTaskListResult>('/api/v1/docs-mcp/tasks', {
-    params: { source, status, page, page_size: pageSize } as Record<string, string | number | undefined>,
+    params: { source, status, page, page_size: pageSize, date_range: dateRange } as Record<string, string | number | undefined>,
   })
 }
 

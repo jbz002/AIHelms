@@ -32,6 +32,7 @@ const pageSize = ref(20)
 const loading = ref(false)
 const sourceFilter = ref<'' | DocTaskSource>('')
 const statusFilter = ref<'' | DocTaskStatus>('')
+const dateFilter = ref<string>('today')
 const expandedKey = ref<string | null>(null)
 const expandedPages = ref<CrawledPage[]>([])
 const expandedPagesTotal = ref(0)
@@ -66,6 +67,13 @@ const statusOptions: { value: '' | DocTaskStatus; label: string }[] = [
   { value: 'ingesting', label: '入库中' },
   { value: 'ingested', label: '已入库' },
   { value: 'failed', label: '失败' },
+]
+
+const dateOptions: { value: string; label: string }[] = [
+  { value: 'today', label: '今天' },
+  { value: '7d', label: '近7天' },
+  { value: '30d', label: '近30天' },
+  { value: '', label: '全部' },
 ]
 
 function fmtTime(iso: string | null): string {
@@ -108,6 +116,7 @@ async function loadTasks(): Promise<void> {
       statusFilter.value || undefined,
       page.value,
       pageSize.value,
+      dateFilter.value || undefined,
     )
     tasks.value = res.items ?? []
     total.value = res.total ?? 0
@@ -173,7 +182,7 @@ async function handleDelete(task: DocTask): Promise<void> {
   }
 }
 
-watch([sourceFilter, statusFilter], () => {
+watch([sourceFilter, statusFilter, dateFilter], () => {
   page.value = 1
   loadTasks()
 })
@@ -194,6 +203,9 @@ defineExpose({ loadTasks })
       </select>
       <select v-model="statusFilter" class="rounded-md border border-gray-300 px-2 py-1 text-xs">
         <option v-for="o in statusOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+      </select>
+      <select v-model="dateFilter" class="rounded-md border border-gray-300 px-2 py-1 text-xs">
+        <option v-for="o in dateOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
       </select>
       <button class="rounded-md px-2 py-1 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700" :disabled="loading" @click="loadTasks">
         <RefreshCw class="h-3 w-3" :class="{ 'animate-spin': loading }" />
@@ -236,12 +248,12 @@ defineExpose({ loadTasks })
             <Loader2 v-if="statusConfig[task.status].spin" class="mr-1 inline h-3 w-3 animate-spin" />
             {{ statusConfig[task.status].label }}
           </span>
-          <div class="flex shrink-0 items-center gap-1">
-            <button v-if="task.can_ingest" class="rounded-md p-1.5 text-emerald-600 hover:bg-emerald-50" title="入库" :disabled="ingestingKey === task.key" @click="handleIngest(task)">
+          <div class="flex shrink-0 items-center">
+            <button v-if="task.can_ingest" class="rounded-md p-1 text-emerald-600 hover:bg-emerald-50" title="入库" :disabled="ingestingKey === task.key" @click="handleIngest(task)">
               <Loader2 v-if="ingestingKey === task.key" class="h-4 w-4 animate-spin" />
               <ArrowDownToLine v-else class="h-4 w-4" />
             </button>
-            <button v-if="task.status === 'failed' || task.status === 'ingested'" class="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500" title="删除" :disabled="deletingKey === task.key" @click="handleDelete(task)">
+            <button class="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-500" title="删除" :disabled="deletingKey === task.key" @click="handleDelete(task)">
               <Loader2 v-if="deletingKey === task.key" class="h-4 w-4 animate-spin" />
               <Trash2 v-else class="h-4 w-4" />
             </button>
