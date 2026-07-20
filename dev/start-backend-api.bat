@@ -12,7 +12,7 @@ if defined WSL_IP (
     set REDIS_HOST=%WSL_IP%
     set LITELLM_HOST=%WSL_IP%
     set AI_POLICIES_SCANNER_URL=http://%WSL_IP%:8010
-    set DOCS_MCP_SERVER_URL=http://%WSL_IP%:8080/api
+    set DOCS_MCP_SERVER_URL=http://%WSL_IP%:8080
     set DOCS_MCP_SERVER_WEB_URL=http://%WSL_IP%:6281
 ) else (
     echo WSL2 IP 未获取到，使用 localhost 转发
@@ -20,7 +20,7 @@ if defined WSL_IP (
     set REDIS_HOST=localhost
     set LITELLM_HOST=localhost
     set AI_POLICIES_SCANNER_URL=http://localhost:8010
-    set DOCS_MCP_SERVER_URL=http://localhost:8080/api
+    set DOCS_MCP_SERVER_URL=http://localhost:8080
     set DOCS_MCP_SERVER_WEB_URL=http://localhost:6281
 )
 
