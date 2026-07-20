@@ -435,6 +435,7 @@ async def list_uploads(
 async def list_doc_tasks(
     source: str | None = Query(None),
     status: str | None = Query(None),
+    library: str | None = Query(None),
     date_range: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
@@ -448,6 +449,7 @@ async def list_doc_tasks(
             session=session,
             source=source,
             status=status,
+            library=library,
             date_range=date_range,
             page=page,
             page_size=page_size,

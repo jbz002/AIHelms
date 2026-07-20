@@ -255,6 +255,79 @@ async def handle_job_completed(
     return task
 
 
+async def sync_task_status(
+    session: AsyncSession,
+    task_id: int,
+) -> dict | None:
+    """从 docs-mcp REST API 同步任务状态，修正 SSE 丢事件导致的状态偏差。
+
+    返回更新后的序列化任务，若无变化返回 None。
+    """
+    task = await crawl_task_repo.find_by_id(session, task_id)
+    if task is None:
+        return None
+    if not task.job_id or task.status not in ("crawling", "pending", "failed"):
+        return None
+
+    try:
+        detail = await docs_mcp_client.get_job_detail(task.job_id)
+    except DocsMcpError:
+        logger.warning(
+            "sync_task_status: failed to fetch job %s from docs-mcp",
+            task.job_id,
+        )
+        return None
+
+    if not isinstance(detail, dict):
+        return None
+
+    remote_status = detail.get("status")
+    remote_error = detail.get("error")
+    remote_error_msg = None
+    if isinstance(remote_error, dict):
+        remote_error_msg = remote_error.get("message")
+    elif isinstance(remote_error, str):
+        remote_error_msg = remote_error
+
+    # 状态映射
+    local_target = None
+    if remote_status == "completed":
+        local_target = "crawled"
+    elif remote_status == "failed":
+        local_target = "failed"
+    elif remote_status == "cancelled":
+        local_target = "failed"
+    else:
+        return None
+
+    if (
+        local_target == task.status
+        and (not remote_error_msg or remote_error_msg == task.error_message)
+    ):
+        return None
+
+    if local_target == "failed":
+        await crawl_task_repo.update_status(
+            session,
+            task.id,
+            "failed",
+            error_message=remote_error_msg or "docs-mcp job failed",
+        )
+    else:
+        await crawl_task_repo.update_status(session, task.id, local_target)
+
+    await session.refresh(task)
+    synced = _serialize_task(task)
+
+    if local_target == "crawled" and task.auto_ingest:
+        from tasks.doc_tasks import ingest_crawl_task
+
+        ingest_crawl_task.delay(task.id)
+        logger.info("auto ingest dispatched after sync for crawl task %s", task.id)
+
+    return synced
+
+
 async def ingest_crawl_task(
     session: AsyncSession,
     task_id: int,

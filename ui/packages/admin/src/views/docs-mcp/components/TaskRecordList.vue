@@ -8,6 +8,7 @@ import {
   ingestUploadRecord,
   deleteCrawlTask,
   deleteUploadRecord,
+  syncCrawlTaskStatus,
   toast,
 } from '@aihelms/shared'
 import {
@@ -21,8 +22,10 @@ import {
   ArrowDownToLine,
   AlertCircle,
   RefreshCw,
+  RotateCcw,
 } from 'lucide-vue-next'
 
+const props = defineProps<{ libraryName?: string }>()
 const emit = defineEmits<{ refresh: [] }>()
 
 const tasks = ref<DocTask[]>([])
@@ -38,6 +41,7 @@ const expandedPages = ref<CrawledPage[]>([])
 const expandedPagesTotal = ref(0)
 const ingestingKey = ref<string | null>(null)
 const deletingKey = ref<string | null>(null)
+const syncingKey = ref<string | null>(null)
 
 const statusConfig: Record<DocTaskStatus, { label: string; cls: string; spin: boolean }> = {
   pending: { label: '等待中', cls: 'bg-gray-100 text-gray-700', spin: false },
@@ -117,6 +121,7 @@ async function loadTasks(): Promise<void> {
       page.value,
       pageSize.value,
       dateFilter.value || undefined,
+      props.libraryName,
     )
     tasks.value = res.items ?? []
     total.value = res.total ?? 0
@@ -182,6 +187,21 @@ async function handleDelete(task: DocTask): Promise<void> {
   }
 }
 
+async function handleSyncStatus(task: DocTask) {
+  if (!task.key.startsWith('crawl-')) return
+  const rawId = task.raw_id
+  syncingKey.value = task.key
+  try {
+    await syncCrawlTaskStatus(rawId)
+    toast({ type: 'success', message: '状态已同步' })
+  } catch {
+    toast({ type: 'error', message: '同步失败' })
+  } finally {
+    syncingKey.value = null
+  }
+  await loadTasks()
+}
+
 watch([sourceFilter, statusFilter, dateFilter], () => {
   page.value = 1
   loadTasks()
@@ -243,12 +263,26 @@ defineExpose({ loadTasks })
               </span>
               <a :href="task.current_url" target="_blank" class="truncate max-w-[280px] hover:text-blue-800">{{ displayUrl(task.current_url, task.subtitle) }}</a>
             </div>
+            <div v-if="task.error_message" class="mt-0.5 flex items-center gap-1 text-xs text-red-500">
+              <AlertCircle class="h-3 w-3 shrink-0" />
+              <span class="truncate max-w-[340px]" :title="task.error_message">{{ task.error_message }}</span>
+            </div>
           </div>
           <span :class="['shrink-0 rounded-full px-2 py-0.5 text-xs font-medium', statusConfig[task.status].cls]">
             <Loader2 v-if="statusConfig[task.status].spin" class="mr-1 inline h-3 w-3 animate-spin" />
             {{ statusConfig[task.status].label }}
           </span>
           <div class="flex shrink-0 items-center">
+            <button
+              v-if="task.source === 'external_crawl' && (task.status === 'processing' || task.status === 'failed')"
+              class="rounded-md p-1 text-gray-400 hover:bg-blue-50 hover:text-blue-500"
+              title="同步状态"
+              :disabled="syncingKey === task.key"
+              @click="handleSyncStatus(task)"
+            >
+              <Loader2 v-if="syncingKey === task.key" class="h-4 w-4 animate-spin" />
+              <RotateCcw v-else class="h-4 w-4" />
+            </button>
             <button v-if="task.can_ingest" class="rounded-md p-1 text-emerald-600 hover:bg-emerald-50" title="入库" :disabled="ingestingKey === task.key" @click="handleIngest(task)">
               <Loader2 v-if="ingestingKey === task.key" class="h-4 w-4 animate-spin" />
               <ArrowDownToLine v-else class="h-4 w-4" />

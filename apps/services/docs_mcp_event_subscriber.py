@@ -12,7 +12,7 @@ import json
 import logging
 
 import httpx
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from core.config import settings
 from core.database import async_session
@@ -65,7 +65,10 @@ async def _consume_loop() -> None:
                 async with client.stream("GET", url) as resp:
                     if resp.status_code >= 400:
                         raise RuntimeError(f"upstream {resp.status_code}")
-                    logger.info("docs-mcp subscriber: connected, status=%d", resp.status_code)
+                    logger.info(
+                        "docs-mcp subscriber: connected, status=%d",
+                        resp.status_code,
+                    )
                     backoff = _RECONNECT_BACKOFF
                     current_event: str | None = None
                     current_data = ""
@@ -94,13 +97,15 @@ async def _consume_loop() -> None:
 
 
 async def _dispatch_event(event_name: str, data_str: str) -> None:
-    # 调试：记录所有事件
     _DEBUG_LAST_EVENTS.append(f"[{event_name}] {data_str[:300]}")
     if len(_DEBUG_LAST_EVENTS) > _DEBUG_MAX:
         _DEBUG_LAST_EVENTS.pop(0)
 
+    # library-change / job-list-change 是通知性事件，忽略属于正常行为
     if event_name not in ("page-scraped", "job-status-change", "job-progress"):
-        logger.info("[SSE ignored] event=%s data=%s", event_name, data_str[:300])
+        logger.debug("[SSE ignored] event=%s", event_name)
+        if event_name == "library-change":
+            await _reconcile_stale_crawling_tasks()
         return
 
     logger.info("[SSE received] event=%s data=%s", event_name, data_str[:500])
@@ -108,7 +113,11 @@ async def _dispatch_event(event_name: str, data_str: str) -> None:
     try:
         payload = json.loads(data_str)
     except (json.JSONDecodeError, TypeError):
-        logger.warning("[SSE] json parse failed for event=%s: %s", event_name, data_str[:200])
+        logger.warning(
+            "[SSE] json parse failed for event=%s: %s",
+            event_name,
+            data_str[:200],
+        )
         return
 
     if event_name == "page-scraped":
@@ -132,6 +141,10 @@ async def _dispatch_event(event_name: str, data_str: str) -> None:
         error = payload.get("error")
         error_message = error.get("message") if isinstance(error, dict) else None
 
+        # 兜底：SSE 中 error 为 null 时从 REST API 获取实际错误信息
+        if status == "failed" and not error_message and job_id:
+            error_message = await _fetch_error_from_api(job_id)
+
         task = None
         try:
             async with async_session() as session:
@@ -151,22 +164,102 @@ async def _dispatch_event(event_name: str, data_str: str) -> None:
 
     if event_name == "job-progress":
         job_id = payload.get("id")
-        logger.info(
-            "[job-progress] job_id=%s progress=%s",
-            job_id,
-            json.dumps(payload.get("progress"), ensure_ascii=False)[:500],
-        )
         if not job_id:
             return
         progress = payload.get("progress")
         if not progress or not isinstance(progress, dict):
-            logger.warning("[job-progress] missing/invalid progress in payload: %s", data_str[:300])
             return
         try:
             async with async_session() as session:
                 await crawl_task_service.handle_job_progress(session, job_id, progress)
                 await session.commit()
-            logger.info("[job-progress] handled OK for job=%s", job_id)
         except Exception:
             logger.exception("handle job-progress failed: job=%s", job_id)
         return
+
+
+async def _fetch_error_from_api(job_id: str) -> str | None:
+    """从 docs-mcp REST API 兜底获取 job 的实际错误信息。"""
+    try:
+        from services.docs_mcp_client import docs_mcp_client
+
+        detail = await docs_mcp_client.get_job_detail(job_id)
+        if not isinstance(detail, dict):
+            return None
+        error = detail.get("error")
+        if isinstance(error, dict):
+            return error.get("message")
+        if isinstance(error, str):
+            return error
+        err_msg = detail.get("errorMessage")
+        if isinstance(err_msg, str) and err_msg:
+            return err_msg
+    except Exception:
+        logger.debug("_fetch_error_from_api failed for job=%s", job_id)
+    return None
+
+
+async def _reconcile_stale_crawling_tasks() -> None:
+    """检查长时间处于 crawling 状态的任务，从 docs-mcp API 同步真实状态。
+
+    作为 SSE 丢事件（断连重连）的兜底机制：library-change 信号
+    说明 docs-mcp 侧发生了状态变化，此时检查是否有遗漏的任务。
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from services.docs_mcp_client import docs_mcp_client
+
+    try:
+        async with async_session() as session:
+            from models.db import CrawlTask
+
+            cutoff = datetime.now(timezone.utc) - timedelta(minutes=2)
+            result = await session.execute(
+                select(CrawlTask).where(
+                    CrawlTask.status == "crawling",
+                    CrawlTask.started_at.isnot(None),
+                    CrawlTask.started_at < cutoff,
+                    CrawlTask.job_id != "",
+                )
+            )
+            stale_tasks = list(result.scalars().all())
+            if not stale_tasks:
+                return
+
+            logger.info(
+                "reconcile: found %d stale crawling tasks", len(stale_tasks)
+            )
+            for task in stale_tasks:
+                try:
+                    detail = await docs_mcp_client.get_job_detail(task.job_id)
+                    if not isinstance(detail, dict):
+                        continue
+                    remote_status = detail.get("status")
+                    if remote_status not in ("completed", "failed", "cancelled"):
+                        continue
+                    error = detail.get("error")
+                    error_message = None
+                    if isinstance(error, dict):
+                        error_message = error.get("message")
+                    elif isinstance(error, str):
+                        error_message = error
+                    if not error_message:
+                        error_message = detail.get("errorMessage")
+                    synced = await crawl_task_service.sync_task_status(
+                        session, task.id
+                    )
+                    if synced:
+                        logger.info(
+                            "reconcile: task %s synced to %s (was crawling)",
+                            task.id,
+                            synced.get("status_raw"),
+                        )
+                except Exception:
+                    logger.debug(
+                        "reconcile: failed for task %s job=%s",
+                        task.id,
+                        task.job_id,
+                    )
+            await session.commit()
+    except Exception:
+        logger.debug("reconcile_stale_crawling_tasks failed", exc_info=True)

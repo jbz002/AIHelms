@@ -121,6 +121,7 @@ async def list_tasks(
     session: AsyncSession,
     source: str | None = None,
     status: str | None = None,
+    library: str | None = None,
     date_range: str | None = None,
     page: int = 1,
     page_size: int = 20,
@@ -138,6 +139,9 @@ async def list_tasks(
 
     if status:
         unified = [u for u in unified if u["status"] == status]
+
+    if library:
+        unified = [u for u in unified if u["library"] == library]
 
     if date_range:
         cutoff = _date_cutoff(date_range)

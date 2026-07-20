@@ -25,71 +25,9 @@ services:
         max-size: "50m"
         max-file: "3"
 
-  docs-mcp-worker:
-    build: ../docs-mcp-server
-    restart: unless-stopped
-    container_name: docs-mcp-worker
-    command: ["worker", "--host", "0.0.0.0", "--port", "8080"]
-    ports:
-      - "${DOCS_MCP_WORKER_PORT:-8080}:8080"
-    env_file:
-      - ../docs-mcp-server/.env
-    volumes:
-      - docs-mcp-data:/data
-      - docs-mcp-config:/config
-    healthcheck:
-      test: ["CMD-SHELL", "node -e 'require(\"net\").connect(8080, \"127.0.0.1\").on(\"connect\",()=>process.exit(0)).on(\"error\",()=>process.exit(1))'"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
-      start_period: 10s
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "3"
-
-  # docs-mcp-server — MCP 协议端点（供 AI 工具调用）
-  docs-mcp-server:
-    build: ../docs-mcp-server
-    restart: unless-stopped
-    container_name: docs-mcp-server
-    command: ["mcp", "--protocol", "http", "--host", "0.0.0.0", "--port", "6280", "--server-url", "http://docs-mcp-worker:8080", "--no-logo"]
-    ports:
-      - "${DOCS_MCP_SERVER_PORT:-6280}:6280"
-    env_file:
-      - ../docs-mcp-server/.env
-    volumes:
-      - docs-mcp-config:/config
-    depends_on:
-      docs-mcp-worker:
-        condition: service_healthy
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "3"
-
-  # docs-mcp-server — Web 管理界面 + SSE 事件流
-  docs-mcp-web:
-    build: ../docs-mcp-server
-    restart: unless-stopped
-    container_name: docs-mcp-web
-    command: ["web", "--host", "0.0.0.0", "--port", "6281", "--server-url", "http://docs-mcp-worker:8080/api", "--no-logo"]
-    ports:
-      - "${DOCS_MCP_WEB_PORT:-6281}:6281"
-    env_file:
-      - ../docs-mcp-server/.env
-    volumes:
-      - docs-mcp-config:/config
-    depends_on:
-      docs-mcp-worker:
-        condition: service_healthy
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "50m"
-        max-file: "3"
+  # NOTE: docs-mcp-worker / docs-mcp-server / docs-mcp-web 已从本文件移除
+  # 这些服务由 docs-mcp-server 项目自行管理（docker-compose.yml + docker-compose.wsl.yml）
+  # 仅保留 volumes 引用，确保 data/config 持久化
 
   db:
     image: postgres:16-alpine

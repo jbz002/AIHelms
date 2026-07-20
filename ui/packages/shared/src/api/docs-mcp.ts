@@ -191,9 +191,9 @@ export function syncCrawlTaskStatus(taskId: number) {
   })
 }
 
-export function getDocTasks(source?: DocTaskSource, status?: DocTaskStatus, page?: number, pageSize?: number, dateRange?: string) {
+export function getDocTasks(source?: DocTaskSource, status?: DocTaskStatus, page?: number, pageSize?: number, dateRange?: string, library?: string) {
   return request<DocTaskListResult>('/api/v1/docs-mcp/tasks', {
-    params: { source, status, page, page_size: pageSize, date_range: dateRange } as Record<string, string | number | undefined>,
+    params: { source, status, page, page_size: pageSize, date_range: dateRange, library } as Record<string, string | number | undefined>,
   })
 }
 

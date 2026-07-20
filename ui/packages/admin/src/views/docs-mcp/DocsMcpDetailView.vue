@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   getDocsMcpLibraryDetail,
@@ -7,6 +7,7 @@ import {
   deleteDocsMcpVersion,
   deleteDocsMcpVersionDocuments,
   createCrawlTask,
+  getDocsMcpEventSourceUrl,
   toast,
   type DocsMcpLibrary,
   type DocsMcpSearchResult,
@@ -17,6 +18,7 @@ import SearchCard from './components/SearchCard.vue'
 import SearchResultList from './components/SearchResultList.vue'
 import VersionRow from './components/VersionRow.vue'
 import ScrapeJobDialog from './components/ScrapeJobDialog.vue'
+import TaskRecordList from './components/TaskRecordList.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,6 +30,8 @@ const searchLoading = ref(false)
 const hasSearched = ref(false)
 const loading = ref(false)
 const showAddVersionDialog = ref(false)
+const taskRecordListRef = ref<InstanceType<typeof TaskRecordList> | null>(null)
+let eventSource: EventSource | null = null
 
 async function loadLibrary(): Promise<void> {
   loading.value = true
@@ -104,13 +108,45 @@ async function handleSubmitJob(params: {
     toast.success('爬取任务已创建')
     showAddVersionDialog.value = false
     await loadLibrary()
+    taskRecordListRef.value?.loadTasks()
   } catch (e) {
     toast.error((e as Error).message || '创建失败')
   }
 }
 
+function connectSSE(): void {
+  const url = getDocsMcpEventSourceUrl()
+  eventSource = new EventSource(url)
+  eventSource.addEventListener('job-status-change', () => {
+    loadLibrary()
+    taskRecordListRef.value?.loadTasks()
+  })
+  eventSource.addEventListener('job-progress', () => {
+    loadLibrary()
+    taskRecordListRef.value?.loadTasks()
+  })
+  eventSource.addEventListener('job-list-change', () => {
+    loadLibrary()
+    taskRecordListRef.value?.loadTasks()
+  })
+  eventSource.onerror = () => {
+    if (eventSource) {
+      eventSource.close()
+      setTimeout(connectSSE, 5000)
+    }
+  }
+}
+
 onMounted(() => {
   loadLibrary()
+  connectSSE()
+})
+
+onUnmounted(() => {
+  if (eventSource) {
+    eventSource.close()
+    eventSource = null
+  }
 })
 </script>
 
@@ -172,6 +208,13 @@ onMounted(() => {
           />
         </div>
       </div>
+
+      <TaskRecordList
+        v-if="library"
+        :library-name="libraryName"
+        ref="taskRecordListRef"
+        @refresh="loadLibrary()"
+      />
     </template>
 
     <ScrapeJobDialog
