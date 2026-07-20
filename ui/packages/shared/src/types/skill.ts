@@ -25,6 +25,8 @@ export interface Skill {
   is_published: boolean
   requires_approval: boolean
   install_count: number
+  avg_score?: number
+  rating_count?: number
   frontmatter: Record<string, unknown>
   summary_text: string
   security_status?: 'not_scanned' | 'queued' | 'running' | 'completed' | 'failed'

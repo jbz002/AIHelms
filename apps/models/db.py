@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -753,6 +754,44 @@ class SkillUsageLog(Base):
     action: Mapped[str] = mapped_column(String(20), nullable=False)
     ai_key_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+
+
+class EntityRating(Base):
+    __tablename__ = "entity_ratings"
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id", "user_id"),
+        {"schema": "aihelms"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="CASCADE"), nullable=False
+    )
+    score: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    feedback_type: Mapped[str] = mapped_column(String(20), nullable=False, default="")
+    comment: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+
+
+class EntityRatingStats(Base):
+    __tablename__ = "entity_rating_stats"
+    __table_args__ = {"schema": "aihelms"}
+
+    entity_type: Mapped[str] = mapped_column(String(32), primary_key=True)
+    entity_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    avg_score: Mapped[Decimal] = mapped_column(Numeric(3, 2), nullable=False, default=0)
+    rating_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_rated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
 
 
 class SyncState(Base):

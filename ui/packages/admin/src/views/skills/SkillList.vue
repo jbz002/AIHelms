@@ -47,6 +47,7 @@ const loading = ref(false)
 const selectedCategory = ref<string | null>(null)
 const skillQuery = ref('')
 const publishStatus = ref<PublishStatusFilter>('all')
+const sortOrder = ref<'default' | 'rating' | 'usage'>('default')
 const showCategoryForm = ref(false)
 const categoryFormName = ref('')
 const categoryFormDescription = ref('')
@@ -61,7 +62,7 @@ const categoriesWithCount = computed(() => {
 
 const filteredSkills = computed(() => {
   const normalizedQuery = skillQuery.value.trim().toLowerCase()
-  return skills.value.filter((skill) => {
+  const list = skills.value.filter((skill) => {
     const matchesCategory = !selectedCategory.value || skill.category === selectedCategory.value
     const matchesName = !normalizedQuery || skill.name.toLowerCase().includes(normalizedQuery)
     const matchesPublishStatus =
@@ -70,6 +71,17 @@ const filteredSkills = computed(() => {
       (publishStatus.value === 'unpublished' && !skill.is_published)
     return matchesCategory && matchesName && matchesPublishStatus
   })
+  if (sortOrder.value === 'rating') {
+    return [...list].sort((a, b) => {
+      const qa = (a.rating_count ?? 0) >= 3 ? (a.avg_score ?? 0) : 0
+      const qb = (b.rating_count ?? 0) >= 3 ? (b.avg_score ?? 0) : 0
+      return qb - qa
+    })
+  }
+  if (sortOrder.value === 'usage') {
+    return [...list].sort((a, b) => (b.install_count ?? 0) - (a.install_count ?? 0))
+  }
+  return list
 })
 
 function getIconComponent(name: string) {
@@ -277,6 +289,14 @@ onMounted(loadData)
           <option value="all">全部发布状态</option>
           <option value="published">已发布</option>
           <option value="unpublished">未发布</option>
+        </select>
+        <select
+          v-model="sortOrder"
+          class="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700 shadow-sm focus:border-purple-500 focus:outline-none"
+        >
+          <option value="default">默认排序</option>
+          <option value="rating">评分优先</option>
+          <option value="usage">使用量优先</option>
         </select>
       </div>
     </div>

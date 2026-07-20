@@ -81,6 +81,8 @@ export type { DashboardQuery, RefreshTaskStatus } from './api/dashboard'
 export type { DocsMcpStats, DocsMcpJob, DocsMcpJobProgress, DocsMcpVersion, DocsMcpVersionProgress, DocsMcpLibrary, DocsMcpSearchResult, DocsMcpScrapeOptions, DocsMcpCreateJobParams, DocsMcpVersionCounts, DocsMcpDbVersion, DocsMcpStoredScraperOptions, DocsMcpFetchUrlResult, DocUploadRecord, DocUploadListResult, CrawlTask, CrawledPage, CrawlTaskListResult, CrawlPageListResult, DocTaskSource, DocTaskStatus, DocTask, DocTaskListResult, Document, DocumentListResult, IngestStats, IngestBatchParams } from './types/docs-mcp'
 export { getDocsMcpStats, getDocsMcpJobs, getDocsMcpJobDetail, createDocsMcpJob, cancelDocsMcpJob, clearCompletedDocsMcpJobs, getDocsMcpLibraries, getDocsMcpLibraryDetail, searchDocsMcp, deleteDocsMcpVersion, getDocsMcpEventSourceUrl, checkDocsMcpLibraryExists, getDocsMcpVersions, findDocsMcpVersionsByUrl, getDocsMcpVersionOptions, updateDocsMcpVersionOptions, deleteDocsMcpVersionDocuments, fetchDocsMcpUrl, uploadDocument, ingestUploadRecord, getDocUploadRecords, createCrawlTask, getCrawlTasks, getCrawlTask, getCrawlPages, ingestCrawlTask, deleteCrawlTask, syncCrawlTaskStatus, getDocTasks, deleteUploadRecord, getUploadRecordContent, getDocuments, getDocument, updateDocument, deleteDocument, getDocumentStats, ingestDocument, ingestDocumentBatch } from './api/docs-mcp'
 export { default as MarkdownRenderer } from './components/MarkdownRenderer.vue'
+export { default as StarRating } from './components/StarRating.vue'
+export { default as FeedbackList } from './components/FeedbackList.vue'
 export { useAuth } from './composables/useAuth'
 export { usePermission } from './composables/usePermission'
 export { toast } from './utils/toast'
@@ -99,3 +101,7 @@ export {
   getEfficiencyAdoptionScopeUsers, getEfficiencyCost, getEfficiencyCostDetail,
   getEfficiencyBudget, getEfficiencyBudgetAlerts, getEfficiencyHealth,
 } from './api/efficiency'
+export type { EntityType, FeedbackType, RatingView, RateParams, RateResponse, FeedbackItem, FeedbackListResult } from './types/rating'
+export { getRating, rateResource, listFeedbacks } from './api/rating'
+export type { StatsRange, UsageTrendPoint, ToolDistItem, ActionDistItem, McpUsageStats, SkillUsageStats } from './types/usageStats'
+export { getMcpUsageStats, getSkillUsageStats } from './api/usageStats'

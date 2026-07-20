@@ -19,6 +19,8 @@ import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import IconPicker from '../../components/IconPicker.vue'
 import SkillVersionPanel from './SkillVersionPanel.vue'
 import SkillContentPanel from './SkillContentPanel.vue'
+import RatingOverviewPanel from '../../components/RatingOverviewPanel.vue'
+import UsageStatsPanel from '../../components/UsageStatsPanel.vue'
 
 type SecurityStatus = 'not_scanned' | 'queued' | 'running' | 'completed' | 'failed'
 type SecurityDecision = 'passed' | 'attention_required' | 'high_risk' | 'failed'
@@ -488,6 +490,16 @@ onMounted(loadData)
 
           <div v-if="!isNew && skillId" class="col-span-2">
             <SkillContentPanel :skill-id="skillId" />
+          </div>
+
+          <div v-if="!isNew && skillId" class="col-span-2">
+            <h3 class="mb-3 text-sm font-semibold text-slate-900">评分概览</h3>
+            <RatingOverviewPanel entity-type="skill" :entity-id="skillId" />
+          </div>
+
+          <div v-if="!isNew && skillId" class="col-span-2">
+            <h3 class="mb-3 text-sm font-semibold text-slate-900">使用统计</h3>
+            <UsageStatsPanel entity-type="skill" :entity-id="skillId" />
           </div>
 
           <div class="col-span-2 flex items-center gap-4">

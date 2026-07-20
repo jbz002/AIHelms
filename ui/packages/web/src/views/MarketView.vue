@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
-import { getMyKeys, search, request, createResourceApplication } from '@aihelms/shared'
+import { useI18n } from 'vue-i18n'
+import { getMyKeys, search, request, createResourceApplication, StarRating } from '@aihelms/shared'
 import type { AiKey, Skill, McpServer, SearchResultItem } from '@aihelms/shared'
 import { Server, Sparkles, CheckCircle2, Search, X, ExternalLink, Flame } from 'lucide-vue-next'
 import * as lucideIcons from 'lucide-vue-next'
 import SkillInstallDialog from '../components/SkillInstallDialog.vue'
+import RatingWidget from '../components/RatingWidget.vue'
 
 type MarketItem = (Skill & { _type: 'skill' }) | (McpServer & { _type: 'mcp' })
 
@@ -16,6 +18,8 @@ const searchQuery = ref('')
 const searchResults = ref<SearchResultItem[]>([])
 const isSearching = ref(false)
 const typeFilter = ref<'all' | 'skill' | 'mcp' | 'tool'>('all')
+const sortMode = ref<'latest' | 'rating' | 'usage'>('rating')
+const { t } = useI18n()
 const categoryFilter = ref('')
 const showApplyDialog = ref(false)
 const showMcpAccessDialog = ref(false)
@@ -72,15 +76,34 @@ const backendResults = computed<MarketItem[]>(() => {
   })
 })
 
+// Q5: rating_count >= 3 threshold prevents low-sample score from dominating
+function qualityScore(item: MarketItem): number {
+  const cnt = item.rating_count ?? 0
+  const avg = item.avg_score ?? 0
+  return cnt >= 3 ? avg : 0
+}
+
+function sortItems(list: MarketItem[]): MarketItem[] {
+  const copy = [...list]
+  if (sortMode.value === 'rating') {
+    copy.sort((a, b) => qualityScore(b) - qualityScore(a) || getUsageCount(b) - getUsageCount(a))
+  } else if (sortMode.value === 'usage') {
+    copy.sort((a, b) => getUsageCount(b) - getUsageCount(a))
+  } else {
+    copy.sort((a, b) => b.id - a.id)
+  }
+  return copy
+}
+
 // Display items: when searching, show backend results; otherwise use client-side filtered
 const displayItems = computed<MarketItem[]>(() => {
-  if (searchQuery.value && backendResults.value.length > 0) return backendResults.value
-  // Non-search path: client-side filtering (existing behavior)
-  return items.value.filter(item => {
+  if (searchQuery.value && backendResults.value.length > 0) return sortItems(backendResults.value)
+  const filtered = items.value.filter(item => {
     if (typeFilter.value !== 'all' && itemToType(item) !== typeFilter.value) return false
     if (categoryFilter.value && item.category !== categoryFilter.value) return false
     return true
   })
+  return sortItems(filtered)
 })
 
 function itemToType(item: MarketItem): 'skill' | 'mcp' {
@@ -339,6 +362,19 @@ onMounted(loadData)
             class="w-full rounded-xl border border-slate-200/60 bg-white py-2 pl-9 pr-4 text-sm placeholder:text-slate-400 focus:border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
           />
         </div>
+        <div class="flex items-center gap-1 rounded-xl bg-white p-1 border border-slate-200/60">
+          <button
+            v-for="opt in [{ key: 'latest', label: t('market.sort.latest') }, { key: 'rating', label: t('market.sort.rating') }, { key: 'usage', label: t('market.sort.usage') }]"
+            :key="opt.key"
+            class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
+            :class="sortMode === opt.key
+              ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-sm'
+              : 'text-slate-600 hover:text-slate-900'"
+            @click="sortMode = opt.key as 'latest' | 'rating' | 'usage'"
+          >
+            {{ opt.label }}
+          </button>
+        </div>
       </div>
       <!-- Category tags -->
       <div v-if="categories.length" class="flex flex-wrap items-center gap-2">
@@ -428,6 +464,10 @@ onMounted(loadData)
               {{ formatUsageCount(getUsageCount(item)) }}
             </span>
           </div>
+        <!-- Rating -->
+        <div v-if="(item.rating_count ?? 0) > 0" class="mb-2">
+          <StarRating :readonly-value="item.avg_score ?? 0" :count="item.rating_count ?? 0" readonly size="sm" />
+        </div>
         <!-- Description -->
         <p class="flex-1 text-xs leading-relaxed text-slate-500 line-clamp-3">{{ item.description }}</p>
         <!-- Hover actions -->
@@ -554,6 +594,12 @@ onMounted(loadData)
               <div v-if="mcpConnectConfig.instructions">
                 <label class="mb-2 block text-xs font-semibold text-slate-700">使用说明</label>
                 <div class="rounded-lg bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">{{ mcpConnectConfig.instructions }}</div>
+              </div>
+
+              <!-- Rating -->
+              <div class="mt-4 border-t border-slate-100 pt-4">
+                <h4 class="mb-3 text-xs font-semibold text-slate-700">{{ t('market.rating.title') }}</h4>
+                <RatingWidget entity-type="mcp_server" :entity-id="mcpTarget.id" />
               </div>
             </template>
           </div>

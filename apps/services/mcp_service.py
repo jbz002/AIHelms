@@ -36,8 +36,12 @@ async def list_servers(
     items = await mcp_repo.find_all_servers(
         session, page, page_size, category, is_active, is_published, status
     )
+    serialized = [_serialize_server(s) for s in items]
+    from services import rating_service
+
+    await rating_service.enrich_items_with_ratings(session, "mcp_server", serialized)
     return {
-        "items": [_serialize_server(s) for s in items],
+        "items": serialized,
         "total": total,
         "page": page,
         "page_size": page_size,
