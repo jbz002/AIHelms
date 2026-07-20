@@ -47,9 +47,7 @@ class DocsMcpClient:
                 timeout=DOCS_MCP_TIMEOUT, proxy=None
             ) as client:
                 logger.info(f"docs-mcp {method}: {url}")
-                resp = await client.request(
-                    method, url, params=params, json=json_data
-                )
+                resp = await client.request(method, url, params=params, json=json_data)
 
                 if resp.status_code >= 400:
                     logger.error(
@@ -68,9 +66,7 @@ class DocsMcpClient:
                 return resp.json()
         except httpx.HTTPError as e:
             logger.error("docs-mcp connection error: %s - %s", path, str(e))
-            raise DocsMcpError(
-                f"docs-mcp {path} connection error: {e}"
-            ) from e
+            raise DocsMcpError(f"docs-mcp {path} connection error: {e}") from e
 
     # ---- REST wrappers ----
 
@@ -103,7 +99,9 @@ class DocsMcpClient:
         if version is None:
             try:
                 best = await self.find_best_version(library)
-                resolved_version = best.get("bestMatch") if isinstance(best, dict) else None
+                resolved_version = (
+                    best.get("bestMatch") if isinstance(best, dict) else None
+                )
             except DocsMcpError:
                 resolved_version = None
 
@@ -132,7 +130,14 @@ class DocsMcpClient:
         version: str | None,
         options: dict,
     ) -> dict:
-        logger.info("enqueue_scrape_job input: %s", json.dumps({"library": library, "version": version, "options": options}, default=str, ensure_ascii=False))
+        logger.info(
+            "enqueue_scrape_job input: %s",
+            json.dumps(
+                {"library": library, "version": version, "options": options},
+                default=str,
+                ensure_ascii=False,
+            ),
+        )
         body = {"library": library, "version": version, "options": options}
         return await self._call(
             "POST",
@@ -167,12 +172,12 @@ class DocsMcpClient:
 
     async def update_version_options(self, version_id: int, options: dict) -> None:
         """更新版本的抓取配置。"""
-        await self._call("PUT", f"/api/versions/{version_id}/options", json_data=options)
+        await self._call(
+            "PUT", f"/api/versions/{version_id}/options", json_data=options
+        )
 
     async def remove_version(self, library: str, version: str) -> None:
-        await self._call(
-            "DELETE", f"/api/libraries/{library}/versions/{version}"
-        )
+        await self._call("DELETE", f"/api/libraries/{library}/versions/{version}")
 
     async def remove_version_documents(self, library: str, version: str) -> None:
         """删除版本下所有文档（保留版本记录）。"""
@@ -223,6 +228,21 @@ class DocsMcpClient:
                 "version": version or None,
                 "documents": documents,
             },
+        )
+
+    async def ensure_library(
+        self,
+        library: str,
+        version: str | None,
+    ) -> dict:
+        """确保 docs-mcp 中 library+version 存在（0 documents）。
+
+        用于上传"仅提取"时在 docs-mcp 注册库，使其出现在 /api/libraries 列表。
+        """
+        return await self._call(
+            "POST",
+            "/api/libraries/ensure",
+            json_data={"library": library, "version": version or None},
         )
 
 

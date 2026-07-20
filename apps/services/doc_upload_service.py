@@ -191,6 +191,15 @@ async def upload_document(
         if auto_ingest:
             return await ingest_upload(session, record.id)
 
+        # 与爬虫"仅爬取"对齐：在 docs-mcp 注册 library+version（0 documents），
+        # 使其出现在 /docs-mcp/libraries 列表；失败不阻断提取（平台 DB 已完整）
+        try:
+            await docs_mcp_client.ensure_library(
+                library=record.library, version=record.version or None
+            )
+        except DocsMcpError as e:
+            logger.warning("ensure_library failed (extract-only): %s", str(e))
+
         return _serialize_record(record)
 
     except Exception as e:
@@ -315,9 +324,7 @@ async def list_upload_records(
     }
 
 
-async def get_extracted_content(
-    session: AsyncSession, record_id: int
-) -> str | None:
+async def get_extracted_content(session: AsyncSession, record_id: int) -> str | None:
     """返回上传记录的完整提取内容。"""
     record = await doc_upload_repo.find_by_id(session, record_id)
     if record is None:
