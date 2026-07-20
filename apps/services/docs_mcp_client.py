@@ -245,5 +245,16 @@ class DocsMcpClient:
             json_data={"library": library, "version": version or None},
         )
 
+    async def split_text(self, content: str, content_type: str) -> dict:
+        """调用 docs-mcp 分块，返回块数（不入库）。
+
+        用于上传"仅提取"对齐爬虫 crawlOnly 的分块计数。
+        """
+        return await self._call(
+            "POST",
+            "/api/split",
+            json_data={"content": content, "contentType": content_type},
+        )
+
 
 docs_mcp_client = DocsMcpClient()

@@ -170,6 +170,22 @@ async def upload_document(
         await doc_upload_repo.update_status(session, record.id, "extracted")
         await session.refresh(record)
 
+        # 仅提取模式：调 docs-mcp 分块拿真实 chunk_count（对齐爬虫 crawlOnly 分块计数）
+        # 直接入库模式：ingest_raw 会返回真实块数，此处用 0 占位
+        chunk_count = 0
+        if not auto_ingest:
+            try:
+                split_result = await docs_mcp_client.split_text(
+                    content=content, content_type=record.content_type
+                )
+                chunk_count = (
+                    (split_result.get("chunks") or 0)
+                    if isinstance(split_result, dict)
+                    else 0
+                )
+            except DocsMcpError as e:
+                logger.warning("split_text failed (extract-only): %s", str(e))
+
         # 同步建立 Document（ingest_status='pending'），让文档列表/统计可见入库状态
         await document_repo.upsert_by_source(
             session,
@@ -180,7 +196,7 @@ async def upload_document(
             library=record.library,
             version=record.version or "",
             created_by=record.created_by,
-            chunk_count=0,
+            chunk_count=chunk_count,
             metadata_={
                 "file_name": record.file_name,
                 "content_type": record.content_type,
