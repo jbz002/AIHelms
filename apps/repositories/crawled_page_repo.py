@@ -1,9 +1,9 @@
 """crawled_pages 表的数据库操作。"""
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.db import CrawledPage
+from models.db import CrawledPage, CrawlTask
 
 
 async def upsert_by_task_url(
@@ -92,13 +92,22 @@ async def delete_by_task_id(session: AsyncSession, crawl_task_id: int) -> None:
     await session.flush()
 
 
+async def delete_by_library_version(
+    session: AsyncSession, library: str, version: str
+) -> int:
+    """按 library + version 删除爬取页面（通过 CrawlTask 关联），返回删除行数。"""
+    task_ids_stmt = select(CrawlTask.id).where(
+        func.lower(CrawlTask.library) == library.lower(),
+        CrawlTask.version == version,
+    )
+    stmt = delete(CrawledPage).where(CrawledPage.crawl_task_id.in_(task_ids_stmt))
+    result = await session.execute(stmt)
+    await session.flush()
+    return result.rowcount
+
+
 async def delete_by_library(session: AsyncSession, library: str) -> int:
     """按 library 删除该库下所有爬取页面（通过 CrawlTask 关联），返回删除行数。"""
-    from sqlalchemy import delete
-    from sqlalchemy import func
-
-    from models.db import CrawlTask
-
     task_ids_stmt = select(CrawlTask.id).where(
         func.lower(CrawlTask.library) == library.lower()
     )

@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from core.database import async_session
 from core.deps import get_current_user, get_db
-from repositories import crawled_page_repo, crawl_task_repo, doc_upload_repo, document_repo
+from repositories import (
+    crawl_task_repo,
+    crawled_page_repo,
+    doc_upload_repo,
+    document_repo,
+)
 from services import doc_upload_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
@@ -187,10 +192,10 @@ async def delete_version(
 ):
     try:
         await docs_mcp_client.remove_version(library_name, version)
-        await doc_upload_repo.delete_by_library(db, library_name)
-        await crawled_page_repo.delete_by_library(db, library_name)
-        await crawl_task_repo.delete_by_library(db, library_name)
-        await document_repo.delete_by_library(db, library_name)
+        await doc_upload_repo.delete_by_library_version(db, library_name, version)
+        await crawled_page_repo.delete_by_library_version(db, library_name, version)
+        await crawl_task_repo.delete_by_library_version(db, library_name, version)
+        await document_repo.delete_by_library_version(db, library_name, version)
         await db.commit()
         return {"code": 200, "message": "版本已删除", "data": None}
     except DocsMcpError as e:
@@ -210,8 +215,8 @@ async def delete_version_documents(
     """删除版本下所有文档，保留版本记录本身。适用于清除后重新抓取。"""
     try:
         await docs_mcp_client.remove_version_documents(library_name, version)
-        await crawled_page_repo.delete_by_library(db, library_name)
-        await document_repo.delete_by_library(db, library_name)
+        await crawled_page_repo.delete_by_library_version(db, library_name, version)
+        await document_repo.delete_by_library_version(db, library_name, version)
         await db.commit()
         return {"code": 200, "message": "文档已清除", "data": None}
     except DocsMcpError as e:
@@ -575,6 +580,23 @@ async def ingest_crawl_task(
         return {"code": 404, "message": "爬取任务不存在", "data": None}
     ingest_crawl_task_celery.delay(task_id)
     return {"code": 200, "message": "入库任务已提交", "data": task}
+
+
+@router.post("/crawl-tasks/{task_id}/sync-status", summary="同步爬取任务状态")
+async def sync_crawl_task_status(
+    task_id: int,
+    _: dict = Depends(get_current_user),
+):
+    """从 docs-mcp REST API 拉取任务实际状态并同步到本地。"""
+    from services import crawl_task_service
+
+    async with async_session() as session:
+        result = await crawl_task_service.sync_task_status(session, task_id)
+        if result is None:
+            await session.commit()
+            return {"code": 200, "message": "状态无变化", "data": None}
+        await session.commit()
+    return {"code": 200, "message": "任务状态已同步", "data": result}
 
 
 @router.delete("/crawl-tasks/{task_id}", summary="删除爬取任务")

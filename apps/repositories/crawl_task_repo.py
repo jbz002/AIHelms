@@ -108,11 +108,22 @@ async def update_progress(
         await session.flush()
 
 
+async def delete_by_library_version(
+    session: AsyncSession, library: str, version: str
+) -> int:
+    """按 library + version 批量删除爬取任务，返回删除行数。"""
+    stmt = delete(CrawlTask).where(
+        func.lower(CrawlTask.library) == library.lower(),
+        CrawlTask.version == version,
+    )
+    result = await session.execute(stmt)
+    await session.flush()
+    return result.rowcount
+
+
 async def delete_by_library(session: AsyncSession, library: str) -> int:
     """按 library 批量删除爬取任务，返回删除行数。"""
-    stmt = delete(CrawlTask).where(
-        func.lower(CrawlTask.library) == library.lower()
-    )
+    stmt = delete(CrawlTask).where(func.lower(CrawlTask.library) == library.lower())
     result = await session.execute(stmt)
     await session.flush()
     return result.rowcount
