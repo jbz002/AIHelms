@@ -78,13 +78,16 @@ async def list_documents(
     library: str | None = None,
     source_type: str | None = None,
     ingest_status: str | None = None,
+    version: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
     """查询文档列表，支持多条件过滤和分页。"""
-    total = await document_repo.count_all(session, library, source_type, ingest_status)
+    total = await document_repo.count_all(
+        session, library, source_type, ingest_status, version
+    )
     docs = await document_repo.list_all(
-        session, library, source_type, ingest_status, page, page_size
+        session, library, source_type, ingest_status, version, page, page_size
     )
     return {
         "items": [_serialize_document(d) for d in docs],
@@ -244,9 +247,10 @@ async def ingest_batch(
 async def get_ingest_stats(
     session: AsyncSession,
     library: str | None = None,
+    version: str | None = None,
 ) -> dict:
     """获取文档入库统计。"""
-    rows = await document_repo.count_grouped_by_status(session, library)
+    rows = await document_repo.count_grouped_by_status(session, library, version)
     by_status = {r["ingest_status"]: r["count"] for r in rows}
     total_documents = sum(r["count"] for r in rows)
     total_chunks = sum(r["total_chunks"] for r in rows)

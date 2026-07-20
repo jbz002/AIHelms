@@ -160,6 +160,7 @@ async def list_all(
     library: str | None = None,
     source_type: str | None = None,
     ingest_status: str | None = None,
+    version: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> list[Document]:
@@ -170,6 +171,9 @@ async def list_all(
         stmt = stmt.where(Document.source_type == source_type)
     if ingest_status:
         stmt = stmt.where(Document.ingest_status == ingest_status)
+    if version:
+        normalized = "" if version.lower() == "latest" else version
+        stmt = stmt.where(Document.version == normalized)
     stmt = (
         stmt.order_by(Document.id.desc())
         .limit(page_size)
@@ -184,6 +188,7 @@ async def count_all(
     library: str | None = None,
     source_type: str | None = None,
     ingest_status: str | None = None,
+    version: str | None = None,
 ) -> int:
     stmt = select(func.count())
     if library:
@@ -192,6 +197,9 @@ async def count_all(
         stmt = stmt.where(Document.source_type == source_type)
     if ingest_status:
         stmt = stmt.where(Document.ingest_status == ingest_status)
+    if version:
+        normalized = "" if version.lower() == "latest" else version
+        stmt = stmt.where(Document.version == normalized)
     result = await session.execute(stmt)
     return result.scalar_one()
 
@@ -199,6 +207,7 @@ async def count_all(
 async def count_grouped_by_status(
     session: AsyncSession,
     library: str | None = None,
+    version: str | None = None,
 ) -> list[dict]:
     stmt = select(
         Document.ingest_status,
@@ -207,6 +216,9 @@ async def count_grouped_by_status(
     ).group_by(Document.ingest_status)
     if library:
         stmt = stmt.where(func.lower(Document.library) == library.lower())
+    if version:
+        normalized = "" if version.lower() == "latest" else version
+        stmt = stmt.where(Document.version == normalized)
     result = await session.execute(stmt)
     return [
         {

@@ -141,6 +141,7 @@ async def list_documents(
     library: str | None = Query(None, max_length=200),
     source_type: str | None = Query(None, max_length=20),
     ingest_status: str | None = Query(None, max_length=20),
+    version: str | None = Query(None, max_length=200),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
@@ -151,6 +152,7 @@ async def list_documents(
         library=library,
         source_type=source_type,
         ingest_status=ingest_status,
+        version=version,
         page=page,
         page_size=page_size,
     )
@@ -160,10 +162,13 @@ async def list_documents(
 @document_router.get("/stats")
 async def get_ingest_stats(
     library: str | None = Query(None, max_length=200),
+    version: str | None = Query(None, max_length=200),
     session: AsyncSession = Depends(get_db),
     _: dict = Depends(require_permission("document:read")),
 ):
-    result = await document_service.get_ingest_stats(session, library=library)
+    result = await document_service.get_ingest_stats(
+        session, library=library, version=version
+    )
     return {"code": 200, "message": "ok", "data": result}
 
 

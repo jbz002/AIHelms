@@ -185,6 +185,12 @@ export function deleteCrawlTask(taskId: number) {
   })
 }
 
+export function syncCrawlTaskStatus(taskId: number) {
+  return request<CrawlTask>('/api/v1/docs-mcp/crawl-tasks/{taskId}/sync-status'.replace('{taskId}', String(taskId)), {
+    method: 'POST',
+  })
+}
+
 export function getDocTasks(source?: DocTaskSource, status?: DocTaskStatus, page?: number, pageSize?: number, dateRange?: string) {
   return request<DocTaskListResult>('/api/v1/docs-mcp/tasks', {
     params: { source, status, page, page_size: pageSize, date_range: dateRange } as Record<string, string | number | undefined>,
@@ -205,12 +211,14 @@ export function getDocuments(
   ingestStatus?: string,
   page?: number,
   pageSize?: number,
+  version?: string,
 ) {
   return request<DocumentListResult>('/api/v1/documents', {
     params: {
       library,
       source_type: sourceType,
       ingest_status: ingestStatus,
+      version,
       page,
       page_size: pageSize,
     } as Record<string, string | number | undefined>,
@@ -239,9 +247,9 @@ export function deleteDocument(documentId: number) {
 
 // ── 文档入库 ──
 
-export function getDocumentStats(library?: string) {
+export function getDocumentStats(library?: string, version?: string) {
   return request<IngestStats>('/api/v1/documents/stats', {
-    params: library ? { library } : undefined,
+    params: { library, version },
   })
 }
 

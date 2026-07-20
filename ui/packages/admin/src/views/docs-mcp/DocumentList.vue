@@ -25,6 +25,7 @@ import {
 const route = useRoute()
 const router = useRouter()
 const libraryName = computed(() => route.params.libraryName as string)
+const currentVersion = computed(() => (route.query.version as string) || '')
 
 const documents = ref<Document[]>([])
 const total = ref(0)
@@ -75,6 +76,7 @@ async function loadDocuments(): Promise<void> {
       statusFilter.value || undefined,
       page.value,
       pageSize.value,
+      currentVersion.value || undefined,
     )
     documents.value = res.items ?? []
     total.value = res.total ?? 0
@@ -88,7 +90,7 @@ async function loadDocuments(): Promise<void> {
 
 async function loadStats(): Promise<void> {
   try {
-    stats.value = await getDocumentStats(libraryName.value)
+    stats.value = await getDocumentStats(libraryName.value, currentVersion.value || undefined)
   } catch {
     stats.value = null
   }
