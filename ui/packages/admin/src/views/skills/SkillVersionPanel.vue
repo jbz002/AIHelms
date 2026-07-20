@@ -195,7 +195,6 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             <span v-if="v.composite_hash" class="truncate text-slate-300 font-mono text-[10px]">{{ v.composite_hash.slice(0, 8) }}</span>
           </div>
           <div v-if="v.summary_text" class="mt-0.5 truncate text-slate-400 italic">{{ v.summary_text.slice(0, 80) }}{{ v.summary_text.length > 80 ? '...' : '' }}</div>
-          </div>
         </div>
         <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px]" :class="lifecycleBadge(v.lifecycle_status).cls">
           {{ lifecycleBadge(v.lifecycle_status).label }}
