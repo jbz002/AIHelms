@@ -207,7 +207,7 @@ async def ingest_batch(
     ingested, failed, skipped = 0, 0, 0
     for doc in docs:
         current_hash = hashlib.sha256(doc.content.encode("utf-8")).hexdigest()
-        if current_hash == doc.content_hash and doc.ingest_status == "pending":
+        if current_hash == doc.content_hash and doc.ingest_status == "ingested":
             skipped += 1
             continue
 
