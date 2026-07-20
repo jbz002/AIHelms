@@ -233,9 +233,15 @@ async def ingest_upload(session: AsyncSession, record_id: int) -> dict:
             documents=documents,
         )
 
-        ingested = result.get("ingested", 1) if isinstance(result, dict) else 1
+        # docs-mcp ingest-raw 返回 { ingested: 文档数, chunks: 块数 }
+        # chunks 为真块数；旧版 docs-mcp 无该字段时回退 ingested（文档数）
+        num_chunks = (
+            (result.get("chunks") or result.get("ingested") or 1)
+            if isinstance(result, dict)
+            else 1
+        )
         await doc_upload_repo.update_status(
-            session, record.id, "completed", chunk_count=ingested
+            session, record.id, "completed", chunk_count=num_chunks
         )
         await session.refresh(record)
 
@@ -253,7 +259,7 @@ async def ingest_upload(session: AsyncSession, record_id: int) -> dict:
                 version=record.version,
                 source_type="upload",
                 source_id=record.id,
-                chunk_count=ingested,
+                chunk_count=num_chunks,
                 ingest_status="ingested",
                 content_hash=content_hash,
                 created_by=record.created_by,
@@ -266,7 +272,7 @@ async def ingest_upload(session: AsyncSession, record_id: int) -> dict:
             await document_repo.create(session, doc)
         else:
             await document_repo.update_ingest_status(
-                session, existing.id, "ingested", chunk_count=ingested
+                session, existing.id, "ingested", chunk_count=num_chunks
             )
 
         await document_library_service.refresh_document_counts(session, record.library)
