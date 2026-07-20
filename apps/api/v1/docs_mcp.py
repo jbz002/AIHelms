@@ -191,11 +191,14 @@ async def delete_version(
     db: AsyncSession = Depends(get_db),
 ):
     try:
+        local_version = "" if version.lower() == "latest" else version
         await docs_mcp_client.remove_version(library_name, version)
-        await doc_upload_repo.delete_by_library_version(db, library_name, version)
-        await crawled_page_repo.delete_by_library_version(db, library_name, version)
-        await crawl_task_repo.delete_by_library_version(db, library_name, version)
-        await document_repo.delete_by_library_version(db, library_name, version)
+        await doc_upload_repo.delete_by_library_version(db, library_name, local_version)
+        await crawled_page_repo.delete_by_library_version(
+            db, library_name, local_version
+        )
+        await crawl_task_repo.delete_by_library_version(db, library_name, local_version)
+        await document_repo.delete_by_library_version(db, library_name, local_version)
         await db.commit()
         return {"code": 200, "message": "版本已删除", "data": None}
     except DocsMcpError as e:
@@ -214,9 +217,12 @@ async def delete_version_documents(
 ):
     """删除版本下所有文档，保留版本记录本身。适用于清除后重新抓取。"""
     try:
+        local_version = "" if version.lower() == "latest" else version
         await docs_mcp_client.remove_version_documents(library_name, version)
-        await crawled_page_repo.delete_by_library_version(db, library_name, version)
-        await document_repo.delete_by_library_version(db, library_name, version)
+        await crawled_page_repo.delete_by_library_version(
+            db, library_name, local_version
+        )
+        await document_repo.delete_by_library_version(db, library_name, local_version)
         await db.commit()
         return {"code": 200, "message": "文档已清除", "data": None}
     except DocsMcpError as e:
