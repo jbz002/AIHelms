@@ -8,6 +8,7 @@ import {
   ingestUploadRecord,
   deleteCrawlTask,
   deleteUploadRecord,
+  getUploadRecordContent,
   syncCrawlTaskStatus,
   toast,
 } from '@aihelms/shared'
@@ -23,6 +24,8 @@ import {
   AlertCircle,
   RefreshCw,
   RotateCcw,
+  Copy,
+  Check,
 } from 'lucide-vue-next'
 
 const props = defineProps<{ libraryName?: string }>()
@@ -42,6 +45,10 @@ const expandedPagesTotal = ref(0)
 const ingestingKey = ref<string | null>(null)
 const deletingKey = ref<string | null>(null)
 const syncingKey = ref<string | null>(null)
+const contentExpandedKey = ref<string | null>(null)
+const contentLoadingKey = ref<string | null>(null)
+const contentCache = ref<Record<string, string>>({})
+const copiedKey = ref<string | null>(null)
 
 const statusConfig: Record<DocTaskStatus, { label: string; cls: string; spin: boolean }> = {
   pending: { label: '等待中', cls: 'bg-gray-100 text-gray-700', spin: false },
@@ -202,6 +209,53 @@ async function handleSyncStatus(task: DocTask) {
   await loadTasks()
 }
 
+async function ensureFullContent(task: DocTask): Promise<string> {
+  if (contentCache.value[task.key]) return contentCache.value[task.key]
+  contentLoadingKey.value = task.key
+  try {
+    const res = await getUploadRecordContent(task.raw_id)
+    contentCache.value[task.key] = res.content
+    return res.content
+  } finally {
+    contentLoadingKey.value = null
+  }
+}
+
+async function toggleViewAll(task: DocTask): Promise<void> {
+  if (contentExpandedKey.value === task.key) {
+    contentExpandedKey.value = null
+    return
+  }
+  contentExpandedKey.value = task.key
+  if (!contentCache.value[task.key]) {
+    try {
+      await ensureFullContent(task)
+    } catch (e) {
+      toast.error((e as Error).message || '加载内容失败')
+      contentExpandedKey.value = null
+    }
+  }
+}
+
+async function handleCopyContent(task: DocTask): Promise<void> {
+  if (copiedKey.value === task.key) return
+  try {
+    const content = await ensureFullContent(task)
+    if (!content) {
+      toast.error('暂无可复制的内容')
+      return
+    }
+    await navigator.clipboard.writeText(content)
+    copiedKey.value = task.key
+    toast.success('已复制全部内容')
+    setTimeout(() => {
+      if (copiedKey.value === task.key) copiedKey.value = null
+    }, 2000)
+  } catch (e) {
+    toast.error((e as Error).message || '复制失败')
+  }
+}
+
 watch([sourceFilter, statusFilter, dateFilter], () => {
   page.value = 1
   loadTasks()
@@ -312,8 +366,29 @@ defineExpose({ loadTasks })
               <div>完成：{{ fmtTime(task.finished_at) || '-' }}</div>
             </div>
             <div v-if="task.extracted_content_preview" class="mt-2 rounded-md bg-white p-2">
-              <p class="mb-1 text-xs text-gray-400">提取内容预览</p>
-              <pre class="max-h-32 overflow-auto text-xs leading-relaxed text-gray-700 whitespace-pre-wrap break-words">{{ task.extracted_content_preview }}</pre>
+              <div class="mb-1 flex items-center justify-between">
+                <p class="text-xs text-gray-400">提取内容预览</p>
+                <div class="flex items-center gap-1">
+                  <button
+                    class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                    :disabled="contentLoadingKey === task.key"
+                    @click="toggleViewAll(task)"
+                  >
+                    <Loader2 v-if="contentLoadingKey === task.key" class="h-3 w-3 animate-spin" />
+                    <template v-else>{{ contentExpandedKey === task.key ? '收起' : '查看全部' }}</template>
+                  </button>
+                  <button
+                    class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                    :disabled="contentLoadingKey === task.key"
+                    @click="handleCopyContent(task)"
+                  >
+                    <Check v-if="copiedKey === task.key" class="h-3 w-3 text-emerald-500" />
+                    <Copy v-else class="h-3 w-3" />
+                    {{ copiedKey === task.key ? '已复制' : '复制内容' }}
+                  </button>
+                </div>
+              </div>
+              <pre :class="['overflow-auto text-xs leading-relaxed text-gray-700 whitespace-pre-wrap break-words', contentExpandedKey === task.key ? 'max-h-[60vh]' : 'max-h-32']">{{ contentExpandedKey === task.key ? (contentCache[task.key] ?? task.extracted_content_preview) : task.extracted_content_preview }}</pre>
             </div>
           </template>
           <div v-if="task.error_message" class="mt-2 flex items-center gap-1 text-xs text-red-500">

@@ -307,3 +307,13 @@ async def list_upload_records(
         "page": page,
         "page_size": page_size,
     }
+
+
+async def get_extracted_content(
+    session: AsyncSession, record_id: int
+) -> str | None:
+    """返回上传记录的完整提取内容。"""
+    record = await doc_upload_repo.find_by_id(session, record_id)
+    if record is None:
+        return None
+    return record.extracted_content

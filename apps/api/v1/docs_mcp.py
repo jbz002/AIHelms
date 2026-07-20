@@ -457,6 +457,19 @@ async def list_doc_tasks(
     return {"code": 200, "message": "ok", "data": result}
 
 
+@router.get("/uploads/{record_id}/content", summary="获取上传记录提取内容")
+async def get_upload_content(
+    record_id: int,
+    _: dict = Depends(get_current_user),
+):
+    """返回上传文档的完整提取内容（列表接口仅返回前 200 字预览）。"""
+    async with async_session() as session:
+        content = await doc_upload_service.get_extracted_content(session, record_id)
+    if content is None:
+        return {"code": 404, "message": "上传记录不存在", "data": None}
+    return {"code": 200, "message": "ok", "data": {"content": content or ""}}
+
+
 @router.delete("/uploads/{record_id}", summary="删除上传记录")
 async def delete_upload(
     record_id: int,

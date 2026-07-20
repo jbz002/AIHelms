@@ -203,6 +203,10 @@ export function deleteUploadRecord(recordId: number) {
   })
 }
 
+export function getUploadRecordContent(recordId: number) {
+  return request<{ content: string }>(`/api/v1/docs-mcp/uploads/${recordId}/content`)
+}
+
 // ── 统一文档表 CRUD ──
 
 export function getDocuments(
