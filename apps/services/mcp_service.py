@@ -92,6 +92,18 @@ async def create_server(
             "server_name 不能包含 '-'（LiteLLM 限制），请使用 '_' 替代"
         )
 
+    from core.url_safety import validate_url
+
+    validate_url(url, profile="mcp")
+
+    existing_url = await mcp_repo.find_server_by_url_and_transport(
+        session, url, transport
+    )
+    if existing_url:
+        raise ConflictError(
+            f"相同 URL 和传输方式的 MCP Server 已存在: '{existing_url.name}'"
+        )
+
     existing = await mcp_repo.find_server_by_name(session, server_name)
     if existing:
         raise ConflictError(f"MCP Server 名称 '{server_name}' 已存在")
@@ -197,6 +209,24 @@ async def update_server(
         existing = await mcp_repo.find_server_by_name(session, kwargs["server_name"])
         if existing:
             raise ConflictError(f"MCP Server 名称 '{kwargs['server_name']}' 已存在")
+
+    url_changed = "url" in kwargs and kwargs["url"] != server.url
+    transport_changed = (
+        "transport" in kwargs and kwargs["transport"] != server.transport
+    )
+    if url_changed or transport_changed:
+        from core.url_safety import validate_url
+
+        check_url = kwargs.get("url", server.url)
+        check_transport = kwargs.get("transport", server.transport)
+        validate_url(check_url, profile="mcp")
+        dup = await mcp_repo.find_server_by_url_and_transport(
+            session, check_url, check_transport
+        )
+        if dup and dup.id != server_id:
+            raise ConflictError(
+                f"相同 URL 和传输方式的 MCP Server 已存在: '{dup.name}'"
+            )
 
     for key, value in kwargs.items():
         if hasattr(server, key) and value is not None:
@@ -698,6 +728,11 @@ def _serialize_server(server: McpServer) -> dict:
         "health_check_error": server.health_check_error,
         "litellm_synced": server.litellm_synced,
         "litellm_sync_error": server.litellm_sync_error,
+        "security_status": server.security_status,
+        "security_decision": server.security_decision,
+        "security_severity": server.security_severity,
+        "security_risk_score": server.security_risk_score,
+        "latest_ai_policies_audit_id": server.latest_ai_policies_audit_id,
         "current_version_id": server.current_version_id,
         "active_version": _serialize_version(active) if active else None,
         "created_by": server.created_by,

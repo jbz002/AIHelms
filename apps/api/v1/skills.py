@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_ai_key_identity, get_current_user, get_db, require_permission
 from exceptions import ConflictError, NotFoundError, ValidationError
-from services import ai_policies_service, skill_service
+from services import ai_policies_service, skill_service, skill_view_service
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
@@ -101,6 +101,61 @@ async def get_skill(
 ):
     try:
         data = await skill_service.get_skill(session, skill_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 不存在")
+    return {"code": 200, "message": "ok", "data": data}
+
+
+# ─── Progressive Disclosure Views ─────────────────────────────────────────
+
+
+@router.get("/{skill_id}/card")
+async def get_skill_card(
+    skill_id: int,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(get_current_user),
+):
+    try:
+        data = await skill_view_service.get_skill_card(session, skill_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 不存在")
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.get("/{skill_id}/summary")
+async def get_skill_summary(
+    skill_id: int,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(get_current_user),
+):
+    try:
+        data = await skill_view_service.get_skill_summary(session, skill_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 不存在")
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.get("/{skill_id}/full")
+async def get_skill_full(
+    skill_id: int,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(get_current_user),
+):
+    try:
+        data = await skill_view_service.get_skill_full(session, skill_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 不存在")
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.get("/{skill_id}/integrity", summary="Skill 内容完整性信息")
+async def get_skill_integrity(
+    skill_id: int,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("skill:read")),
+):
+    try:
+        data = await skill_view_service.get_skill_integrity(session, skill_id)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")
     return {"code": 200, "message": "ok", "data": data}
@@ -227,6 +282,7 @@ async def create_skill(
     usage_instructions: str = Form(""),
     is_published: bool = Form(False),
     requires_approval: bool = Form(False),
+    source_url: str = Form(""),
     zip_file: UploadFile | None = File(None),
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("skill:create")),
@@ -256,6 +312,7 @@ async def create_skill(
         requires_approval=requires_approval,
         zip_content=zip_content,
         zip_filename=zip_filename,
+        source_url=source_url or None,
         created_by=current_user["id"],
     )
     return {"code": 200, "message": "Skill 创建成功", "data": data}

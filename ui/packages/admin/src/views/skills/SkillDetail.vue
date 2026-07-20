@@ -18,6 +18,7 @@ import { ArrowLeft, Download, FileText, PlayCircle, ShieldCheck, Trash2 } from '
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import IconPicker from '../../components/IconPicker.vue'
 import SkillVersionPanel from './SkillVersionPanel.vue'
+import SkillContentPanel from './SkillContentPanel.vue'
 
 type SecurityStatus = 'not_scanned' | 'queued' | 'running' | 'completed' | 'failed'
 type SecurityDecision = 'passed' | 'attention_required' | 'high_risk' | 'failed'
@@ -69,7 +70,10 @@ const form = ref({
   usage_instructions: '',
   is_published: false,
   requires_approval: false,
+  source_url: '',
 })
+const sourceMode = ref<'zip' | 'url'>('zip')
+const sourceUrlError = ref('')
 
 const securitySummary = computed<SkillSecuritySummary | null>(() => {
   if (!skill.value) return null
@@ -192,7 +196,8 @@ async function handleSave(): Promise<void> {
       usage_instructions: form.value.usage_instructions,
       is_published: form.value.is_published,
       requires_approval: form.value.requires_approval,
-      zip_file: zipFile.value,
+      zip_file: sourceMode.value === 'zip' ? zipFile.value : undefined,
+      source_url: sourceMode.value === 'url' ? form.value.source_url : undefined,
     }
     if (isNew.value) {
       await createSkill(payload)
@@ -365,6 +370,23 @@ onMounted(loadData)
             />
           </div>
           <div class="col-span-2">
+            <label v-if="isNew" class="mb-1 block text-sm font-medium text-slate-700">来源方式</label>
+            <div v-if="isNew" class="mb-2 flex gap-2">
+              <button
+                type="button"
+                :class="sourceMode === 'zip' ? 'rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white' : 'rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200'"
+                @click="sourceMode = 'zip'"
+              >
+                上传 zip 包
+              </button>
+              <button
+                type="button"
+                :class="sourceMode === 'url' ? 'rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white' : 'rounded-lg bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-200'"
+                @click="sourceMode = 'url'"
+              >
+                仓库 URL
+              </button>
+            </div>
             <label class="mb-1 block text-sm font-medium text-slate-700">
               <span v-if="isNew">上传 zip 包</span>
               <span v-else>当前 active 文件</span>
@@ -393,6 +415,18 @@ onMounted(loadData)
             </div>
             <div v-if="isNew && zipFile" class="mt-1 text-xs text-slate-500">
               已选择：{{ zipFile.name }} ({{ Math.round(zipFile.size / 1024) }} KB)
+            </div>
+            <div v-if="isNew && sourceMode === 'url'" class="mt-2">
+              <input
+                v-model="form.source_url"
+                class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
+                placeholder="https://github.com/owner/repo/tree/main"
+                @input="sourceUrlError = ''"
+              />
+              <p v-if="sourceUrlError" class="mt-1 text-xs text-red-500">{{ sourceUrlError }}</p>
+              <p class="mt-1 text-[11px] text-slate-400">
+                支持的仓库：GitHub、Gitee、GitLab（需管理员配置白名单域名）
+              </p>
             </div>
             <p v-if="!isNew" class="mt-1 text-[11px] text-slate-400">
               内容变更请在下方「版本管理」中创建新版本并通过安全审查后激活。
@@ -450,6 +484,10 @@ onMounted(loadData)
               :active-version="skill?.active_version ?? null"
               @activated="handleVersionActivated"
             />
+          </div>
+
+          <div v-if="!isNew && skillId" class="col-span-2">
+            <SkillContentPanel :skill-id="skillId" />
           </div>
 
           <div class="col-span-2 flex items-center gap-4">

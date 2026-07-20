@@ -19,5 +19,11 @@
   "market.install.instructions": "使用说明",
   "market.action.close": "关闭",
   "market.skill.agentPrompt": "Agent 安装提示词",
-  "market.skill.copyPrompt": "复制安装提示词"
+  "market.skill.copyPrompt": "复制安装提示词",
+  "market.skill.viewDetails": "查看详情",
+  "market.skill.expandFull": "展开完整指令",
+  "market.skill.summary": "摘要",
+  "market.skill.fullInstructions": "完整指令",
+  "market.skill.loading": "加载中...",
+  "market.skill.noContent": "无内容"
 }

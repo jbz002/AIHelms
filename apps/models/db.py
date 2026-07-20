@@ -552,6 +552,15 @@ class McpServer(Base):
         ForeignKey("aihelms.mcp_server_versions.id", ondelete="SET NULL"),
         nullable=True,
     )
+    security_status: Mapped[str] = mapped_column(String(32), default="not_scanned")
+    security_decision: Mapped[str] = mapped_column(String(32), default="")
+    security_severity: Mapped[str] = mapped_column(String(32), default="")
+    security_risk_score: Mapped[int] = mapped_column(Integer, default=0)
+    latest_ai_policies_audit_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("aihelms.ai_policies_audits.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id"), nullable=True
     )
@@ -840,6 +849,10 @@ class AiPoliciesAudit(Base):
     raw_report: Mapped[dict] = mapped_column(JSONB, default=dict)
     markdown_report: Mapped[str] = mapped_column(Text, default="")
     error_message: Mapped[str] = mapped_column(Text, default="")
+    entity_type: Mapped[str] = mapped_column(String(16), default="skill")
+    entity_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    entity_name: Mapped[str] = mapped_column(String(128), default="")
+    entity_version: Mapped[str] = mapped_column(String(64), default="")
 
 
 class AiPoliciesRiskCatalog(Base):
@@ -908,6 +921,8 @@ class Skill(Base):
         ForeignKey("aihelms.ai_policies_audits.id", ondelete="SET NULL"),
         nullable=True,
     )
+    frontmatter: Mapped[dict] = mapped_column(JSONB, default=dict)
+    summary_text: Mapped[str] = mapped_column(Text, default="")
     current_version_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("aihelms.skill_versions.id", ondelete="SET NULL"),
@@ -963,6 +978,16 @@ class SkillVersion(Base):
         ForeignKey("aihelms.ai_policies_audits.id", ondelete="SET NULL"),
         nullable=True,
     )
+    source_type: Mapped[str] = mapped_column(String(16), default="zip")
+    source_url: Mapped[str] = mapped_column(Text, default="")
+    frontmatter: Mapped[dict] = mapped_column(JSONB, default=dict)
+    summary_text: Mapped[str] = mapped_column(Text, default="")
+    full_content: Mapped[str] = mapped_column(Text, default="")
+    composite_hash: Mapped[str] = mapped_column(String(64), default="")
+    file_hashes: Mapped[dict] = mapped_column(JSONB, default=dict)
+    drift_detected: Mapped[bool] = mapped_column(Boolean, default=False)
+    drifted_files: Mapped[list] = mapped_column(JSONB, default=list)
+    last_drift_check_at: Mapped[datetime | None] = mapped_column(nullable=True)
     created_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
     )
@@ -1218,6 +1243,7 @@ class EfficiencySuggestion(Base):
 
 class CustomEntityType(Base):
     """自定义实体类型定义表"""
+
     __tablename__ = "custom_entity_types"
     __table_args__ = {"schema": "aihelms"}
 
@@ -1245,6 +1271,7 @@ class CustomEntityType(Base):
 
 class CustomEntity(Base):
     """自定义实体实例表"""
+
     __tablename__ = "custom_entities"
     __table_args__ = {"schema": "aihelms"}
 

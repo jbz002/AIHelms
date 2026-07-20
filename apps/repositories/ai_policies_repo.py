@@ -58,6 +58,24 @@ async def find_active_by_skill(
     return result.scalar_one_or_none()
 
 
+async def find_active_by_entity(
+    session: AsyncSession,
+    entity_type: str,
+    entity_id: int,
+) -> AiPoliciesAudit | None:
+    result = await session.execute(
+        select(AiPoliciesAudit)
+        .where(
+            AiPoliciesAudit.entity_type == entity_type,
+            AiPoliciesAudit.entity_id == entity_id,
+            AiPoliciesAudit.status.in_(["queued", "running"]),
+        )
+        .order_by(AiPoliciesAudit.created_at.desc(), AiPoliciesAudit.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 def _apply_filters(
     stmt,
     audit_type: str | None = None,

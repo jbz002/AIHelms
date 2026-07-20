@@ -32,8 +32,19 @@ export type { McpServer, McpTool, McpCategory, McpServerListResult, McpServerVer
 export { getMcpServers, getMcpServerById, createMcpServer, updateMcpServer, deleteMcpServer, getMcpTools, refreshMcpTools, updateToolBilling, healthCheckMcpServer, getMcpCategories, createMcpCategory, deleteMcpCategory, getMcpServerVersions, createMcpServerVersion, activateMcpServerVersion, deprecateMcpServerVersion } from './api/mcp'
 export type { SearchResultItem, SearchResponse, SearchRequest } from './types/search'
 export { search } from './api/search'
-export type { Skill, SkillCategory, SkillListResult, SkillVersion, SkillVersionLifecycle, CreateSkillCategoryParams, CreateSkillVersionParams, DeprecateSkillVersionParams } from './types/skill'
-export { getSkills, getSkillById, createSkill, updateSkill, deleteSkill, createSkillSecurityAudit, getSkillDownloadUrl, getSkillCategories, createSkillCategory, deleteSkillCategory, getSkillVersions, createSkillVersion, activateSkillVersion, deprecateSkillVersion, createSkillVersionSecurityAudit } from './api/skill'
+export type {
+  Skill, SkillCategory, SkillListResult, CreateSkillCategoryParams,
+  SkillVersion, SkillVersionLifecycle, CreateSkillVersionParams, DeprecateSkillVersionParams,
+  SkillSummaryView, SkillFullView, SkillIntegrityView,
+} from './types/skill'
+export {
+  getSkills, getSkillById, createSkill, updateSkill, deleteSkill,
+  createSkillSecurityAudit, getSkillDownloadUrl, getSkillCategories,
+  createSkillCategory, deleteSkillCategory,
+  getSkillVersions, createSkillVersion, activateSkillVersion,
+  deprecateSkillVersion, createSkillVersionSecurityAudit,
+  getSkillSummary, getSkillFull, getSkillIntegrity,
+} from './api/skill'
 export type { AiPolicyAudit, AiPolicyAuditSummary, AiPolicyAuditListResult, AiPolicyAuditQuery, AiPolicyFinding, AiPolicyAuditFileSummary, AiPolicyRiskCatalogItem, AiPolicySettings } from './types/aiPolicies'
 export { getAiPolicyAudits, getAiPolicyAudit, getAiPolicyReportDownloadUrl, getAiPolicyRiskCatalog, getAiPolicySettings, updateAiPolicySettings } from './api/aiPolicies'
 export type { Agent, AgentCategory, AgentPlatform, AgentListResult, CreateAgentParams, UpdateAgentParams, CreateAgentCategoryParams, CreateAgentPlatformParams, AgentUsageLog, AgentUsageLogListResult } from './types/agent'

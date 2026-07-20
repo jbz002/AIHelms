@@ -8,8 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import Skill, SkillCategory, SkillUsageLog, SkillVersion
-from repositories import ai_policies_repo, skill_repo, skill_version_repo
+from repositories import skill_repo, skill_version_repo
 from services import versioning_service
+from services.skill_serializers import _latest_audit_map, _serialize, _serialize_version
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,20 @@ def _ensure_skills_dir() -> str:
     base = settings.skills_storage_dir
     os.makedirs(base, exist_ok=True)
     return base
+
+
+async def _download_from_url(url: str) -> tuple[bytes, str]:
+    """下载远程 zip 文件，返回 (content, filename)。"""
+    import httpx
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        resp = await client.get(url)
+        resp.raise_for_status()
+        content = resp.content
+    filename = url.rsplit("/", 1)[-1] or "skill.zip"
+    if not filename.endswith(".zip"):
+        filename += ".zip"
+    return content, filename
 
 
 # ─── Skill CRUD ──────────────────────────────────────────────────────────────
@@ -85,8 +100,24 @@ async def create_skill(
     requires_approval: bool = False,
     zip_content: bytes | None = None,
     zip_filename: str = "",
+    source_url: str | None = None,
     created_by: int | None = None,
 ) -> dict:
+    if not zip_content and not source_url:
+        raise ValidationError("请上传 zip 包或提供仓库 URL")
+
+    existing = await skill_repo.find_by_name(session, name)
+    if existing:
+        raise ConflictError(f"Skill 名称 '{name}' 已存在")
+
+    if source_url:
+        from core.url_safety import validate_url
+        from core.url_translator import translate_repo_url
+
+        translated = translate_repo_url(source_url)
+        validate_url(translated.download_url, profile="default")
+        zip_content, zip_filename = await _download_from_url(translated.download_url)
+
     sid = str(uuid.uuid4())
     zip_path = ""
     zip_size = 0
@@ -147,6 +178,16 @@ async def create_skill(
         created_by=created_by,
     )
     v1 = await skill_version_repo.create(session, v1)
+
+    # 解析 SKILL.md 内容（write-time，零查询期开销）
+    if zip_content:
+        from services import skill_content_service
+
+        parsed = skill_content_service.parse_skill_zip(zip_content)
+        skill_content_service.apply_parsed_to_version(v1, parsed)
+        skill.frontmatter = parsed.frontmatter
+        skill.summary_text = parsed.summary_text
+
     skill.current_version_id = v1.id
     await session.commit()
     await session.refresh(skill)
@@ -337,6 +378,12 @@ async def create_version(
         v.zip_path = zip_path
         v.zip_size = len(zip_content)
         v.zip_filename = zip_filename
+
+        # 解析新 ZIP 的 SKILL.md 内容
+        from services import skill_content_service
+
+        parsed = skill_content_service.parse_skill_zip(zip_content)
+        skill_content_service.apply_parsed_to_version(v, parsed)
     elif skill.zip_path:
         # 未上传新 zip：fork 当前 active 内容作为新版本起点
         v.zip_path = skill.zip_path
@@ -421,27 +468,8 @@ async def _apply_version_snapshot_to_skill(skill: Skill, version: SkillVersion) 
     skill.security_severity = version.security_severity
     skill.security_risk_score = version.security_risk_score
     skill.latest_ai_policies_audit_id = version.latest_ai_policies_audit_id
-
-
-def _serialize_version(v: SkillVersion) -> dict:
-    return {
-        "id": v.id,
-        "skill_id": v.skill_id,
-        "version": v.version,
-        "version_label": v.version_label,
-        "is_active": v.is_active,
-        "lifecycle_status": v.lifecycle_status,
-        "sunset_date": v.sunset_date.isoformat() if v.sunset_date else None,
-        "source": v.source,
-        "zip_size": v.zip_size,
-        "zip_filename": v.zip_filename,
-        "change_log": v.change_log,
-        "security_status": v.security_status,
-        "security_decision": v.security_decision,
-        "latest_ai_policies_audit_id": v.latest_ai_policies_audit_id,
-        "created_by": v.created_by,
-        "created_at": v.created_at.isoformat() if v.created_at else None,
-    }
+    skill.frontmatter = version.frontmatter
+    skill.summary_text = version.summary_text
 
 
 # ─── Categories ──────────────────────────────────────────────────────────────
@@ -483,60 +511,3 @@ async def delete_category(session: AsyncSession, category_id: int) -> None:
         raise NotFoundError("skill_category", category_id)
     await skill_repo.delete_category(session, category_id)
     await session.commit()
-
-
-# ─── Serializer ──────────────────────────────────────────────────────────────
-
-
-async def _latest_audit_map(
-    session: AsyncSession, skills: list[Skill]
-) -> dict[int, str]:
-    audit_ids = [
-        skill.latest_ai_policies_audit_id
-        for skill in skills
-        if skill.latest_ai_policies_audit_id
-    ]
-    audits = await ai_policies_repo.find_by_ids(session, audit_ids)
-    return {audit.id: audit.audit_id for audit in audits}
-
-
-def _serialize(skill: Skill, latest_audit_map: dict[int, str] | None = None) -> dict:
-    latest_audit_map = latest_audit_map or {}
-    latest_audit_code = (
-        latest_audit_map.get(skill.latest_ai_policies_audit_id)
-        if skill.latest_ai_policies_audit_id
-        else None
-    )
-    active = next((v for v in (skill.versions or []) if v.is_active), None)
-    return {
-        "id": skill.id,
-        "skill_id": skill.skill_id,
-        "name": skill.name,
-        "icon": skill.icon,
-        "description": skill.description,
-        "category": skill.category,
-        "version": skill.version,
-        "tags": skill.tags,
-        "author": skill.author,
-        "agent_install_prompt": skill.agent_install_prompt,
-        "usage_instructions": skill.usage_instructions,
-        "zip_path": skill.zip_path,
-        "zip_size": skill.zip_size,
-        "zip_filename": skill.zip_filename,
-        "has_zip": bool(skill.zip_path),
-        "is_active": skill.is_active,
-        "is_published": skill.is_published,
-        "requires_approval": skill.requires_approval,
-        "install_count": skill.install_count,
-        "security_status": skill.security_status,
-        "security_decision": skill.security_decision,
-        "security_severity": skill.security_severity,
-        "security_risk_score": skill.security_risk_score,
-        "latest_ai_policies_audit_id": skill.latest_ai_policies_audit_id,
-        "latest_ai_policies_audit_code": latest_audit_code,
-        "current_version_id": skill.current_version_id,
-        "active_version": _serialize_version(active) if active else None,
-        "created_by": skill.created_by,
-        "created_at": skill.created_at.isoformat() if skill.created_at else None,
-        "updated_at": skill.updated_at.isoformat() if skill.updated_at else None,
-    }

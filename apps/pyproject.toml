@@ -20,6 +20,7 @@ dependencies = [
     "openai>=1.30.0",
     "python-multipart>=0.0.20",
     "crawl4ai",
+    "pyyaml>=6.0",
 ]
 
 [tool.uv]

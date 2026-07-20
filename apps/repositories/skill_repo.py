@@ -1,8 +1,8 @@
-from sqlalchemy import select, func, delete as sa_delete
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import Skill, SkillCategory
-
 
 # ─── Skill ───────────────────────────────────────────────────────────────────
 
@@ -21,6 +21,11 @@ async def find_by_id(session: AsyncSession, skill_id: int) -> Skill | None:
 
 async def find_by_skill_id(session: AsyncSession, skill_id: str) -> Skill | None:
     result = await session.execute(select(Skill).where(Skill.skill_id == skill_id))
+    return result.scalar_one_or_none()
+
+
+async def find_by_name(session: AsyncSession, name: str) -> Skill | None:
+    result = await session.execute(select(Skill).where(Skill.name == name))
     return result.scalar_one_or_none()
 
 
@@ -90,17 +95,27 @@ async def list_categories(session: AsyncSession) -> list[SkillCategory]:
     return list(result.scalars().all())
 
 
-async def find_category_by_id(session: AsyncSession, category_id: int) -> SkillCategory | None:
-    result = await session.execute(select(SkillCategory).where(SkillCategory.id == category_id))
+async def find_category_by_id(
+    session: AsyncSession, category_id: int
+) -> SkillCategory | None:
+    result = await session.execute(
+        select(SkillCategory).where(SkillCategory.id == category_id)
+    )
     return result.scalar_one_or_none()
 
 
-async def find_category_by_name(session: AsyncSession, name: str) -> SkillCategory | None:
-    result = await session.execute(select(SkillCategory).where(SkillCategory.name == name))
+async def find_category_by_name(
+    session: AsyncSession, name: str
+) -> SkillCategory | None:
+    result = await session.execute(
+        select(SkillCategory).where(SkillCategory.name == name)
+    )
     return result.scalar_one_or_none()
 
 
-async def create_category(session: AsyncSession, category: SkillCategory) -> SkillCategory:
+async def create_category(
+    session: AsyncSession, category: SkillCategory
+) -> SkillCategory:
     session.add(category)
     await session.flush()
     await session.refresh(category)

@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_worker_session_factory
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import AiPoliciesAudit
-from repositories import ai_policies_repo, skill_repo, skill_version_repo
+from repositories import ai_policies_repo, mcp_repo, skill_repo, skill_version_repo
 from services import (
     ai_policies_denoise,
     ai_policies_llm,
@@ -877,6 +877,10 @@ def _serialize_audit(
         "skill_id": audit.skill_id,
         "skill_name": audit.skill_name,
         "skill_version": audit.skill_version,
+        "entity_type": audit.entity_type,
+        "entity_id": audit.entity_id,
+        "entity_name": audit.entity_name,
+        "entity_version": audit.entity_version,
         "status": audit.status,
         "decision": metrics["decision"],
         "severity": metrics["severity"],
@@ -1294,3 +1298,114 @@ async def update_settings(
     await session.commit()
     await session.refresh(settings_row)
     return await get_settings(session)
+
+
+# ─── MCP Server 安全审查 ──────────────────────────────────────────────────
+
+
+async def create_mcp_audit(
+    session: AsyncSession,
+    server_id: int,
+    current_user: dict,
+) -> dict:
+    """为 MCP Server 创建安全审查（轻量同步扫描）。"""
+    server = await mcp_repo.find_server_by_id(session, server_id)
+    if not server:
+        raise NotFoundError("mcp_server", server_id)
+
+    active = await ai_policies_repo.find_active_by_entity(session, "mcp", server_id)
+    if active:
+        raise ConflictError("该 MCP Server 已有审查任务正在进行中")
+
+    audit = AiPoliciesAudit(
+        audit_id=f"AIP-{uuid4().hex[:12]}",
+        audit_type="mcp",
+        entity_type="mcp",
+        entity_id=server.id,
+        entity_name=server.name,
+        entity_version="",
+        source_sha256="",
+        scanner="url_check",
+        mode="url_validation",
+        status="queued",
+        created_by=int(current_user["id"]),
+    )
+    audit = await ai_policies_repo.create_audit(session, audit)
+    server.security_status = "queued"
+    await session.commit()
+    await session.refresh(audit)
+
+    await _process_mcp_audit(session, audit)
+    return _serialize_audit(audit, include_findings=True)
+
+
+async def _process_mcp_audit(
+    session: AsyncSession,
+    audit: AiPoliciesAudit,
+) -> None:
+    """MCP 轻量安全审查：URL 校验 + transport 合规。"""
+    server = await mcp_repo.find_server_by_id(session, audit.entity_id)
+    if not server:
+        await _fail_audit(session, audit, "MCP Server 不存在")
+        return
+
+    findings: list[dict] = []
+
+    try:
+        from core.url_safety import validate_url
+
+        validate_url(server.url, profile="mcp")
+    except ValidationError as e:
+        findings.append(
+            {
+                "source": "static",
+                "rule_id": "URL-001",
+                "category": "AST06",
+                "severity": "high",
+                "title": "MCP Server URL 未通过安全校验",
+                "description": str(e),
+                "recommendation": "请确保 URL 指向公网可访问的地址",
+            }
+        )
+
+    if server.transport not in ("sse", "http", "streamable_http", "streamableHttp"):
+        findings.append(
+            {
+                "source": "static",
+                "rule_id": "MCP-001",
+                "category": "AST06",
+                "severity": "medium",
+                "title": "不支持的传输方式",
+                "description": f"transport={server.transport}",
+                "recommendation": "请使用 sse 或 streamableHttp",
+            }
+        )
+
+    if findings:
+        decision = "rejected"
+        severity = (
+            "high" if any(f["severity"] == "high" for f in findings) else "medium"
+        )
+        risk_score = 100
+    else:
+        decision = "passed"
+        severity = ""
+        risk_score = 0
+
+    audit.status = "completed"
+    audit.decision = decision
+    audit.severity = severity
+    audit.risk_score = risk_score
+    audit.findings = findings
+    audit.findings_count = len(findings)
+    audit.high_risk_count = sum(1 for f in findings if f["severity"] == "high")
+    audit.must_review_count = 0
+    audit.finished_at = _now()
+    audit.summary = {"progress": _progress(4, 4, "completed")}
+
+    server.security_status = "completed"
+    server.security_decision = decision
+    server.security_severity = severity
+    server.security_risk_score = risk_score
+    server.latest_ai_policies_audit_id = audit.id
+    await session.commit()

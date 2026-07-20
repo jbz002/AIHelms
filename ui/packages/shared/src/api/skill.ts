@@ -7,6 +7,9 @@ import type {
   SkillVersion,
   CreateSkillVersionParams,
   DeprecateSkillVersionParams,
+  SkillSummaryView,
+  SkillFullView,
+  SkillIntegrityView,
 } from '../types/skill'
 import type { AiPolicyAudit } from '../types/aiPolicies'
 
@@ -38,6 +41,7 @@ interface SkillFormFields {
   is_published?: boolean
   requires_approval?: boolean
   zip_file?: File | null
+  source_url?: string
 }
 
 function buildSkillFormData(fields: SkillFormFields): FormData {
@@ -53,6 +57,7 @@ function buildSkillFormData(fields: SkillFormFields): FormData {
   if (fields.is_published !== undefined) fd.append('is_published', String(fields.is_published))
   if (fields.requires_approval !== undefined) fd.append('requires_approval', String(fields.requires_approval))
   if (fields.zip_file) fd.append('zip_file', fields.zip_file)
+  if (fields.source_url) fd.append('source_url', fields.source_url)
   return fd
 }
 
@@ -134,4 +139,16 @@ export function createSkillCategory(params: CreateSkillCategoryParams): Promise<
 
 export function deleteSkillCategory(id: number): Promise<null> {
   return request<null>(`/api/v1/skills/categories/${id}`, { method: 'DELETE' })
+}
+
+export function getSkillSummary(skillId: number): Promise<SkillSummaryView> {
+  return request<SkillSummaryView>(`/api/v1/skills/${skillId}/summary`)
+}
+
+export function getSkillFull(skillId: number): Promise<SkillFullView> {
+  return request<SkillFullView>(`/api/v1/skills/${skillId}/full`)
+}
+
+export function getSkillIntegrity(skillId: number): Promise<SkillIntegrityView> {
+  return request<SkillIntegrityView>(`/api/v1/skills/${skillId}/integrity`)
 }

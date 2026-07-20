@@ -54,6 +54,10 @@ def _stub_litellm(monkeypatch, fail_update=False):
     monkeypatch.setattr(litellm_client, "update_mcp_server", fake_update)
     monkeypatch.setattr(litellm_client, "list_mcp_tools_from_server", fake_tools)
     monkeypatch.setattr(litellm_client, "test_mcp_connection", fake_test)
+    # mock validate_url 避免 DNS 解析触发 SSRF 拦截
+    from core import url_safety as _us
+
+    monkeypatch.setattr(_us, "validate_url", lambda url, profile="default": None)
     return calls
 
 
