@@ -284,6 +284,8 @@ function openAiPolicies(): void {
   router.push(`/ai-policies/audits/${securitySummary.value.auditId}?skill_id=${skill.value.id}`)
 }
 
+const auditPolicy = ref<'strict' | 'balanced' | 'permissive'>('balanced')
+
 async function startSecurityAudit(): Promise<void> {
   if (!skill.value?.has_zip) {
     toast.error('请先上传 Skill zip 包')
@@ -291,7 +293,7 @@ async function startSecurityAudit(): Promise<void> {
   }
   try {
     auditStarted.value = true
-    const audit = await createSkillSecurityAudit(skill.value.id)
+    const audit = await createSkillSecurityAudit(skill.value.id, auditPolicy.value)
     skill.value = {
       ...skill.value,
       security_status: audit.status,
@@ -489,7 +491,17 @@ onMounted(loadData)
                 </div>
                 <p class="mt-1 text-sm text-slate-500">{{ securitySummary.shortAdvice }}</p>
               </div>
-              <div class="flex gap-2">
+              <div class="flex flex-wrap items-center gap-2">
+                <select
+                  v-model="auditPolicy"
+                  class="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700"
+                  :disabled="securitySummary.status === 'running'"
+                  title="安全审查策略"
+                >
+                  <option value="balanced">均衡策略</option>
+                  <option value="strict">严格策略</option>
+                  <option value="permissive">宽松策略</option>
+                </select>
                 <button
                   class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:border-purple-300 hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
                   :disabled="securitySummary.status === 'running'"

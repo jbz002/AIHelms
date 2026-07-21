@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     # AI Policies
     ai_policies_scanner_url: str = "http://127.0.0.1:8010"
     ai_policies_timeout_seconds: int = 600
+    # AI Policies S2（多 analyzer + 策略 + Verdict）
+    ai_policies_signatures_path: str = "security_rules/signatures.yaml"
+    ai_policies_default_policy: str = "balanced"  # strict | balanced | permissive
+    ai_policies_regex_enabled: bool = True
+    ai_policies_llm_consensus_runs: int = 1  # 全局兜底，被 settings 表 / preset 覆盖
+    ai_policies_llm_consensus_timeout_seconds: int = 180
 
     # SSRF 校验
     ssrf_allowed_hosts: str = ""  # MCP 内网白名单域名（逗号分隔）

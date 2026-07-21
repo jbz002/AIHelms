@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import Skill, SkillCategory, SkillUsageLog, SkillVersion
-from repositories import skill_repo, skill_version_repo
+from repositories import ai_policies_repo, skill_repo, skill_version_repo
 from services import versioning_service
 from services.skill_content_service import ParsedSkillContent
 from services.skill_serializers import _latest_audit_map, _serialize, _serialize_version
@@ -361,6 +361,7 @@ async def delete_skill(session: AsyncSession, skill_id: int) -> None:
     await ai_key_service.remove_public_resource_from_all_keys(
         session, "skills", skill_id
     )
+    await ai_policies_repo.mark_audits_deleted_for_skill(session, skill_id)
     await skill_repo.delete(session, skill_id)
     await session.commit()
 

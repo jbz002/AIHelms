@@ -5,9 +5,11 @@ import {
   getAiPolicyAudit,
   getAiPolicyRiskCatalog,
   getAiPolicyReportDownloadUrl,
+  getVersionAuditHistory,
   toast,
   type AiPolicyAudit,
   type AiPolicyAuditFileSummary,
+  type AiPolicyAuditHistoryItem,
   type AiPolicyFinding,
   type AiPolicyRiskCatalogItem,
 } from '@aihelms/shared'
@@ -18,6 +20,7 @@ import {
   ChevronRight,
   Copy,
   Download,
+  History,
   Loader2,
   ScanLine,
 } from 'lucide-vue-next'
@@ -86,6 +89,9 @@ const detailSectionOpen = ref(true)
 const expandedCategories = ref<Record<string, boolean>>({})
 const expandedLocations = ref<Record<string, boolean>>({})
 const filesExpanded = ref(false)
+const historyOpen = ref(false)
+const historyLoading = ref(false)
+const historyItems = ref<AiPolicyAuditHistoryItem[]>([])
 
 const severityOrder: Record<string, number> = {
   critical: 4,
@@ -378,7 +384,67 @@ function severityLabel(severity?: string): string {
   }[severity || ''] || String(severity)
 }
 
+function currentVerdict(): string {
+  const v = audit.value?.verdict
+  if (v === 'SAFE' || v === 'SUSPICIOUS' || v === 'DANGEROUS' || v === 'BLOCKED') return v
+  const d = audit.value?.decision
+  if (d === 'failed') return 'BLOCKED'
+  if (d === 'high_risk') return 'DANGEROUS'
+  if (d === 'attention_required') return 'SUSPICIOUS'
+  if (d === 'passed') return 'SAFE'
+  return ''
+}
+
+function verdictLabel(): string {
+  const verdict = currentVerdict()
+  if (verdict === 'BLOCKED') return '阻断'
+  if (verdict === 'DANGEROUS') return '危险'
+  if (verdict === 'SUSPICIOUS') return '可疑'
+  if (verdict === 'SAFE') return '安全'
+  return decisionLabel()
+}
+
+function verdictBadgeClass(): string {
+  const verdict = currentVerdict()
+  if (verdict === 'BLOCKED') return 'bg-red-50 text-red-700 ring-red-200'
+  if (verdict === 'DANGEROUS') return 'bg-orange-50 text-orange-700 ring-orange-200'
+  if (verdict === 'SUSPICIOUS') return 'bg-amber-50 text-amber-700 ring-amber-200'
+  if (verdict === 'SAFE') return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+  return severityClass(audit.value?.severity)
+}
+
+function sourceLabel(source?: string): string {
+  if (source === 'regex') return '规则'
+  if (source === 'llm_consensus' || source === 'llm') return 'AI 共识'
+  if (source === 'static') return '静态'
+  return '扫描'
+}
+
+function sourceDotClass(source?: string): string {
+  if (source === 'regex') return 'bg-sky-500'
+  if (source === 'llm_consensus' || source === 'llm') return 'bg-purple-500'
+  if (source === 'static') return 'bg-slate-400'
+  return 'bg-slate-300'
+}
+
+function policyLabel(policy?: string): string {
+  if (policy === 'strict') return '严格策略'
+  if (policy === 'permissive') return '宽松策略'
+  if (policy === 'balanced') return '均衡策略'
+  return ''
+}
+
+function scanRoundText(round?: number): string {
+  if (!round || round <= 0) return ''
+  return `第 ${round} 轮`
+}
+
 function scoreTone(): string {
+  const verdict = currentVerdict()
+  if (verdict === 'BLOCKED') return 'bg-red-600 text-white'
+  if (verdict === 'DANGEROUS') return 'bg-orange-500 text-white'
+  if (verdict === 'SUSPICIOUS') return 'bg-amber-500 text-white'
+  if (verdict === 'SAFE') return 'bg-emerald-500 text-white'
   if (!audit.value) return 'bg-slate-100 text-slate-600'
   if (audit.value.severity === 'critical') return 'bg-red-600 text-white'
   if (audit.value.severity === 'high' || audit.value.decision === 'high_risk') return 'bg-red-500 text-white'
@@ -387,6 +453,11 @@ function scoreTone(): string {
 }
 
 function scoreBarClass(): string {
+  const verdict = currentVerdict()
+  if (verdict === 'BLOCKED') return 'bg-red-600'
+  if (verdict === 'DANGEROUS') return 'bg-orange-500'
+  if (verdict === 'SUSPICIOUS') return 'bg-amber-500'
+  if (verdict === 'SAFE') return 'bg-emerald-500'
   if (!audit.value) return 'bg-slate-300'
   if (audit.value.severity === 'critical') return 'bg-red-600'
   if (audit.value.severity === 'high' || audit.value.decision === 'high_risk') return 'bg-red-500'
@@ -630,6 +701,59 @@ function conclusionText(): string {
   return '未发现明显高风险行为。'
 }
 
+const historyVisible = computed(
+  () => Boolean(audit.value?.skill_id) && Boolean(audit.value?.skill_version_id),
+)
+
+async function toggleHistory(): Promise<void> {
+  if (!historyOpen.value && historyItems.value.length === 0) {
+    await loadHistory()
+  }
+  historyOpen.value = !historyOpen.value
+}
+
+async function loadHistory(): Promise<void> {
+  const skillId = audit.value?.skill_id
+  const versionId = audit.value?.skill_version_id
+  if (!skillId || !versionId) return
+  historyLoading.value = true
+  try {
+    const res = await getVersionAuditHistory(skillId, versionId, { page: 1, page_size: 20 })
+    historyItems.value = res.items || []
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '扫描历史加载失败')
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+function historyItemTone(item: AiPolicyAuditHistoryItem): string {
+  const v = item.verdict
+  if (v === 'BLOCKED') return 'bg-red-50 text-red-700 ring-red-200'
+  if (v === 'DANGEROUS') return 'bg-orange-50 text-orange-700 ring-orange-200'
+  if (v === 'SUSPICIOUS') return 'bg-amber-50 text-amber-700 ring-amber-200'
+  if (v === 'SAFE') return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+  return severityClass(item.severity)
+}
+
+function historyItemLabel(item: AiPolicyAuditHistoryItem): string {
+  const v = item.verdict
+  if (v === 'BLOCKED') return '阻断'
+  if (v === 'DANGEROUS') return '危险'
+  if (v === 'SUSPICIOUS') return '可疑'
+  if (v === 'SAFE') return '安全'
+  if (item.status === 'queued') return '排队中'
+  if (item.status === 'running') return '审查中'
+  if (item.status === 'failed') return '失败'
+  return '可信'
+}
+
+function goHistoryAudit(item: AiPolicyAuditHistoryItem): void {
+  if (!item.audit_id || item.audit_id === audit.value?.audit_id) return
+  historyOpen.value = false
+  router.push({ name: 'AiPoliciesAuditReport', params: { auditId: item.audit_id } })
+}
+
 function downloadReport(): void {
   if (!audit.value) return
   const token = localStorage.getItem('aihelms_token')
@@ -679,7 +803,7 @@ onMounted(loadAudit)
             <div class="mt-4 grid gap-5 lg:grid-cols-[176px_minmax(0,1fr)]">
               <div class="flex h-40 flex-col items-center justify-center rounded-2xl" :class="scoreTone()">
                 <div class="text-5xl font-black leading-none">{{ isRunning ? `${progress.value}%` : scoreLabel }}</div>
-                <div class="mt-3 text-base font-semibold">{{ isRunning ? '审查中' : decisionLabel() }}</div>
+                <div class="mt-3 text-base font-semibold">{{ isRunning ? '审查中' : verdictLabel() }}</div>
               </div>
               <div class="min-w-0">
                 <div class="flex flex-wrap items-start justify-between gap-3">
@@ -687,9 +811,13 @@ onMounted(loadAudit)
                     <h1 class="break-words text-2xl font-semibold text-slate-900">{{ audit.skill_name }} · v{{ audit.skill_version || '-' }}</h1>
                     <p class="mt-1 text-sm text-slate-500">报告编号 {{ audit.audit_id }}</p>
                   </div>
-                  <span class="shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ring-1" :class="severityClass(audit.severity)">
-                    {{ decisionLabel() }}
-                  </span>
+                  <div class="flex shrink-0 flex-wrap items-center gap-2">
+                    <span class="rounded-full px-2.5 py-1 text-xs font-medium ring-1" :class="verdictBadgeClass()" :title="`决策: ${audit.decision || '-'}`">
+                      {{ verdictLabel() }}
+                    </span>
+                    <span v-if="audit.policy" class="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700 ring-1 ring-purple-200">{{ policyLabel(audit.policy) }}</span>
+                    <span v-if="audit.scan_round && audit.scan_round > 0" class="rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-indigo-200">{{ scanRoundText(audit.scan_round) }}</span>
+                  </div>
                 </div>
                 <div class="mt-4 flex flex-wrap items-center gap-2 text-sm text-slate-500">
                   <span>{{ reviewMethod() }}</span>
@@ -805,6 +933,10 @@ onMounted(loadAudit)
                     <div class="mb-2 flex flex-wrap items-center gap-2">
                       <span class="rounded-full px-2 py-0.5 text-xs font-medium ring-1" :class="severityClass(finding.severity)">{{ severityLabel(finding.severity) }}</span>
                       <span class="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200">发现 {{ hitCount(finding) }} 处</span>
+                      <span v-if="finding.source" class="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200" :title="`来源: ${finding.source}`">
+                        <span class="h-1.5 w-1.5 rounded-full" :class="sourceDotClass(finding.source)"></span>
+                        {{ sourceLabel(finding.source) }}
+                      </span>
                     </div>
                     <h4 class="text-sm font-semibold text-slate-900">{{ finding.title || '安全风险' }}</h4>
                     <p v-if="finding.description" class="mt-3 text-sm leading-6 text-slate-600">{{ finding.description }}</p>
@@ -852,6 +984,10 @@ onMounted(loadAudit)
                     <div class="mb-2 flex flex-wrap items-center gap-2">
                       <span class="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">建议复核</span>
                       <span class="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200">发现 {{ hitCount(finding) }} 处</span>
+                      <span v-if="finding.source" class="inline-flex items-center gap-1 rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-600 ring-1 ring-slate-200" :title="`来源: ${finding.source}`">
+                        <span class="h-1.5 w-1.5 rounded-full" :class="sourceDotClass(finding.source)"></span>
+                        {{ sourceLabel(finding.source) }}
+                      </span>
                     </div>
                     <h4 class="text-sm font-semibold text-slate-900">{{ finding.title || '建议复核' }}</h4>
                     <p class="mt-2 text-sm leading-6 text-slate-600">{{ finding.denoise_reason || finding.description || '该问题缺少可执行证据，建议复核。' }}</p>
@@ -884,6 +1020,36 @@ onMounted(loadAudit)
         </main>
 
         <aside class="space-y-5 xl:sticky xl:top-5 xl:self-start">
+          <section v-if="historyVisible" class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <button class="flex w-full items-center justify-between gap-2 text-left" type="button" @click="toggleHistory">
+              <span class="inline-flex items-center gap-2">
+                <History class="h-4 w-4 text-slate-400" />
+                <h2 class="text-base font-semibold text-slate-900">扫描历史</h2>
+              </span>
+              <component :is="historyOpen ? ChevronDown : ChevronRight" class="h-5 w-5 text-slate-400" />
+            </button>
+            <div v-if="historyOpen" class="mt-4 space-y-2">
+              <div v-if="historyLoading" class="flex items-center gap-2 text-sm text-slate-400">
+                <Loader2 class="h-4 w-4 animate-spin" />
+                加载中...
+              </div>
+              <div v-else-if="historyItems.length === 0" class="rounded-lg border border-slate-100 bg-slate-50 p-3 text-sm text-slate-500">
+                暂无历史审查
+              </div>
+              <div v-for="item in historyItems" :key="item.audit_id" class="rounded-lg border p-3 text-sm" :class="item.audit_id === audit?.audit_id ? 'border-purple-200 bg-purple-50' : 'border-slate-100'">
+                <button class="block w-full text-left" type="button" :disabled="item.audit_id === audit?.audit_id" :class="item.audit_id === audit?.audit_id ? 'cursor-default' : 'hover:text-purple-700'" @click="goHistoryAudit(item)">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="font-medium text-slate-900">第 {{ item.scan_round }} 轮</span>
+                    <span class="rounded-full px-2 py-0.5 text-xs font-medium ring-1" :class="historyItemTone(item)">{{ historyItemLabel(item) }}</span>
+                  </div>
+                  <div class="mt-1 text-xs text-slate-400">
+                    {{ item.finished_at || item.created_at || '-' }} · 风险 {{ item.risk_score }} · 发现 {{ item.findings_count }}
+                  </div>
+                </button>
+              </div>
+            </div>
+          </section>
+
           <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
             <div class="flex items-center justify-between gap-3">
               <h2 class="text-base font-semibold text-slate-900">Skill 包文件 ({{ fileCountText() }})</h2>

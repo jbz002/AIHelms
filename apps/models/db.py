@@ -892,6 +892,12 @@ class AiPoliciesAudit(Base):
     entity_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     entity_name: Mapped[str] = mapped_column(String(128), default="")
     entity_version: Mapped[str] = mapped_column(String(64), default="")
+    verdict: Mapped[str] = mapped_column(String(16), default="")
+    policy: Mapped[str] = mapped_column(String(32), default="")
+    scan_round: Mapped[int] = mapped_column(Integer, default=1)
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
 
 class AiPoliciesRiskCatalog(Base):
@@ -922,6 +928,10 @@ class AiPoliciesSettings(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    default_policy: Mapped[str] = mapped_column(String(32), default="balanced")
+    policy_overrides: Mapped[dict] = mapped_column(JSONB, default=dict)
+    llm_consensus_runs: Mapped[int] = mapped_column(Integer, default=0)
+    regex_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
 class Skill(Base):

@@ -14,6 +14,45 @@ router = APIRouter(prefix="/ai-policies", tags=["ai-policies"])
 class UpdateAiPoliciesSettingsRequest(BaseModel):
     llm_review_enabled: bool = False
     llm_review_model_id: int | None = Field(None)
+    default_policy: str | None = None
+    policy_overrides: dict[str, str] = Field(default_factory=dict)
+    llm_consensus_runs: int | None = Field(None, ge=0, le=5)
+    regex_enabled: bool | None = None
+
+
+class ReplaceSignatureRulesRequest(BaseModel):
+    content: str = Field(..., min_length=1)
+
+
+@router.get("/policies", summary="查询可用安全策略预设")
+async def list_policies(
+    _: dict = Depends(require_permission("ai_policies:read")),
+):
+    data = await ai_policies_service.list_policies()
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.get("/rules/signatures", summary="查询 Regex 安全规则集")
+async def get_signature_rules(
+    _: dict = Depends(require_permission("ai_policies:read")),
+):
+    data = await ai_policies_service.get_signature_rules()
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.put("/rules/signatures", summary="替换 Regex 安全规则集")
+async def replace_signature_rules(
+    req: ReplaceSignatureRulesRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_permission("ai_policies:config")),
+):
+    try:
+        data = await ai_policies_service.replace_signature_rules(
+            req.content, current_user
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "Regex 规则集已更新", "data": data}
 
 
 @router.get("/audits", summary="查询 AI Policies 审查任务")
@@ -77,10 +116,35 @@ async def update_settings(
             req.llm_review_enabled,
             req.llm_review_model_id,
             current_user,
+            req.default_policy,
+            req.policy_overrides,
+            req.llm_consensus_runs,
+            req.regex_enabled,
         )
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"code": 200, "message": "LLM 审查引擎配置已更新", "data": data}
+
+
+@router.get(
+    "/skills/{skill_id}/versions/{version_id}/audit-history",
+    summary="查询版本扫描历史",
+)
+async def list_version_audit_history(
+    skill_id: int,
+    version_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("ai_policies:read")),
+):
+    try:
+        data = await ai_policies_service.list_version_audit_history(
+            session, skill_id, version_id, page, page_size
+        )
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 版本不存在")
+    return {"code": 200, "message": "ok", "data": data}
 
 
 @router.get("/audits/{audit_id}", summary="查询 AI Policies 审查报告")

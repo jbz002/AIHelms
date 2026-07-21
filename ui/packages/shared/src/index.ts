@@ -46,8 +46,8 @@ export {
   deprecateSkillVersion, createSkillVersionSecurityAudit,
   getSkillSummary, getSkillFull, getSkillIntegrity,
 } from './api/skill'
-export type { AiPolicyAudit, AiPolicyAuditSummary, AiPolicyAuditListResult, AiPolicyAuditQuery, AiPolicyFinding, AiPolicyAuditFileSummary, AiPolicyRiskCatalogItem, AiPolicySettings } from './types/aiPolicies'
-export { getAiPolicyAudits, getAiPolicyAudit, getAiPolicyReportDownloadUrl, getAiPolicyRiskCatalog, getAiPolicySettings, updateAiPolicySettings } from './api/aiPolicies'
+export type { AiPolicyAudit, AiPolicyAuditSummary, AiPolicyAuditListResult, AiPolicyAuditQuery, AiPolicyFinding, AiPolicyAuditFileSummary, AiPolicyRiskCatalogItem, AiPolicySettings, AiPolicyVerdict, AiPolicyName, AiPolicyPreset, AiPolicySignatureRule, AiPolicySignatureRules, AiPolicyAuditHistoryItem } from './types/aiPolicies'
+export { getAiPolicyAudits, getAiPolicyAudit, getAiPolicyReportDownloadUrl, getAiPolicyRiskCatalog, getAiPolicySettings, updateAiPolicySettings, getAiPolicyPolicies, getAiPolicySignatures, replaceAiPolicySignatures, getVersionAuditHistory } from './api/aiPolicies'
 export type { Agent, AgentCategory, AgentPlatform, AgentListResult, CreateAgentParams, UpdateAgentParams, CreateAgentCategoryParams, CreateAgentPlatformParams, AgentUsageLog, AgentUsageLogListResult } from './types/agent'
 export { getAgents, getAgentById, createAgent, updateAgent, deleteAgent, getAgentCategories, createAgentCategory, deleteAgentCategory, getAgentPlatforms, createAgentPlatform, deleteAgentPlatform, recordAgentUsage, getAgentUsageLogs } from './api/agent'
 export type { ResourceType, ApplicationStatus, ResourceApplication, ResourceApplicationListResult, CreateResourceApplicationParams, ApproveResourceApplicationParams, RejectResourceApplicationParams, BatchApproveResourceApplicationsParams, BatchRejectResourceApplicationsParams, BatchReviewResult, BatchReviewFailure } from './types/resource-application'

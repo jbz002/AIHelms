@@ -74,8 +74,13 @@ async def list_published_skills(
 ):
     """公开接口：已认证用户可查看已发布的 Skill 列表。"""
     data = await skill_service.list_skills(
-        session, page, page_size, category, is_published=True,
-        viewer_id=current_user["id"], is_admin=current_user["is_admin"],
+        session,
+        page,
+        page_size,
+        category,
+        is_published=True,
+        viewer_id=current_user["id"],
+        is_admin=current_user["is_admin"],
     )
     return {"code": 200, "message": "ok", "data": data}
 
@@ -276,12 +281,13 @@ async def deprecate_skill_version(
 async def create_skill_version_ai_policies_audit(
     skill_id: int,
     version_id: int,
+    policy: str | None = Query(None),
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("ai_policies:scan")),
 ):
     try:
         data = await ai_policies_service.create_skill_audit(
-            session, skill_id, current_user, version_id=version_id
+            session, skill_id, current_user, version_id=version_id, policy=policy
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 或版本不存在")
@@ -448,12 +454,13 @@ async def download_skill(
 @router.post("/{skill_id}/ai-policies-audits", summary="发起 Skill 安全审查")
 async def create_skill_ai_policies_audit(
     skill_id: int,
+    policy: str | None = Query(None),
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("ai_policies:scan")),
 ):
     try:
         data = await ai_policies_service.create_skill_audit(
-            session, skill_id, current_user
+            session, skill_id, current_user, policy=policy
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")

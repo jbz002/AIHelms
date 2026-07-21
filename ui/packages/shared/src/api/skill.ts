@@ -92,8 +92,11 @@ export function deleteSkill(id: number): Promise<null> {
   return request<null>(`/api/v1/skills/${id}`, { method: 'DELETE' })
 }
 
-export function createSkillSecurityAudit(id: number): Promise<AiPolicyAudit> {
-  return request<AiPolicyAudit>(`/api/v1/skills/${id}/ai-policies-audits`, { method: 'POST' })
+export function createSkillSecurityAudit(id: number, policy?: string): Promise<AiPolicyAudit> {
+  return request<AiPolicyAudit>(`/api/v1/skills/${id}/ai-policies-audits`, {
+    method: 'POST',
+    params: policy ? { policy } : undefined,
+  })
 }
 
 export function getSkillVersions(skillId: number, includeDeprecated: boolean = true): Promise<SkillVersion[]> {
@@ -125,10 +128,14 @@ export function deprecateSkillVersion(
   })
 }
 
-export function createSkillVersionSecurityAudit(skillId: number, versionId: number): Promise<AiPolicyAudit> {
+export function createSkillVersionSecurityAudit(
+  skillId: number,
+  versionId: number,
+  policy?: string,
+): Promise<AiPolicyAudit> {
   return request<AiPolicyAudit>(
     `/api/v1/skills/${skillId}/versions/${versionId}/ai-policies-audits`,
-    { method: 'POST' },
+    { method: 'POST', params: policy ? { policy } : undefined },
   )
 }
 

@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import AiPoliciesAudit, AiPoliciesRiskCatalog, AiPoliciesSettings
@@ -183,3 +183,94 @@ async def get_settings(session: AsyncSession) -> AiPoliciesSettings:
     await session.flush()
     await session.refresh(settings)
     return settings
+
+
+async def next_scan_round(
+    session: AsyncSession,
+    skill_id: int,
+    skill_version_id: int | None,
+) -> int:
+    """同 skill + version 的下一轮扫描序号（max(scan_round)+1）。
+
+    并发安全由 find_active_by_skill 阻同 version 并发审查保证。
+    skill_version_id 为 None 时匹配主表级审查。
+    """
+    version_filter = (
+        AiPoliciesAudit.skill_version_id == skill_version_id
+        if skill_version_id is not None
+        else AiPoliciesAudit.skill_version_id.is_(None)
+    )
+    result = await session.execute(
+        select(func.max(AiPoliciesAudit.scan_round)).where(
+            AiPoliciesAudit.skill_id == skill_id,
+            version_filter,
+        )
+    )
+    current = result.scalar()
+    return (current or 0) + 1
+
+
+async def mark_audits_deleted_for_skill(session: AsyncSession, skill_id: int) -> None:
+    """Skill 物理删除时，关联审计行 soft-delete（deleted_at 标记，不删行）。"""
+    await session.execute(
+        update(AiPoliciesAudit)
+        .where(
+            AiPoliciesAudit.skill_id == skill_id,
+            AiPoliciesAudit.deleted_at.is_(None),
+        )
+        .values(deleted_at=func.now())
+    )
+
+
+async def list_audit_history(
+    session: AsyncSession,
+    skill_id: int,
+    skill_version_id: int,
+    page: int,
+    page_size: int,
+) -> list[AiPoliciesAudit]:
+    """按版本查扫描历史（scan_round 倒序，排除 soft-delete，轻量字段）。"""
+    stmt = (
+        select(
+            AiPoliciesAudit.id,
+            AiPoliciesAudit.audit_id,
+            AiPoliciesAudit.status,
+            AiPoliciesAudit.decision,
+            AiPoliciesAudit.verdict,
+            AiPoliciesAudit.policy,
+            AiPoliciesAudit.severity,
+            AiPoliciesAudit.risk_score,
+            AiPoliciesAudit.findings_count,
+            AiPoliciesAudit.high_risk_count,
+            AiPoliciesAudit.must_review_count,
+            AiPoliciesAudit.scan_round,
+            AiPoliciesAudit.llm_review_used,
+            AiPoliciesAudit.created_at,
+            AiPoliciesAudit.finished_at,
+        )
+        .where(
+            AiPoliciesAudit.skill_id == skill_id,
+            AiPoliciesAudit.skill_version_id == skill_version_id,
+            AiPoliciesAudit.deleted_at.is_(None),
+        )
+        .order_by(AiPoliciesAudit.scan_round.desc(), AiPoliciesAudit.id.desc())
+        .limit(page_size)
+        .offset((page - 1) * page_size)
+    )
+    result = await session.execute(stmt)
+    return list(result.all())
+
+
+async def count_audit_history(
+    session: AsyncSession,
+    skill_id: int,
+    skill_version_id: int,
+) -> int:
+    result = await session.execute(
+        select(func.count(AiPoliciesAudit.id)).where(
+            AiPoliciesAudit.skill_id == skill_id,
+            AiPoliciesAudit.skill_version_id == skill_version_id,
+            AiPoliciesAudit.deleted_at.is_(None),
+        )
+    )
+    return result.scalar_one()

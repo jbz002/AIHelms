@@ -49,6 +49,10 @@ const savingSettings = ref(false)
 const loadingReviewModels = ref(false)
 const llmEnabled = ref(false)
 const selectedModelId = ref<number | null>(null)
+const defaultPolicy = ref<'strict' | 'balanced' | 'permissive'>('balanced')
+const consensusRuns = ref(0)
+const regexEnabled = ref(true)
+const policyOverrides = ref<Record<string, string>>({})
 const reviewModelOptions = ref<ReviewModelOption[]>([])
 const reviewModelLoadError = ref('')
 const statusFilter = ref<StatusFilter>('all')
@@ -183,6 +187,10 @@ async function loadSettings(): Promise<void> {
     const settings = await getAiPolicySettings()
     llmEnabled.value = settings.llm_review_enabled
     selectedModelId.value = settings.llm_review_model_id
+    defaultPolicy.value = (settings.default_policy as 'strict' | 'balanced' | 'permissive') || 'balanced'
+    consensusRuns.value = settings.llm_consensus_runs ?? 0
+    regexEnabled.value = settings.regex_enabled
+    policyOverrides.value = { ...(settings.policy_overrides || {}) }
   } catch {
     // 配置读取失败不影响审计结果浏览。
   }
@@ -201,6 +209,10 @@ async function saveSettings(): Promise<void> {
     await updateAiPolicySettings({
       llm_review_enabled: llmEnabled.value,
       llm_review_model_id: llmEnabled.value ? selectedModelId.value || null : null,
+      default_policy: defaultPolicy.value,
+      llm_consensus_runs: consensusRuns.value,
+      regex_enabled: regexEnabled.value,
+      policy_overrides: { ...policyOverrides.value },
     })
     showSettings.value = false
     toast.success('LLM 审查引擎配置已保存')
@@ -298,7 +310,10 @@ onMounted(() => {
   <div class="space-y-5">
     <div class="flex flex-wrap items-start justify-between gap-4">
       <div><div class="mb-2 inline-flex items-center gap-2 rounded-full bg-purple-50 px-3 py-1 text-xs font-medium text-purple-700"><ShieldCheck class="h-3.5 w-3.5" />AI Policies</div><h1 class="text-2xl font-bold text-slate-900">Skill 安全审计中心</h1><p class="mt-1 text-sm text-slate-500">集中查看 Skill 审查任务、风险结论和报告；MCP、Agent、Prompt 审计在 AI 实验室预告页展示。</p></div>
-      <button class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-purple-300 hover:text-purple-700" @click="openSettings"><SlidersHorizontal class="h-4 w-4" />LLM 审查引擎配置</button>
+      <div class="flex flex-wrap gap-2">
+        <button class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-purple-300 hover:text-purple-700" @click="openSettings"><SlidersHorizontal class="h-4 w-4" />审查配置</button>
+        <button class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-purple-300 hover:text-purple-700" @click="router.push('/ai-policies/rules')"><FileText class="h-4 w-4" />Regex 规则</button>
+      </div>
     </div>
     <div class="rounded-xl border border-slate-200 bg-white shadow-sm">
       <div class="flex flex-wrap items-center gap-3 border-b border-slate-100 p-4">
@@ -320,7 +335,24 @@ onMounted(() => {
     </div>
     <div v-if="showSettings" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
       <div class="w-full max-w-lg rounded-xl border border-slate-200 bg-white shadow-2xl"><div class="flex items-start justify-between border-b border-slate-100 p-5"><div><h2 class="text-lg font-semibold text-slate-900">LLM 审查引擎配置</h2><p class="mt-1 text-sm text-slate-500">启用后由平台调用所选模型，对规则扫描结果和受控摘录做语义研判。</p></div><button class="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" @click="showSettings = false"><X class="h-5 w-5" /></button></div>
-        <div class="space-y-4 p-5"><label class="flex items-start justify-between gap-4 rounded-xl border border-slate-200 p-4"><span><span class="block text-sm font-semibold text-slate-900">启用 LLM 审查引擎</span><span class="mt-1 block text-xs text-slate-500">默认关闭；失败或超时不影响静态审查任务落库。</span></span><input v-model="llmEnabled" type="checkbox" class="mt-1 h-5 w-5 accent-purple-600" /></label><div><label class="mb-1 block text-sm font-medium text-slate-700">审查模型</label><select v-model="selectedModelId" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400" :disabled="!llmEnabled || loadingReviewModels"><option :value="null">{{ modelPlaceholder }}</option><option v-for="model in reviewModelOptions" :key="model.id" :value="model.id">{{ model.name }}</option></select><p v-if="reviewModelLoadError" class="mt-2 text-xs text-red-500">{{ reviewModelLoadError }}</p></div></div>
+        <div class="space-y-4 p-5"><label class="flex items-start justify-between gap-4 rounded-xl border border-slate-200 p-4"><span><span class="block text-sm font-semibold text-slate-900">启用 LLM 审查引擎</span><span class="mt-1 block text-xs text-slate-500">默认关闭；失败或超时不影响静态审查任务落库。</span></span><input v-model="llmEnabled" type="checkbox" class="mt-1 h-5 w-5 accent-purple-600" /></label><div><label class="mb-1 block text-sm font-medium text-slate-700">审查模型</label><select v-model="selectedModelId" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400" :disabled="!llmEnabled || loadingReviewModels"><option :value="null">{{ modelPlaceholder }}</option><option v-for="model in reviewModelOptions" :key="model.id" :value="model.id">{{ model.name }}</option></select><p v-if="reviewModelLoadError" class="mt-2 text-xs text-red-500">{{ reviewModelLoadError }}</p></div>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">默认策略</label>
+            <select v-model="defaultPolicy" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none">
+              <option value="balanced">均衡（静态 + 规则 + AI 共识，高危阻断）</option>
+              <option value="strict">严格（AI 共识 3 次，中危即阻断）</option>
+              <option value="permissive">宽松（静态 + 规则，仅严重阻断）</option>
+            </select>
+          </div>
+          <label class="flex items-start justify-between gap-4 rounded-xl border border-slate-200 p-4">
+            <span><span class="block text-sm font-semibold text-slate-900">启用 Regex 规则扫描</span><span class="mt-1 block text-xs text-slate-500">数据驱动签名规则热加载，与静态扫描器并存。</span></span>
+            <input v-model="regexEnabled" type="checkbox" class="mt-1 h-5 w-5 accent-purple-600" />
+          </label>
+          <div>
+            <label class="mb-1 block text-sm font-medium text-slate-700">AI 共识次数（0 跟随策略，1-5）</label>
+            <input v-model.number="consensusRuns" type="number" min="0" max="5" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none" />
+          </div>
+        </div>
         <div class="flex justify-end gap-2 border-t border-slate-100 p-5"><button class="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200" @click="showSettings = false">取消</button><button class="inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-500 disabled:opacity-50" :disabled="savingSettings" @click="saveSettings"><Settings2 class="h-4 w-4" />{{ savingSettings ? '保存中...' : '保存配置' }}</button></div>
       </div>
     </div>

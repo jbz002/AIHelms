@@ -111,6 +111,12 @@ const router = createRouter({
           meta: { permission: 'ai_policies:read' },
         },
         {
+          path: 'ai-policies/rules',
+          name: 'AiPoliciesRules',
+          component: () => import('../views/ai-policies/RulesView.vue'),
+          meta: { permission: 'ai_policies:read' },
+        },
+        {
           path: 'lab/ai-policies',
           name: 'AiPoliciesLab',
           component: () => import('../views/ai-policies/AiPoliciesLabView.vue'),

@@ -1,0 +1,49 @@
+# AIHelms Regex 安全扫描规则集（S2）
+# 编辑后无需重启，扫描时按 mtime 热加载。version 写入 audit.raw_report.regex.version。
+# 字段：id（REG- 前缀）/ category（9 分类，自动映射 AST）/ severity / pattern / file_types / title / description / remediation
+version: "2026.07.21.1"
+rules:
+  - id: REG-PI-001
+    category: prompt_injection
+    severity: high
+    pattern: 'ignore\s+(all\s+)?(previous|prior|above)\s+instructions'
+    file_types: ["*.md", "*.txt", "*.prompt", "*.j2", "*.json"]
+    title: "Prompt Injection：覆盖历史指令的越狱短语"
+    description: "命中要求忽略历史/系统指令的经典越狱模板，可能劫持 agent 行为。"
+    remediation: "在系统提示层加不可覆盖约束，对用户输入做转义与边界标记。"
+
+  - id: REG-PI-002
+    category: prompt_injection
+    severity: medium
+    pattern: '<\|im_start\|>\s*system|<\|start_header_id\|>\s*system'
+    file_types: ["*.md", "*.txt", "*.json"]
+    title: "Prompt Injection：ChatML / Llama 模板注入"
+    description: "命中可被用于注入伪系统角色的对话模板标记。"
+    remediation: "对用户输入转义模板标记，或剥离特殊 token。"
+
+  - id: REG-DE-001
+    category: command_injection
+    severity: critical
+    pattern: '(curl|wget|fetch)\b[^|;&\n]{1,200}[|]\s*(bash|sh|python|perl)'
+    file_types: ["*.sh", "*.py", "*.js", "*.ts", "*.md"]
+    title: "远程脚本下载执行（curl | bash）"
+    description: "命中远程下载后直接管道执行的命令模式，典型供应链/横向加载攻击。"
+    remediation: "禁止 curl|bash 模式，改用校验过完整性的本地脚本。"
+
+  - id: REG-SEC-001
+    category: hardcoded_secrets
+    severity: high
+    pattern: '(api[_-]?key|secret|access[_-]?token|password)\s*[=:]\s*["'']?[A-Za-z0-9_\-]{20,}'
+    file_types: ["*.py", "*.js", "*.ts", "*.env", "*.json", "*.yaml", "*.yml"]
+    title: "硬编码密钥"
+    description: "命中疑似硬编码的高熵密钥/令牌。"
+    remediation: "改用环境变量或密钥管理服务，勿入库。"
+
+  - id: REG-OBF-001
+    category: obfuscation
+    severity: medium
+    pattern: 'base64\.b64decode\(\s*["'']eyJ[A-Za-z0-9+/=]{40,}'
+    file_types: ["*.py", "*.js", "*.ts"]
+    title: "Base64 混淆 payload"
+    description: "命中运行时解码硬编码 base64（疑似 JWT/可执行 payload 混淆）。"
+    remediation: "避免运行时解码硬编码 base64，确需则审计解码来源。"

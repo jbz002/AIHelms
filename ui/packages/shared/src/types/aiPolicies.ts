@@ -1,6 +1,9 @@
 export type AiPolicyAuditStatus = 'queued' | 'running' | 'completed' | 'failed'
 export type AiPolicyAuditDecision = '' | 'passed' | 'attention_required' | 'high_risk' | 'failed'
 export type AiPolicyAuditSeverity = '' | 'critical' | 'high' | 'medium' | 'low' | 'info' | 'none' | 'unknown'
+export type AiPolicyVerdict = '' | 'SAFE' | 'SUSPICIOUS' | 'DANGEROUS' | 'BLOCKED'
+export type AiPolicyName = 'strict' | 'balanced' | 'permissive'
+export type AiPolicyFindingSource = 'static' | 'regex' | 'llm_consensus' | 'llm' | string
 
 export interface AiPolicyFindingLocation {
   file?: string
@@ -18,7 +21,7 @@ export interface AiPolicyFindingGroupLocation extends AiPolicyFindingLocation {
 }
 
 export interface AiPolicyFinding {
-  source?: 'static' | 'llm' | string
+  source?: AiPolicyFindingSource
   group_id?: string
   rule_id?: string
   category?: string
@@ -49,10 +52,15 @@ export interface AiPolicyAuditSummary {
   audit_id: string
   audit_type: string
   skill_id: number | null
+  skill_version_id?: number | null
   skill_name: string
   skill_version: string
   status: AiPolicyAuditStatus
   decision: AiPolicyAuditDecision
+  verdict?: AiPolicyVerdict
+  policy?: AiPolicyName | string
+  scan_round?: number
+  deleted_at?: string | null
   severity: AiPolicyAuditSeverity
   risk_score: number
   findings_count: number
@@ -118,6 +126,53 @@ export interface AiPolicyRiskCatalogItem {
 export interface AiPolicySettings {
   llm_review_enabled: boolean
   llm_review_model_id: number | null
+  default_policy: AiPolicyName
+  policy_overrides: Record<string, string>
+  llm_consensus_runs: number
+  regex_enabled: boolean
   updated_by?: number | null
   updated_at?: string | null
+}
+
+export interface AiPolicyPreset {
+  name: AiPolicyName
+  analyzers: string[]
+  fail_on_severity: string
+  llm_consensus_runs: number
+}
+
+export interface AiPolicySignatureRule {
+  id: string
+  category: string
+  severity: string
+  pattern: string
+  file_types: string[]
+  title?: string
+  description?: string
+  remediation?: string
+}
+
+export interface AiPolicySignatureRules {
+  version: string
+  rules: AiPolicySignatureRule[]
+  content?: string
+  path?: string
+}
+
+export interface AiPolicyAuditHistoryItem {
+  id: number
+  audit_id: string
+  status: AiPolicyAuditStatus
+  decision: AiPolicyAuditDecision
+  verdict?: AiPolicyVerdict
+  policy?: string
+  severity: AiPolicyAuditSeverity
+  risk_score: number
+  findings_count: number
+  high_risk_count: number
+  must_review_count: number
+  scan_round: number
+  llm_review_used: boolean
+  created_at?: string | null
+  finished_at?: string | null
 }

@@ -15,10 +15,13 @@ from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import AiPoliciesAudit
 from repositories import ai_policies_repo, mcp_repo, skill_repo, skill_version_repo
 from services import (
+    ai_policies_analyzers,
     ai_policies_denoise,
     ai_policies_llm,
+    ai_policies_policies,
     ai_policies_report,
     ai_policies_scanner_client,
+    ai_policies_verdict,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,6 +93,9 @@ def _map_category(raw: dict) -> str:
     pattern = str(raw.get("pattern") or "")
     tags = " ".join(str(tag) for tag in raw.get("tags") or [])
     text = f"{category} {rule_id} {pattern} {tags}".lower()
+    # S2: 规则系统已显式映射 AST 编码时直接采用（绕过启发式）
+    if category.upper().startswith("AST") and len(category) <= 6:
+        return category.upper()
     if "prompt injection" in text:
         return "AST05"
     if (
@@ -366,6 +372,13 @@ def _normalize_finding(raw: dict, zip_path: str = "") -> dict:
     severity = str(raw.get("severity") or "LOW").upper()
     category = _map_category(raw)
     title, description, recommendation = _finding_text(raw, category)
+    # S2: 规则系统自带文案时覆盖启发式文本
+    if raw.get("title"):
+        title = str(raw.get("title"))
+    if raw.get("description"):
+        description = str(raw.get("description"))
+    if raw.get("remediation"):
+        recommendation = str(raw.get("remediation"))
     file_name = location.get("file") or ""
     start_line = location.get("start_line")
     end_line = location.get("end_line")
@@ -374,7 +387,7 @@ def _normalize_finding(raw: dict, zip_path: str = "") -> dict:
     )
     file_role = ai_policies_denoise.file_role_for(file_name, raw)
     item = {
-        "source": "static",
+        "source": raw.get("source") or "static",
         "rule_id": raw.get("id") or "",
         "category": category,
         "raw_category": raw.get("category") or "",
@@ -805,10 +818,16 @@ def _display_summary(audit: AiPoliciesAudit, findings: list[dict]) -> dict:
     return summary
 
 
+_DECISION_TO_VERDICT = {
+    v: k for k, v in ai_policies_verdict.VERDICT_TO_DECISION.items()
+}
+
+
 def _display_metrics(audit: AiPoliciesAudit, findings: list[dict]) -> dict:
     if audit.status in {"queued", "running"}:
         return {
             "decision": "",
+            "verdict": getattr(audit, "verdict", "") or "",
             "severity": "",
             "risk_score": 0,
             "findings_count": 0,
@@ -818,6 +837,7 @@ def _display_metrics(audit: AiPoliciesAudit, findings: list[dict]) -> dict:
     if audit.status != "completed":
         return {
             "decision": audit.decision,
+            "verdict": getattr(audit, "verdict", "") or "",
             "severity": audit.severity,
             "risk_score": audit.risk_score,
             "findings_count": audit.findings_count,
@@ -828,6 +848,8 @@ def _display_metrics(audit: AiPoliciesAudit, findings: list[dict]) -> dict:
     score = ai_policies_denoise.score_groups(findings)
     return {
         "decision": score.decision,
+        "verdict": getattr(audit, "verdict", "")
+        or _DECISION_TO_VERDICT.get(score.decision, ""),
         "severity": score.severity,
         "risk_score": score.risk_score,
         "findings_count": score.findings_count,
@@ -875,6 +897,7 @@ def _serialize_audit(
         "audit_id": audit.audit_id,
         "audit_type": audit.audit_type,
         "skill_id": audit.skill_id,
+        "skill_version_id": audit.skill_version_id,
         "skill_name": audit.skill_name,
         "skill_version": audit.skill_version,
         "entity_type": audit.entity_type,
@@ -883,6 +906,9 @@ def _serialize_audit(
         "entity_version": audit.entity_version,
         "status": audit.status,
         "decision": metrics["decision"],
+        "verdict": metrics.get("verdict", audit.verdict or ""),
+        "policy": audit.policy or "",
+        "scan_round": audit.scan_round or 1,
         "severity": metrics["severity"],
         "risk_score": metrics["risk_score"],
         "findings_count": metrics["findings_count"],
@@ -944,6 +970,7 @@ async def create_skill_audit(
     skill_id: int,
     current_user: dict,
     version_id: int | None = None,
+    policy: str | None = None,
 ) -> dict:
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
@@ -967,6 +994,16 @@ async def create_skill_audit(
         target_zip = skill.zip_path
         target_version_label = skill.version
 
+    settings_row = await ai_policies_repo.get_settings(session)
+    resolved_policy = ai_policies_policies.resolve_policy(
+        settings_row,
+        SimpleNamespace(policy=policy or ""),
+        getattr(skill, "category", None),
+    )
+    scan_round = await ai_policies_repo.next_scan_round(
+        session, skill.id, version.id if version else None
+    )
+
     audit = AiPoliciesAudit(
         audit_id=f"AIP-{uuid4().hex[:12]}",
         audit_type="skill",
@@ -979,6 +1016,8 @@ async def create_skill_audit(
         mode="static",
         status="queued",
         created_by=int(current_user["id"]),
+        policy=resolved_policy.name,
+        scan_round=scan_round,
     )
     audit = await ai_policies_repo.create_audit(session, audit)
     if version:
@@ -1021,9 +1060,9 @@ async def _resolve_audit_target(session: AsyncSession, audit: AiPoliciesAudit) -
 
 def _apply_security_success(target, audit: AiPoliciesAudit, score_result) -> None:
     target.security_status = "completed"
-    target.security_decision = score_result.decision
+    target.security_decision = audit.decision
     target.security_severity = audit.severity
-    target.security_risk_score = score_result.risk_score
+    target.security_risk_score = audit.risk_score
     target.latest_ai_policies_audit_id = audit.id
 
 
@@ -1054,50 +1093,105 @@ async def process_skill_audit(session: AsyncSession, audit_pk: int) -> None:
     category_labels = await _category_labels(session)
 
     try:
+        settings_row = await ai_policies_repo.get_settings(session)
+        skill_category = getattr(skill, "category", None) if skill else None
+        policy = ai_policies_policies.resolve_policy(
+            settings_row, audit, skill_category
+        )
+        audit.policy = policy.name
+        analyzers = ai_policies_analyzers.get_analyzers(policy)
+        raw_phase = [a for a in analyzers if getattr(a, "phase", "raw") == "raw"]
+        review_phase = [a for a in analyzers if getattr(a, "phase", "raw") == "review"]
+
+        # 1) static 基线扫描（始终先跑）
         response = await ai_policies_scanner_client.scan_skill_zip(
             _scanner_target(target_zip)
         )
-        await _commit_progress(session, audit, 50, 2, "正在整理风险结果")
+        await _commit_progress(session, audit, 40, 2, "正在整理风险结果")
         payload = response.get("data") or {}
-        raw_findings = payload.get("findings") or []
-        normalized_findings = _normalize_findings(raw_findings, target_zip)
+        raw_pool: list[dict] = list(payload.get("findings") or [])
+
+        # 2) raw-phase analyzer（regex 等）单点失败不阻断
+        analyzer_raw: dict[str, dict] = {}
+        analyzer_errors: dict[str, str] = {}
+        for analyzer in raw_phase:
+            try:
+                ctx = ai_policies_analyzers.AnalyzerContext(
+                    audit=audit,
+                    zip_path=target_zip,
+                    target=target,
+                    settings_row=settings_row,
+                    category_labels=category_labels,
+                    session=session,
+                    policy=policy,
+                )
+                result = await analyzer.analyze(ctx)
+                raw_pool.extend(result.findings)
+                analyzer_raw[result.analyzer] = result.raw
+                if result.version:
+                    analyzer_raw.setdefault("versions", {})[
+                        result.analyzer
+                    ] = result.version
+                if result.error:
+                    analyzer_errors[result.analyzer] = result.error
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(
+                    "analyzer %s failed: audit_id=%s", analyzer.name, audit.audit_id
+                )
+                analyzer_errors[analyzer.name] = str(exc)
+
+        normalized_findings = _normalize_findings(raw_pool, target_zip)
         scan_limitations = _scan_limitations(normalized_findings)
         findings = _aggregate_findings(normalized_findings)
         file_summaries = _zip_file_summaries(target_zip, findings)
         external_links = _zip_external_links(target_zip)
         await _commit_progress(session, audit, 65, 3, "正在归类风险")
         score_result = ai_policies_denoise.score_groups(findings)
-        audit.severity = score_result.severity
-        audit.risk_score = score_result.risk_score
-        settings_row = await ai_policies_repo.get_settings(session)
+
+        # 3) review-phase analyzer（LLM 共识）
         llm_review: dict | None = None
-        if settings_row.llm_review_enabled:
+        for analyzer in review_phase:
             await _commit_progress(session, audit, 75, 3, "正在进行 AI 深度审查")
             try:
-                llm_review = await ai_policies_llm.run_llm_review(
-                    session,
-                    settings_row.llm_review_model_id,
-                    audit,
-                    findings,
-                    category_labels,
-                    target_zip,
+                ctx = ai_policies_analyzers.AnalyzerContext(
+                    audit=audit,
+                    zip_path=target_zip,
+                    target=target,
+                    settings_row=settings_row,
+                    category_labels=category_labels,
+                    session=session,
+                    policy=policy,
+                    findings_so_far=findings,
                 )
-                findings = ai_policies_denoise.apply_finding_reviews(
-                    findings, llm_review
-                )
-                score_result = ai_policies_denoise.score_groups(findings)
-            except Exception:  # noqa: BLE001
+                result = await analyzer.analyze(ctx)
+                if result.review:
+                    analyzer_raw[result.analyzer] = result.raw
+                    llm_review = result.review
+                    if result.version:
+                        analyzer_raw.setdefault("versions", {})[
+                            result.analyzer
+                        ] = result.version
+                    if llm_review.get("status") == "completed":
+                        findings = ai_policies_denoise.apply_finding_reviews(
+                            findings, llm_review
+                        )
+                        score_result = ai_policies_denoise.score_groups(findings)
+            except Exception as exc:  # noqa: BLE001
                 logger.exception(
-                    "AI Policies LLM review failed: audit_id=%s", audit.audit_id
+                    "analyzer %s failed: audit_id=%s", analyzer.name, audit.audit_id
                 )
-                llm_review = {
-                    "status": "failed",
-                    "message": "LLM 审查引擎执行失败，静态审查结果已保留",
-                }
+                analyzer_errors[analyzer.name] = str(exc)
 
-        await _commit_progress(session, audit, 90, 3, "正在生成报告")
+        # 4) Verdict 聚合（redline / fail_on_severity → BLOCKED）
+        has_redline = any(bool(item.get("redline")) for item in findings)
+        verdict = ai_policies_verdict.aggregate(
+            score_result, policy.fail_on_severity, has_redline
+        )
+
+        await _commit_progress(session, audit, 90, 4, "正在生成报告")
         audit.status = "completed"
-        audit.decision = score_result.decision
+        audit.decision = ai_policies_verdict.decision_for(verdict)
+        audit.verdict = verdict
         audit.severity = score_result.severity
         audit.risk_score = score_result.risk_score
         audit.findings = findings
@@ -1109,7 +1203,10 @@ async def process_skill_audit(session: AsyncSession, audit_pk: int) -> None:
             **response,
             "normalized_findings": normalized_findings,
             "scan_limitations": scan_limitations,
+            "analyzers": analyzer_raw,
         }
+        if analyzer_errors:
+            audit.raw_report["analyzer_errors"] = analyzer_errors
         if llm_review:
             audit.raw_report = {**audit.raw_report, "llm_review": llm_review}
             audit.llm_review_used = _llm_review_completed(llm_review)
@@ -1125,6 +1222,8 @@ async def process_skill_audit(session: AsyncSession, audit_pk: int) -> None:
             "file_count": len(file_summaries),
             "external_links": external_links,
             "source_size_bytes": Path(target_zip).stat().st_size,
+            "verdict": verdict,
+            "policy": policy.name,
         }
         if scan_limitations:
             audit.summary = {**audit.summary, "scan_limitations": scan_limitations}
@@ -1270,6 +1369,10 @@ async def get_settings(session: AsyncSession) -> dict:
     return {
         "llm_review_enabled": settings_row.llm_review_enabled,
         "llm_review_model_id": settings_row.llm_review_model_id,
+        "default_policy": settings_row.default_policy,
+        "policy_overrides": settings_row.policy_overrides or {},
+        "llm_consensus_runs": settings_row.llm_consensus_runs,
+        "regex_enabled": settings_row.regex_enabled,
         "updated_by": settings_row.updated_by,
         "updated_at": _fmt_time(settings_row.updated_at),
     }
@@ -1280,6 +1383,10 @@ async def update_settings(
     llm_review_enabled: bool,
     llm_review_model_id: int | None,
     current_user: dict,
+    default_policy: str | None = None,
+    policy_overrides: dict[str, str] | None = None,
+    llm_consensus_runs: int | None = None,
+    regex_enabled: bool | None = None,
 ) -> dict:
     if llm_review_enabled and not llm_review_model_id:
         raise ValidationError("启用 LLM 审查引擎时必须选择 OpenAI 格式的对话模型")
@@ -1289,15 +1396,140 @@ async def update_settings(
         )
         if not model:
             raise ValidationError("只能选择已启用且包含 OpenAI 格式渠道的对话模型")
+    if (
+        default_policy is not None
+        and default_policy not in ai_policies_policies.POLICIES
+    ):
+        raise ValidationError("未知的安全策略预设")
+    if llm_consensus_runs is not None and not 0 <= llm_consensus_runs <= 5:
+        raise ValidationError("LLM 共识次数必须在 0-5 之间")
 
     settings_row = await ai_policies_repo.get_settings(session)
     settings_row.llm_review_enabled = llm_review_enabled
     settings_row.llm_review_model_id = llm_review_model_id
+    if default_policy is not None:
+        settings_row.default_policy = default_policy
+    if policy_overrides is not None:
+        settings_row.policy_overrides = {
+            str(k): str(v)
+            for k, v in policy_overrides.items()
+            if str(v) in ai_policies_policies.POLICIES
+        }
+    if llm_consensus_runs is not None:
+        settings_row.llm_consensus_runs = llm_consensus_runs
+    if regex_enabled is not None:
+        settings_row.regex_enabled = regex_enabled
     settings_row.updated_by = int(current_user["id"])
     settings_row.updated_at = _now()
     await session.commit()
     await session.refresh(settings_row)
     return await get_settings(session)
+
+
+async def list_policies() -> list[dict]:
+    return ai_policies_policies.list_presets()
+
+
+async def list_version_audit_history(
+    session: AsyncSession,
+    skill_id: int,
+    version_id: int,
+    page: int,
+    page_size: int,
+) -> dict:
+    version = await skill_version_repo.find_by_id(session, version_id)
+    if not version or version.skill_id != skill_id:
+        raise NotFoundError("skill_version", version_id)
+    rows = await ai_policies_repo.list_audit_history(
+        session, skill_id, version_id, page, page_size
+    )
+    total = await ai_policies_repo.count_audit_history(session, skill_id, version_id)
+    items = [
+        {
+            "id": row.id,
+            "audit_id": row.audit_id,
+            "status": row.status,
+            "decision": row.decision,
+            "verdict": row.verdict,
+            "policy": row.policy,
+            "severity": row.severity,
+            "risk_score": row.risk_score,
+            "findings_count": row.findings_count,
+            "high_risk_count": row.high_risk_count,
+            "must_review_count": row.must_review_count,
+            "scan_round": row.scan_round,
+            "llm_review_used": row.llm_review_used,
+            "created_at": _fmt_time(row.created_at),
+            "finished_at": _fmt_time(row.finished_at),
+        }
+        for row in rows
+    ]
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+def _signature_rules_path():
+    from services.ai_policies_analyzers.regex import _resolve_path
+
+    return _resolve_path()
+
+
+async def get_signature_rules() -> dict:
+    path = _signature_rules_path()
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        return {"version": "unknown", "rules": [], "content": "", "path": str(path)}
+    import yaml
+
+    try:
+        data = yaml.safe_load(content) or {}
+    except yaml.YAMLError:
+        data = {}
+    rules = [item for item in (data.get("rules") or []) if isinstance(item, dict)]
+    return {
+        "version": str(data.get("version") or ""),
+        "rules": rules,
+        "content": content,
+        "path": str(path),
+    }
+
+
+async def replace_signature_rules(content: str, current_user: dict) -> dict:
+    import yaml
+
+    try:
+        data = yaml.safe_load(content)
+    except yaml.YAMLError as exc:
+        raise ValidationError(f"规则文件 YAML 解析失败：{exc}") from exc
+    if not isinstance(data, dict) or not isinstance(data.get("rules"), list):
+        raise ValidationError("规则文件必须包含顶层 rules 列表")
+    for index, item in enumerate(data.get("rules") or []):
+        if not isinstance(item, dict) or not item.get("id") or not item.get("pattern"):
+            raise ValidationError(f"第 {index + 1} 条规则缺少 id 或 pattern")
+
+    path = _signature_rules_path()
+    backup_path = path.with_suffix(path.suffix + ".bak")
+    try:
+        if path.exists():
+            backup_path.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
+        path.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        raise ValidationError(f"规则文件写入失败：{exc}") from exc
+    logger.info(
+        "signature rules replaced by user_id=%s (backup=%s)",
+        current_user.get("id"),
+        backup_path.name,
+    )
+    # 清缓存，下次扫描重读
+    from services.ai_policies_analyzers.regex import _RULES_CACHE
+
+    _RULES_CACHE.clear()
+    return await get_signature_rules()
 
 
 # ─── MCP Server 安全审查 ──────────────────────────────────────────────────

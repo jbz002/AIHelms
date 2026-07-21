@@ -722,7 +722,11 @@ CREATE TABLE IF NOT EXISTS aihelms.ai_policies_audits (
     entity_type VARCHAR(16) NOT NULL DEFAULT 'skill',
     entity_id BIGINT,
     entity_name VARCHAR(128) NOT NULL DEFAULT '',
-    entity_version VARCHAR(64) NOT NULL DEFAULT ''
+    entity_version VARCHAR(64) NOT NULL DEFAULT '',
+    verdict VARCHAR(16) NOT NULL DEFAULT '',
+    policy VARCHAR(32) NOT NULL DEFAULT '',
+    scan_round INTEGER NOT NULL DEFAULT 1,
+    deleted_at TIMESTAMPTZ
 );
 
 CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_audit_type ON aihelms.ai_policies_audits(audit_type);
@@ -731,6 +735,11 @@ CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_status ON aihelms.ai_policies_
 CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_decision ON aihelms.ai_policies_audits(decision);
 CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_finished_at ON aihelms.ai_policies_audits(finished_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_entity ON aihelms.ai_policies_audits(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_skill_version_round
+    ON aihelms.ai_policies_audits(skill_id, skill_version_id, scan_round DESC)
+    WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_ai_policies_audits_verdict
+    ON aihelms.ai_policies_audits(verdict) WHERE verdict <> '';
 
 CREATE TABLE IF NOT EXISTS aihelms.ai_policies_risk_catalog (
     code VARCHAR(16) PRIMARY KEY,
@@ -748,6 +757,10 @@ CREATE TABLE IF NOT EXISTS aihelms.ai_policies_settings (
     llm_review_model_id BIGINT REFERENCES aihelms.models(id) ON DELETE SET NULL,
     updated_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    default_policy VARCHAR(32) NOT NULL DEFAULT 'balanced',
+    policy_overrides JSONB NOT NULL DEFAULT '{}',
+    llm_consensus_runs INTEGER NOT NULL DEFAULT 0,
+    regex_enabled BOOLEAN NOT NULL DEFAULT true,
     CONSTRAINT ai_policies_settings_singleton CHECK (id = 1)
 );
 
