@@ -61,6 +61,10 @@ const saving = ref(false)
 const showDelete = ref(false)
 const auditStarted = ref(false)
 const zipFile = ref<File | null>(null)
+const zipFileError = ref('')
+
+// 镜像服务端 SKILLS_PACKAGE_MAX_TOTAL_SIZE_MB 默认值；服务端为准
+const MAX_ZIP_SIZE = 100 * 1024 * 1024
 
 const form = ref({
   name: '',
@@ -200,7 +204,21 @@ async function loadData(): Promise<void> {
 
 function handleZipChange(event: Event): void {
   const target = event.target as HTMLInputElement
-  zipFile.value = target.files?.[0] || null
+  const file = target.files?.[0] || null
+  zipFileError.value = ''
+  if (file) {
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      zipFileError.value = '请上传 .zip 文件'
+      zipFile.value = null
+      return
+    }
+    if (file.size > MAX_ZIP_SIZE) {
+      zipFileError.value = `文件超过 ${MAX_ZIP_SIZE / 1024 / 1024} MB 上限`
+      zipFile.value = null
+      return
+    }
+  }
+  zipFile.value = file
 }
 
 function handleVersionActivated(updated: Skill): void {
@@ -210,6 +228,10 @@ function handleVersionActivated(updated: Skill): void {
 async function handleSave(): Promise<void> {
   if (!form.value.name.trim()) {
     toast.error('请填写名称')
+    return
+  }
+  if (zipFileError.value) {
+    toast.error(zipFileError.value)
     return
   }
   saving.value = true
@@ -462,6 +484,12 @@ onMounted(loadData)
             <div v-if="isNew && zipFile" class="mt-1 text-xs text-slate-500">
               已选择：{{ zipFile.name }} ({{ Math.round(zipFile.size / 1024) }} KB)
             </div>
+            <p v-if="isNew && zipFileError" class="mt-1 text-xs text-red-500">
+              {{ zipFileError }}
+            </p>
+            <p v-if="isNew && sourceMode === 'zip'" class="mt-1 text-xs text-slate-400">
+              允许的文件类型：md/json/txt/py/js/sh/yaml/csv/png/jpg/svg/pdf 等；单文件 ≤10MB，总包 ≤100MB，最多 500 文件
+            </p>
             <div v-if="isNew && sourceMode === 'url'" class="mt-2">
               <input
                 v-model="form.source_url"

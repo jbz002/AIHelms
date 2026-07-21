@@ -150,6 +150,7 @@ async def create_skill(
     zip_path = ""
     zip_size = 0
     if zip_content:
+        _validate_package_or_raise(zip_content, "create_skill")
         base_dir = _ensure_skills_dir()
         safe_filename = f"{sid}.zip"
         full_path = os.path.join(base_dir, safe_filename)
@@ -326,6 +327,36 @@ def _parse_validate_and_apply(
     version.protocol_errors = result.to_storage_list()
     version.last_validated_at = datetime.now(timezone.utc)
     return parsed
+
+
+_PACKAGE_ERROR_CAP = 20
+
+
+def _validate_package_or_raise(zip_bytes: bytes, context_label: str) -> None:
+    """S5 物理安全门控：包校验失败抛 ValidationError（→ 400），整包不落盘。
+
+    在 create_skill / create_version 写盘前调用，先于 S1 协议校验与内容解析。
+    """
+    from services import skill_package_validator
+
+    result = skill_package_validator.validate_skill_package(zip_bytes)
+    if result.valid:
+        return
+    lines = [f"Skill 包物理校验未通过（{context_label}）："]
+    for issue in result.errors[:_PACKAGE_ERROR_CAP]:
+        suffix = f"（文件：{issue.file_path}）" if issue.file_path else ""
+        lines.append(f"- {issue.message}{suffix}")
+    dropped = len(result.errors) - _PACKAGE_ERROR_CAP
+    if dropped > 0:
+        lines.append(f"- ……另有 {dropped} 条问题，详见服务端日志")
+    logger.warning(
+        "skill package rejected: %d errors, %d files, %d bytes, context=%s",
+        len(result.errors),
+        result.checked_files,
+        result.uncompressed_bytes,
+        context_label,
+    )
+    raise ValidationError("\n".join(lines))
 
 
 def _validate_fork_version(version: SkillVersion, zip_path: str) -> None:
@@ -506,6 +537,9 @@ async def create_version(
     v = await skill_version_repo.create(session, v)
 
     if zip_content:
+        _validate_package_or_raise(
+            zip_content, f"create_version skill_id={skill_id} v={version}"
+        )
         skill_dir = _version_zip_dir(skill.skill_id)
         zip_path = os.path.join(skill_dir, f"{v.id}.zip")
         with open(zip_path, "wb") as f:

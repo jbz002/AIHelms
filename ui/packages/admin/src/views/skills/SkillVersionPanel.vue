@@ -39,6 +39,10 @@ const form = ref({
   change_log: '',
 })
 const zipFile = ref<File | null>(null)
+const zipFileError = ref('')
+
+// 镜像服务端 SKILLS_PACKAGE_MAX_TOTAL_SIZE_MB 默认值；服务端为准
+const MAX_ZIP_SIZE = 100 * 1024 * 1024
 
 async function loadVersions(): Promise<void> {
   if (!props.skillId) return
@@ -148,17 +152,36 @@ async function confirmDeprecate(): Promise<void> {
 function openCreate(): void {
   form.value = { version: '', version_label: '', change_log: '' }
   zipFile.value = null
+  zipFileError.value = ''
   showCreate.value = true
 }
 
 function handleZipChange(event: Event): void {
   const target = event.target as HTMLInputElement
-  zipFile.value = target.files?.[0] || null
+  const file = target.files?.[0] || null
+  zipFileError.value = ''
+  if (file) {
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      zipFileError.value = '请上传 .zip 文件'
+      zipFile.value = null
+      return
+    }
+    if (file.size > MAX_ZIP_SIZE) {
+      zipFileError.value = `文件超过 ${MAX_ZIP_SIZE / 1024 / 1024} MB 上限`
+      zipFile.value = null
+      return
+    }
+  }
+  zipFile.value = file
 }
 
 async function handleCreate(): Promise<void> {
   if (!form.value.version.trim()) {
     toast.error('请填写版本号')
+    return
+  }
+  if (zipFileError.value) {
+    toast.error(zipFileError.value)
     return
   }
   try {
@@ -287,6 +310,7 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             class="block w-full text-xs text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-purple-50 file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-purple-700 hover:file:bg-purple-100"
             @change="handleZipChange"
           />
+          <p v-if="zipFileError" class="mt-1 text-xs text-red-500">{{ zipFileError }}</p>
           <div class="mt-1 text-[11px] text-slate-400">{{ createHint }}</div>
         </div>
         <div class="mb-4">

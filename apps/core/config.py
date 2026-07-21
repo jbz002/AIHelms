@@ -76,6 +76,13 @@ class Settings(BaseSettings):
     storage_compensation_max_retries: int = 5  # 孤儿文件删除补偿最大重试次数
     distributed_lock_default_ttl: int = 30  # 分布式锁默认 TTL（秒）
 
+    # Skill 包物理校验（S5）
+    skills_package_max_file_size_mb: int = 10  # 单文件解压后上限（MB）
+    skills_package_max_total_size_mb: int = 100  # 总包上限（MB，压缩与解压均校验）
+    skills_package_max_file_count: int = 500  # 包内文件数上限
+    # 扩展名白名单：留空走模块默认；非空则整体替换（逗号分隔）
+    skills_package_allowed_extensions: str = ""
+
     # AI Policies
     ai_policies_scanner_url: str = "http://127.0.0.1:8010"
     ai_policies_timeout_seconds: int = 600
