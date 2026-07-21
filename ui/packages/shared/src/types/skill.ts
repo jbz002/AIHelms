@@ -55,6 +55,19 @@ export interface Skill {
 
 export type SkillVersionLifecycle = 'inactive' | 'active' | 'deprecated'
 
+export interface ManifestFile {
+  sha256: string
+  size: number
+  content_type?: string
+  category?: 'root' | 'references' | 'scripts' | 'assets' | 'other' | string
+}
+
+export interface ProtocolIssue {
+  severity: 'error' | 'warning'
+  code: string
+  message: string
+}
+
 export interface SkillVersion {
   id: number
   skill_id: number
@@ -71,10 +84,13 @@ export interface SkillVersion {
   frontmatter: Record<string, unknown>
   summary_text: string
   composite_hash: string
-  file_hashes: Record<string, string>
+  file_hashes: Record<string, ManifestFile>
   drift_detected: boolean
   drifted_files: string[]
   last_drift_check_at: string | null
+  protocol_valid: boolean
+  protocol_errors: ProtocolIssue[]
+  last_validated_at: string | null
   security_status?: 'not_scanned' | 'queued' | 'running' | 'completed' | 'failed'
   security_decision?: '' | 'passed' | 'attention_required' | 'high_risk' | 'failed'
   latest_ai_policies_audit_id?: number | null
@@ -119,7 +135,7 @@ export interface SkillFullView {
   frontmatter: Record<string, unknown>
   summary_text: string
   full_content: string
-  file_hashes: Record<string, string>
+  file_hashes: Record<string, ManifestFile>
   composite_hash: string
 }
 
@@ -129,8 +145,10 @@ export interface SkillIntegrityView {
   source_type: string
   composite_hash: string
   content_sha256: string
-  file_hashes: Record<string, string>
+  file_hashes: Record<string, ManifestFile>
   drift_detected: boolean
   drifted_files: string[]
   last_drift_check_at: string | null
+  protocol_valid: boolean
+  protocol_errors: ProtocolIssue[]
 }

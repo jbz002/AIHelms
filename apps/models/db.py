@@ -1028,6 +1028,11 @@ class SkillVersion(Base):
     drift_detected: Mapped[bool] = mapped_column(Boolean, default=False)
     drifted_files: Mapped[list] = mapped_column(JSONB, default=list)
     last_drift_check_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    protocol_valid: Mapped[bool] = mapped_column(Boolean, default=False)
+    protocol_errors: Mapped[list] = mapped_column(JSONB, default=list)
+    last_validated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
     )
@@ -1474,9 +1479,15 @@ class PublishReview(Base):
     reviewed_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
     )
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
 
 
 class PublishSettings(Base):
@@ -1488,4 +1499,6 @@ class PublishSettings(Base):
     updated_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
     )
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

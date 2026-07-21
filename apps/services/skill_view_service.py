@@ -98,6 +98,8 @@ async def get_skill_integrity(session: AsyncSession, skill_id: int) -> dict:
             "drift_detected": False,
             "drifted_files": [],
             "last_drift_check_at": None,
+            "protocol_valid": False,
+            "protocol_errors": [],
         }
     return {
         "skill_id": skill.id,
@@ -113,4 +115,6 @@ async def get_skill_integrity(session: AsyncSession, skill_id: int) -> dict:
             if active.last_drift_check_at
             else None
         ),
+        "protocol_valid": active.protocol_valid,
+        "protocol_errors": active.protocol_errors,
     }

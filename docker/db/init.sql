@@ -797,6 +797,9 @@ CREATE TABLE IF NOT EXISTS aihelms.skill_versions (
     drift_detected BOOLEAN NOT NULL DEFAULT false,
     drifted_files JSONB DEFAULT '[]',
     last_drift_check_at TIMESTAMPTZ,
+    protocol_valid BOOLEAN NOT NULL DEFAULT false,
+    protocol_errors JSONB NOT NULL DEFAULT '[]',
+    last_validated_at TIMESTAMPTZ,
     created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE(skill_id, version)
@@ -805,6 +808,8 @@ CREATE TABLE IF NOT EXISTS aihelms.skill_versions (
 CREATE INDEX IF NOT EXISTS idx_skill_versions_skill ON aihelms.skill_versions(skill_id);
 CREATE INDEX IF NOT EXISTS idx_skill_versions_source_type ON aihelms.skill_versions(source_type);
 CREATE INDEX IF NOT EXISTS idx_skill_versions_composite_hash ON aihelms.skill_versions(composite_hash);
+CREATE INDEX IF NOT EXISTS idx_skill_versions_protocol_valid
+    ON aihelms.skill_versions(protocol_valid) WHERE protocol_valid = false;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_skill_versions_active
     ON aihelms.skill_versions(skill_id) WHERE is_active = true;
 

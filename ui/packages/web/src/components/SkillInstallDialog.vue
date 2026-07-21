@@ -6,7 +6,7 @@ import { getSkillSummary, getSkillFull, toast } from '@aihelms/shared'
 import type { Skill, SkillSummaryView, SkillFullView } from '@aihelms/shared'
 import MarkdownRenderer from '@aihelms/shared/src/components/MarkdownRenderer.vue'
 import RatingWidget from './RatingWidget.vue'
-import { X, ChevronDown, Flame } from 'lucide-vue-next'
+import { X, ChevronDown, Flame, CheckCircle2 } from 'lucide-vue-next'
 
 interface SkillInstallInfo {
   name: string
@@ -15,6 +15,7 @@ interface SkillInstallInfo {
   download_url: string
   usage_instructions: string
   author?: string
+  protocol_valid?: boolean
 }
 
 interface Props {
@@ -121,6 +122,14 @@ watch(
           <div class="flex min-w-0 items-center gap-2">
             <h3 class="truncate text-lg font-semibold text-slate-800">{{ skill.name }}</h3>
             <span v-if="installInfo?.author" class="max-w-[6em] shrink-0 truncate text-xs text-slate-400">{{ installInfo.author }}</span>
+            <span
+              v-if="installInfo?.protocol_valid"
+              class="flex shrink-0 items-center gap-1 rounded-md bg-emerald-50 px-1.5 py-0.5 text-xs font-medium text-emerald-600"
+              :title="t('market.skill.compat')"
+            >
+              <CheckCircle2 class="h-3 w-3" />
+              {{ t('market.skill.compat') }}
+            </span>
             <span class="flex shrink-0 items-center gap-1 text-xs text-slate-400 tabular-nums">
               <Flame class="h-3.5 w-3.5 text-orange-500" />
               {{ skill.install_count ?? 0 }}

@@ -57,9 +57,29 @@ watch(() => props.skillId, loadVersions, { immediate: true })
 function canActivate(v: SkillVersion): boolean {
   return (
     !v.is_active &&
+    v.protocol_valid &&
     v.security_status === 'completed' &&
     (v.security_decision === 'passed' || v.security_decision === 'attention_required')
   )
+}
+
+function protocolBadge(v: SkillVersion): { cls: string; label: string; tip: string } {
+  if (v.protocol_valid) {
+    const warnCount = (v.protocol_errors ?? []).filter((i) => i.severity === 'warning').length
+    return {
+      cls: warnCount > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600',
+      label: warnCount > 0 ? `协议告警 ${warnCount}` : '协议合规',
+      tip: warnCount > 0
+        ? (v.protocol_errors ?? []).filter((i) => i.severity === 'warning').map((i) => i.message).join('；')
+        : 'SKILL.md 协议校验通过',
+    }
+  }
+  const errs = (v.protocol_errors ?? []).filter((i) => i.severity === 'error').map((i) => i.message)
+  return {
+    cls: 'bg-red-50 text-red-600',
+    label: '协议不合规',
+    tip: errs.join('；') || '存在协议合规错误，不可激活',
+  }
 }
 
 function lifecycleBadge(s: string): { cls: string; label: string } {
@@ -191,7 +211,11 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             <span v-if="v.zip_filename" class="truncate">{{ v.zip_filename }}</span>
             <span v-else class="italic">无独立 zip</span>
             <span v-if="v.change_log" class="truncate">· {{ v.change_log }}</span>
-            <span v-if="v.frontmatter && Object.keys(v.frontmatter).length > 0" class="text-emerald-500">· SKILL.md ✓</span>
+            <span
+              class="cursor-help rounded px-1 py-0.5 text-[10px]"
+              :class="protocolBadge(v).cls"
+              :title="protocolBadge(v).tip"
+            >{{ protocolBadge(v).label }}</span>
             <span v-if="v.composite_hash" class="truncate text-slate-300 font-mono text-[10px]">{{ v.composite_hash.slice(0, 8) }}</span>
           </div>
           <div v-if="v.summary_text" class="mt-0.5 truncate text-slate-400 italic">{{ v.summary_text.slice(0, 80) }}{{ v.summary_text.length > 80 ? '...' : '' }}</div>
@@ -215,7 +239,7 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             v-if="canManage && !v.is_active"
             class="rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-600 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="actingId === v.id || !canActivate(v)"
-            :title="!canActivate(v) ? '需先通过安全审查（通过/建议修改）才能激活' : ''"
+            :title="!canActivate(v) ? '需先通过协议校验 + 安全审查（通过/建议修改）才能激活' : ''"
             @click="handleActivate(v)"
           >
             {{ actingId === v.id ? '...' : '激活' }}

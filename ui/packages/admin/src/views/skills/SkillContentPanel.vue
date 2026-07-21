@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 import {
   getSkillSummary,
   getSkillFull,
@@ -8,9 +8,10 @@ import {
   type SkillSummaryView,
   type SkillFullView,
   type SkillIntegrityView,
+  type ManifestFile,
 } from '@aihelms/shared'
 import MarkdownRenderer from '@aihelms/shared/src/components/MarkdownRenderer.vue'
-import { ChevronDown, ChevronUp, FileCheck, ShieldCheck } from 'lucide-vue-next'
+import { ChevronDown, ChevronUp, FileCheck, ShieldCheck, CheckCircle2, AlertTriangle, XCircle } from 'lucide-vue-next'
 import { toast } from '@aihelms/shared'
 
 interface Props {
@@ -79,6 +80,58 @@ function formatFrontmatterValue(value: unknown): string {
   if (typeof value === 'object' && value !== null) return JSON.stringify(value)
   return String(value ?? '')
 }
+
+const CATEGORY_LABELS: Record<string, string> = {
+  root: '根文件',
+  references: '引用文档 (references)',
+  scripts: '脚本 (scripts)',
+  assets: '资源 (assets)',
+  other: '其他',
+}
+const CATEGORY_ORDER = ['root', 'references', 'scripts', 'assets', 'other']
+
+function formatSize(size: number): string {
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+interface ManifestEntry {
+  path: string
+  sha: string
+  size: number
+  content_type?: string
+  category: string
+}
+
+const manifestGroups = computed<{ category: string; files: ManifestEntry[] }[]>(() => {
+  const hashes = integrityData.value?.file_hashes ?? {}
+  const entries: ManifestEntry[] = Object.entries(hashes).map(([path, file]) => {
+    const f = file as ManifestFile
+    return {
+      path,
+      sha: f.sha256 ?? '',
+      size: f.size ?? 0,
+      content_type: f.content_type,
+      category: f.category ?? 'other',
+    }
+  })
+  return CATEGORY_ORDER.filter((cat) => entries.some((e) => e.category === cat)).map(
+    (category) => ({
+      category,
+      files: entries
+        .filter((e) => e.category === category)
+        .sort((a, b) => a.path.localeCompare(b.path)),
+    }),
+  )
+})
+
+const protocolErrors = computed(
+  () => (integrityData.value?.protocol_errors ?? []).filter((i) => i.severity === 'error'),
+)
+const protocolWarnings = computed(
+  () => (integrityData.value?.protocol_errors ?? []).filter((i) => i.severity === 'warning'),
+)
 
 const tabs: { key: DisclosureLayer; label: string }[] = [
   { key: 'overview', label: '概览' },
@@ -173,6 +226,28 @@ watch(
       </button>
       <div v-if="showIntegrity && integrityData" class="border-t border-gray-200 px-4 py-3">
         <div class="space-y-2 text-sm">
+          <!-- 协议合规状态 -->
+          <div class="flex items-center gap-2">
+            <span v-if="integrityData.protocol_valid" class="flex items-center gap-1 rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+              <CheckCircle2 class="h-3.5 w-3.5" /> 协议合规
+            </span>
+            <span v-else class="flex items-center gap-1 rounded-md bg-red-50 px-2 py-0.5 text-xs font-medium text-red-700">
+              <XCircle class="h-3.5 w-3.5" /> 协议不合规
+            </span>
+            <span v-if="protocolWarnings.length" class="flex items-center gap-1 text-xs text-amber-600">
+              <AlertTriangle class="h-3.5 w-3.5" /> {{ protocolWarnings.length }} 条告警
+            </span>
+          </div>
+          <ul v-if="protocolErrors.length" class="space-y-1">
+            <li v-for="(issue, idx) in protocolErrors" :key="`err-${idx}`" class="rounded bg-red-50 px-2 py-1 text-xs text-red-700">
+              {{ issue.message }}
+            </li>
+          </ul>
+          <ul v-if="protocolWarnings.length" class="space-y-1">
+            <li v-for="(issue, idx) in protocolWarnings" :key="`warn-${idx}`" class="rounded bg-amber-50 px-2 py-1 text-xs text-amber-700">
+              {{ issue.message }}
+            </li>
+          </ul>
           <div class="flex gap-3">
             <span class="min-w-28 shrink-0 text-gray-500">composite_hash</span>
             <code class="break-all text-xs font-mono text-gray-700">
@@ -187,16 +262,23 @@ watch(
             <FileCheck class="mr-1 inline h-4 w-4" />
             检测到内容漂移，文件：{{ integrityData.drifted_files.join(', ') }}
           </div>
-          <div v-if="integrityData.file_hashes && Object.keys(integrityData.file_hashes).length > 0">
-            <span class="text-gray-500">文件哈希：</span>
-            <div class="mt-1 space-y-1">
-              <div
-                v-for="(hash, path) in integrityData.file_hashes"
-                :key="path"
-                class="flex gap-2 rounded bg-gray-50 px-2 py-1 text-xs font-mono"
-              >
-                <span class="text-gray-500">{{ path }}</span>
-                <span class="text-gray-700 truncate">{{ hash }}</span>
+          <!-- manifest 文件清单（按 category 分组） -->
+          <div v-if="manifestGroups.length">
+            <span class="text-gray-500">文件清单（manifest）：</span>
+            <div class="mt-1 space-y-3">
+              <div v-for="group in manifestGroups" :key="group.category">
+                <div class="mb-1 text-xs font-medium text-gray-500">{{ CATEGORY_LABELS[group.category] || group.category }}</div>
+                <div class="space-y-1">
+                  <div
+                    v-for="file in group.files"
+                    :key="file.path"
+                    class="flex items-center gap-2 rounded bg-gray-50 px-2 py-1 text-xs font-mono"
+                  >
+                    <span class="text-gray-700 truncate">{{ file.path }}</span>
+                    <span class="ml-auto shrink-0 text-gray-400">{{ formatSize(file.size) }}</span>
+                    <span class="shrink-0 text-gray-400" :title="file.sha">{{ file.sha.slice(0, 8) }}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

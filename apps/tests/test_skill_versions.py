@@ -173,6 +173,8 @@ async def test_activate_allows_passed_version():
             risk_score=0,
             audit_id=None,
         )
+        # 模拟协议校验通过（S1 激活门控）
+        v2.protocol_valid = True
         await session.commit()
         await session.close()
 
@@ -192,6 +194,49 @@ async def test_activate_allows_passed_version():
             assert versions["1.0.0"].is_active is False
             skill = await s.get(Skill, skill_id)
             assert skill.current_version_id == versions["2.0.0"].id
+    finally:
+        await _cleanup([skill_id])
+
+
+@pytest.mark.asyncio
+async def test_activate_blocks_invalid_protocol_version():
+    """协议门控（S1）：protocol_valid=False 的新版本即使安全审查通过也不可激活。"""
+    skill_id, _ = await _make_skill()
+    try:
+        session = _session()
+        await skill_service.create_version(
+            session,
+            skill_id,
+            version="2.0.0",
+            zip_content=b"PK\x03\x04v2",
+            zip_filename="v2.zip",
+        )
+        v2 = await skill_version_repo.find_by_skill_and_version(
+            session, skill_id, "2.0.0"
+        )
+        v2_id = v2.id
+        # 安全审查通过但协议校验未通过（fake zip 无 SKILL.md）
+        await skill_version_repo.update_security_status(
+            session,
+            v2_id,
+            status="completed",
+            decision="passed",
+            severity="none",
+            risk_score=0,
+            audit_id=None,
+        )
+        assert v2.protocol_valid is False
+        await session.commit()
+        await session.close()
+
+        session = _session()
+        with pytest.raises(ValidationError):
+            await skill_service.activate_version(session, skill_id, v2_id)
+        await session.close()
+
+        async with _session() as s:
+            active = await skill_version_repo.find_active_for_skill(s, skill_id)
+            assert active.version == "1.0.0"
     finally:
         await _cleanup([skill_id])
 

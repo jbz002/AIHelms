@@ -164,7 +164,8 @@ class TestComputeHashes:
         zip_bytes = _make_zip({"f.txt": "test"})
         _, fh = _compute_hashes(zip_bytes)
         expected = hashlib.sha256(b"test").hexdigest()
-        assert fh["f.txt"] == expected
+        assert fh["f.txt"]["sha256"] == expected
+        assert fh["f.txt"]["size"] == 4
 
 
 # ─── Test ZIP parsing ────────────────────────────────────────────────────────────
@@ -218,7 +219,7 @@ class TestApplyParsedToVersion:
             summary_text="summary",
             full_content="full",
             composite_hash="abc123",
-            file_hashes={"f.txt": "hash1"},
+            file_hashes={"f.txt": {"sha256": "hash1", "size": 5}},
         )
         version = type(
             "MockVersion",
@@ -236,4 +237,4 @@ class TestApplyParsedToVersion:
         assert version.summary_text == "summary"
         assert version.full_content == "full"
         assert version.composite_hash == "abc123"
-        assert version.file_hashes == {"f.txt": "hash1"}
+        assert version.file_hashes == {"f.txt": {"sha256": "hash1", "size": 5}}

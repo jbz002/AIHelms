@@ -26,6 +26,7 @@
   "market.skill.fullInstructions": "Full instructions",
   "market.skill.loading": "Loading...",
   "market.skill.noContent": "No content",
+  "market.skill.compat": "Compatible with Claude Code / Cursor / Codex",
   "market.sort.latest": "Latest",
   "market.sort.rating": "Rating",
   "market.sort.usage": "Usage",

@@ -1,7 +1,7 @@
 import logging
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,7 @@ from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import Skill, SkillCategory, SkillUsageLog, SkillVersion
 from repositories import skill_repo, skill_version_repo
 from services import versioning_service
+from services.skill_content_service import ParsedSkillContent
 from services.skill_serializers import _latest_audit_map, _serialize, _serialize_version
 
 logger = logging.getLogger(__name__)
@@ -212,12 +213,9 @@ async def create_skill(
     )
     v1 = await skill_version_repo.create(session, v1)
 
-    # 解析 SKILL.md 内容（write-time，零查询期开销）
+    # 解析 SKILL.md 内容 + 协议合规校验（write-time，零查询期开销）
     if zip_content:
-        from services import skill_content_service
-
-        parsed = skill_content_service.parse_skill_zip(zip_content)
-        skill_content_service.apply_parsed_to_version(v1, parsed)
+        parsed = _parse_validate_and_apply(v1, zip_content)
         skill.frontmatter = parsed.frontmatter
         skill.summary_text = parsed.summary_text
 
@@ -278,9 +276,7 @@ async def update_skill(
     return _serialize(skill)
 
 
-async def set_published(
-    session: AsyncSession, skill_id: int, value: bool
-) -> None:
+async def set_published(session: AsyncSession, skill_id: int, value: bool) -> None:
     """审核通过后置 is_published（绕过门控，直接生效 + ai_key 同步）。"""
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
@@ -304,6 +300,46 @@ def _version_zip_dir(skill_uuid: str) -> str:
     skill_dir = os.path.join(settings.skills_storage_dir, skill_uuid)
     os.makedirs(skill_dir, exist_ok=True)
     return skill_dir
+
+
+def _parse_validate_and_apply(
+    version: SkillVersion, zip_bytes: bytes
+) -> ParsedSkillContent:
+    """解析 SKILL.md + 协议校验 + 写内容与协议字段到版本 ORM。
+
+    草稿容错：errors 入库不阻断注册，由 activate_version 门控。
+    file_hashes 用 manifest 结果覆盖（含 content_type/category）。
+    """
+    from services import skill_content_service, skill_protocol_service
+
+    parsed = skill_content_service.parse_skill_zip(zip_bytes)
+    skill_content_service.apply_parsed_to_version(version, parsed)
+    result = skill_protocol_service.validate_skill_protocol(parsed)
+    version.file_hashes = result.manifest
+    version.protocol_valid = result.valid
+    version.protocol_errors = result.to_storage_list()
+    version.last_validated_at = datetime.now(timezone.utc)
+    return parsed
+
+
+def _validate_fork_version(version: SkillVersion, zip_path: str) -> None:
+    """fork 分支：从磁盘读存量 zip 复跑协议校验；读不到则标记未校验。"""
+    try:
+        with open(zip_path, "rb") as f:
+            zip_bytes = f.read()
+    except OSError:
+        logger.warning("failed to read fork zip: %s", zip_path)
+        version.protocol_valid = False
+        version.protocol_errors = [
+            {
+                "severity": "error",
+                "code": "fork.zip_unreadable",
+                "message": "未上传新 zip 且无法读取存量包，跳过协议校验",
+            }
+        ]
+        version.last_validated_at = datetime.now(timezone.utc)
+        return
+    _parse_validate_and_apply(version, zip_bytes)
 
 
 async def delete_skill(session: AsyncSession, skill_id: int) -> None:
@@ -371,6 +407,7 @@ async def get_install_info(
 
     agent_prompt = f"请帮我下载{download_url} 并安装 {skill.name} 这个skill"
 
+    active = await skill_version_repo.find_active_for_skill(session, skill.id)
     return {
         "name": skill.name,
         "description": skill.description or "",
@@ -378,6 +415,7 @@ async def get_install_info(
         "agent_prompt": agent_prompt,
         "download_url": download_url,
         "usage_instructions": skill.usage_instructions or "",
+        "protocol_valid": active.protocol_valid if active else False,
     }
 
 
@@ -445,16 +483,15 @@ async def create_version(
         v.zip_size = len(zip_content)
         v.zip_filename = zip_filename
 
-        # 解析新 ZIP 的 SKILL.md 内容
-        from services import skill_content_service
-
-        parsed = skill_content_service.parse_skill_zip(zip_content)
-        skill_content_service.apply_parsed_to_version(v, parsed)
+        # 解析 SKILL.md + 协议合规校验
+        _parse_validate_and_apply(v, zip_content)
     elif skill.zip_path:
         # 未上传新 zip：fork 当前 active 内容作为新版本起点
         v.zip_path = skill.zip_path
         v.zip_size = skill.zip_size
         v.zip_filename = skill.zip_filename
+        # fork 版本也复跑协议校验，保证激活门控有据可查
+        _validate_fork_version(v, skill.zip_path)
 
     await session.commit()
     await session.refresh(v)
@@ -482,6 +519,17 @@ async def activate_version(
         and version.security_decision in _ACTIVATE_ALLOWED_DECISIONS
     ):
         raise ValidationError("新版本未通过安全审查，不可激活")
+
+    # 协议门控：SKILL.md 协议校验未通过不可激活（草稿容错，仅在激活时阻断）
+    if not version.protocol_valid:
+        detail = "；".join(
+            issue["message"]
+            for issue in (version.protocol_errors or [])
+            if issue.get("severity") == "error"
+        )
+        raise ValidationError(
+            f"版本协议校验未通过，不可激活：{detail or '存在协议合规错误'}"
+        )
 
     await versioning_service.activate_version(
         session,

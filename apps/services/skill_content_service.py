@@ -26,7 +26,7 @@ class ParsedSkillContent:
     summary_text: str = ""
     full_content: str = ""
     composite_hash: str = ""
-    file_hashes: dict[str, str] = field(default_factory=dict)
+    file_hashes: dict[str, dict] = field(default_factory=dict)
 
 
 # ─── ZIP extraction ────────────────────────────────────────────────────────
@@ -122,7 +122,9 @@ def _extract_summary(body: str, max_lines: int = SUMMARY_MAX_LINES) -> str:
     lines = body.split("\n")
     # Skip leading blank lines and ATX headings (# ## ### …)
     idx = 0
-    while idx < len(lines) and (not lines[idx].strip() or lines[idx].lstrip().startswith("#")):
+    while idx < len(lines) and (
+        not lines[idx].strip() or lines[idx].lstrip().startswith("#")
+    ):
         idx += 1
     selected: list[str] = []
     for line in lines[idx : idx + max_lines]:
@@ -135,19 +137,27 @@ def _extract_summary(body: str, max_lines: int = SUMMARY_MAX_LINES) -> str:
 # ─── Hash computation ─────────────────────────────────────────────────────
 
 
-def _compute_hashes(zip_bytes: bytes) -> tuple[str, dict[str, str]]:
-    """Compute per-file SHA-256 and a composite hash sorted by path.
+def _compute_hashes(zip_bytes: bytes) -> tuple[str, dict[str, dict]]:
+    """Compute per-file SHA-256/size and a composite hash sorted by path.
 
-    Returns (composite_hash, {relative_path: sha256_hex}).
+    Returns (composite_hash, {relative_path: {"sha256": hex, "size": bytes}}).
+
+    Manifest value carries sha256 + size only; ``content_type`` / ``category``
+    are filled by skill_protocol_service.validate_skill_protocol. composite_hash
+    formula is unchanged (path:sha pairs) so S9 drift comparison stays stable
+    across the value-structure upgrade.
     """
-    file_hashes: dict[str, str] = {}
+    file_hashes: dict[str, dict] = {}
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
             for name in sorted(zf.namelist()):
                 if name.endswith("/"):
                     continue
                 data = zf.read(name)
-                file_hashes[name] = hashlib.sha256(data).hexdigest()
+                file_hashes[name] = {
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "size": len(data),
+                }
     except zipfile.BadZipFile:
         logger.warning("Invalid ZIP file passed to hash computation")
 
@@ -155,7 +165,7 @@ def _compute_hashes(zip_bytes: bytes) -> tuple[str, dict[str, str]]:
         return "", {}
 
     composite_input = "".join(
-        f"{path}:{sha}" for path, sha in sorted(file_hashes.items())
+        f"{path}:{entry['sha256']}" for path, entry in sorted(file_hashes.items())
     )
     composite_hash = hashlib.sha256(composite_input.encode()).hexdigest()
     return composite_hash, file_hashes

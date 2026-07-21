@@ -12,6 +12,7 @@ import {
   updateSkill,
   type Skill,
   type SkillCategory,
+  type ProtocolIssue,
   usePermission,
 } from '@aihelms/shared'
 import { ArrowLeft, Download, FileText, PlayCircle, ShieldCheck, Trash2 } from 'lucide-vue-next'
@@ -77,6 +78,32 @@ const form = ref({
 })
 const sourceMode = ref<'zip' | 'url'>('zip')
 const sourceUrlError = ref('')
+
+const protocolBanner = computed<{
+  cls: string
+  title: string
+  issues: ProtocolIssue[]
+} | null>(() => {
+  const v = skill.value?.active_version
+  if (!v) return null
+  const errs = (v.protocol_errors ?? []).filter((i) => i.severity === 'error')
+  const warns = (v.protocol_errors ?? []).filter((i) => i.severity === 'warning')
+  if (errs.length) {
+    return {
+      cls: 'border-red-200 bg-red-50 text-red-700',
+      title: 'SKILL.md 协议校验未通过：该版本不可激活/发布，请修正后重传 zip',
+      issues: errs,
+    }
+  }
+  if (warns.length) {
+    return {
+      cls: 'border-amber-200 bg-amber-50 text-amber-700',
+      title: 'SKILL.md 协议告警（不阻断，建议修正）',
+      issues: warns,
+    }
+  }
+  return null
+})
 
 const securitySummary = computed<SkillSecuritySummary | null>(() => {
   if (!skill.value) return null
@@ -316,6 +343,17 @@ onMounted(loadData)
         <h1 class="mb-5 text-xl font-bold text-slate-900">
           {{ isNew ? '新建 Skill' : `编辑：${form.name || ''}` }}
         </h1>
+
+        <div
+          v-if="protocolBanner"
+          class="mb-4 rounded-lg border px-4 py-3 text-sm"
+          :class="protocolBanner.cls"
+        >
+          <div class="font-medium">{{ protocolBanner.title }}</div>
+          <ul class="mt-1 list-disc space-y-0.5 pl-5">
+            <li v-for="(issue, idx) in protocolBanner.issues" :key="idx">{{ issue.message }}</li>
+          </ul>
+        </div>
 
         <div class="grid grid-cols-2 gap-4">
           <div>

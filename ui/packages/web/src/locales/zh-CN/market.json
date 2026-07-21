@@ -26,6 +26,7 @@
   "market.skill.fullInstructions": "完整指令",
   "market.skill.loading": "加载中...",
   "market.skill.noContent": "无内容",
+  "market.skill.compat": "兼容 Claude Code / Cursor / Codex",
   "market.sort.latest": "最新",
   "market.sort.rating": "评分",
   "market.sort.usage": "使用量",

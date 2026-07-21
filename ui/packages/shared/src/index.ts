@@ -36,6 +36,7 @@ export type {
   Skill, SkillCategory, SkillListResult, CreateSkillCategoryParams,
   SkillVersion, SkillVersionLifecycle, CreateSkillVersionParams, DeprecateSkillVersionParams,
   SkillSummaryView, SkillFullView, SkillIntegrityView,
+  ManifestFile, ProtocolIssue,
 } from './types/skill'
 export {
   getSkills, getSkillById, getSkillMarketDetail, createSkill, updateSkill, deleteSkill,
