@@ -12,7 +12,7 @@ router = APIRouter(prefix="/stats", tags=["使用统计"])
 @router.get("/mcp/{server_id}", summary="获取 MCP 使用统计")
 async def get_mcp_usage_stats(
     server_id: int,
-    days: int = Query(30, pattern=r"^(7|30|90)$"),
+    days: int = Query(30),
     session: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_user),
 ):
@@ -23,7 +23,7 @@ async def get_mcp_usage_stats(
 @router.get("/skill/{skill_id}", summary="获取 Skill 使用统计")
 async def get_skill_usage_stats(
     skill_id: int,
-    days: int = Query(30, pattern=r"^(7|30|90)$"),
+    days: int = Query(30),
     session: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_user),
 ):
