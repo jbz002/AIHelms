@@ -18,5 +18,13 @@
   "modelSquare.apply.title": "申请使用：{name}",
   "modelSquare.apply.placeholder": "申请理由（可选）",
   "modelSquare.apply.submit": "提交申请",
-  "modelSquare.apply.submitting": "提交中..."
+  "modelSquare.apply.submitting": "提交中...",
+  "modelSquare.access.openaiProtocol": "OpenAI 协议",
+  "modelSquare.access.anthropicProtocol": "Anthropic 协议",
+  "modelSquare.access.curlLabel": "curl 示例",
+  "modelSquare.access.curlHint": "将 <your-api-key> 替换为你的 API Key 后执行",
+  "modelSquare.access.testEndpoint": "测试连通性",
+  "modelSquare.access.testing": "测试中...",
+  "modelSquare.access.testResult": "测试结果",
+  "modelSquare.access.testPlaceholder": "点击按钮验证接入是否可用"
 }

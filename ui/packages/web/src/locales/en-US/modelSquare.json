@@ -18,5 +18,13 @@
   "modelSquare.apply.title": "Request access: {name}",
   "modelSquare.apply.placeholder": "Reason for this request (optional)",
   "modelSquare.apply.submit": "Submit request",
-  "modelSquare.apply.submitting": "Submitting..."
+  "modelSquare.apply.submitting": "Submitting...",
+  "modelSquare.access.openaiProtocol": "OpenAI API",
+  "modelSquare.access.anthropicProtocol": "Anthropic API",
+  "modelSquare.access.curlLabel": "curl example",
+  "modelSquare.access.curlHint": "Replace <your-api-key> with your API Key before running",
+  "modelSquare.access.testEndpoint": "Test connection",
+  "modelSquare.access.testing": "Testing...",
+  "modelSquare.access.testResult": "Result",
+  "modelSquare.access.testPlaceholder": "Click the button to verify connectivity"
 }
