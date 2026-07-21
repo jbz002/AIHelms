@@ -7,7 +7,7 @@ from typing import Any, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from exceptions import ConflictError, NotFoundError, ValidationError
-from models.db import CustomEntityType, CustomEntity
+from models.db import CustomEntity, CustomEntityType
 from repositories import custom_entity_repo
 from services.custom_entity_validator import check_schema_compatibility, validate
 
@@ -26,7 +26,9 @@ async def list_types(
 ) -> Dict[str, Any]:
     """获取类型列表"""
     total = await custom_entity_repo.count_types(session, is_active, is_published)
-    items = await custom_entity_repo.list_types(session, page, page_size, is_active, is_published)
+    items = await custom_entity_repo.list_types(
+        session, page, page_size, is_active, is_published
+    )
 
     return {
         "items": [_serialize_type(t) for t in items],
@@ -150,7 +152,9 @@ async def list_entities(
 ) -> Dict[str, Any]:
     """获取实例列表"""
     total = await custom_entity_repo.count_entities(session, type_key, is_published)
-    items = await custom_entity_repo.list_entities(session, page, page_size, type_key, is_published)
+    items = await custom_entity_repo.list_entities(
+        session, page, page_size, type_key, is_published
+    )
 
     return {
         "items": [_serialize_entity(e) for e in items],
@@ -198,6 +202,13 @@ async def create_entity(
     # 生成 content_text（用于搜索）
     content_text = _build_content_text(type_def, validated_data)
 
+    # 发布门控：开启时发布动作转提交申请，资源先以未发布态落库
+    from services import publish_review_service as _prs
+
+    effective_published, submit_review_flag = await _prs.resolve_publish(
+        session, is_published
+    )
+
     entity = CustomEntity(
         type_id=type_def.id,
         type_key=type_key,
@@ -206,13 +217,20 @@ async def create_entity(
         content_text=content_text,
         description=description,
         tags=tags or [],
-        is_published=is_published,
+        is_published=effective_published,
         visibility_type=visibility_type,
         requires_approval=requires_approval,
         created_by=created_by,
     )
 
     entity = await custom_entity_repo.create_entity(session, entity)
+
+    # 门控开启时把发布动作转为评审申请（资源保持未发布）
+    if submit_review_flag and created_by:
+        await _prs.submit_review(
+            session, _prs.ENTITY_CUSTOM, entity.id, created_by
+        )
+
     await session.commit()
     await session.refresh(entity)
 
@@ -231,6 +249,7 @@ async def update_entity(
     tags: list | None = None,
     is_published: bool | None = None,
     visibility_type: str | None = None,
+    actor_id: int | None = None,
 ) -> Dict[str, Any]:
     """更新实例"""
     entity = await custom_entity_repo.find_entity_by_id(session, entity_id)
@@ -257,9 +276,23 @@ async def update_entity(
     if tags is not None:
         entity.tags = tags
     if is_published is not None:
-        entity.is_published = is_published
+        was_published = entity.is_published
+        effective = is_published
+        # 发布门控：False→True 变更且门控开启时，转提交申请，保持未发布
+        if is_published and not was_published and actor_id is not None:
+            from services import publish_review_service, publish_settings_service
+
+            if await publish_settings_service.is_gate_enabled(session):
+                effective = False
+                await publish_review_service.submit_review(
+                    session,
+                    publish_review_service.ENTITY_CUSTOM,
+                    entity_id,
+                    actor_id,
+                )
+        entity.is_published = effective
         # 同步可见性（复用现有逻辑）
-        if is_published and not entity.requires_approval:
+        if effective and not entity.requires_approval:
             await _sync_visibility_to_all_keys(session, entity.id)
     if visibility_type is not None:
         entity.visibility_type = visibility_type
@@ -272,6 +305,19 @@ async def update_entity(
     # await _trigger_embedding_generation(entity.id)
 
     return _serialize_entity(entity)
+
+
+async def set_published(
+    session: AsyncSession, entity_id: int, value: bool
+) -> None:
+    """审核通过后置 is_published（绕过门控，直接生效 + 可见性同步）。"""
+    entity = await custom_entity_repo.find_entity_by_id(session, entity_id)
+    if not entity:
+        raise NotFoundError("custom_entity", entity_id)
+    entity.is_published = value
+    if value and not entity.requires_approval:
+        await _sync_visibility_to_all_keys(session, entity.id)
+    await session.flush()
 
 
 async def delete_entity(session: AsyncSession, entity_id: int) -> None:
@@ -315,7 +361,9 @@ async def _sync_visibility_to_all_keys(session: AsyncSession, entity_id: int) ->
     )
 
 
-async def _remove_visibility_from_all_keys(session: AsyncSession, entity_id: int) -> None:
+async def _remove_visibility_from_all_keys(
+    session: AsyncSession, entity_id: int
+) -> None:
     """从所有主 Key 移除可见性"""
     from services import ai_key_service
 

@@ -16,6 +16,11 @@ const router = createRouter({
       children: [
         { path: '', name: 'Identity', component: () => import('../views/MyIdentityView.vue') },
         { path: 'market', name: 'Market', component: () => import('../views/MarketView.vue') },
+        {
+          path: 'market/:type/:id',
+          name: 'ResourceDetail',
+          component: () => import('../views/ResourceDetailView.vue'),
+        },
         { path: 'models', name: 'Models', component: () => import('../views/ModelSquare.vue') },
         { path: 'agents', name: 'Agents', component: () => import('../views/AgentCenter.vue') },
       ],

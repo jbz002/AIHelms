@@ -1,11 +1,12 @@
 """
 自定义实体 Repository 层
 """
-from sqlalchemy import delete as sa_delete, func, select
+from sqlalchemy import delete as sa_delete
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.db import CustomEntityType, CustomEntity
-
+from models.db import CustomEntity, CustomEntityType
+from services.visibility_service import list_visibility_clause
 
 # ─── Type CRUD ─────────────────────────────────────────────────────────────
 
@@ -110,6 +111,8 @@ async def list_entities(
     type_key: str | None = None,
     is_published: bool | None = None,
     is_active: bool | None = None,
+    viewer_id: int | None = None,
+    is_admin: bool = False,
 ) -> list[CustomEntity]:
     """获取实例列表"""
     stmt = select(CustomEntity).order_by(CustomEntity.id.desc())
@@ -120,6 +123,9 @@ async def list_entities(
         stmt = stmt.where(CustomEntity.is_published == is_published)
     if is_active is not None:
         stmt = stmt.where(CustomEntity.is_active == is_active)
+    vis_clause = list_visibility_clause(CustomEntity, viewer_id, is_admin)
+    if vis_clause is not None:
+        stmt = stmt.where(vis_clause)
 
     offset = (page - 1) * page_size
     stmt = stmt.limit(page_size).offset(offset)
@@ -132,6 +138,8 @@ async def count_entities(
     type_key: str | None = None,
     is_published: bool | None = None,
     is_active: bool | None = None,
+    viewer_id: int | None = None,
+    is_admin: bool = False,
 ) -> int:
     """统计实例数量"""
     stmt = select(func.count(CustomEntity.id))
@@ -142,6 +150,9 @@ async def count_entities(
         stmt = stmt.where(CustomEntity.is_published == is_published)
     if is_active is not None:
         stmt = stmt.where(CustomEntity.is_active == is_active)
+    vis_clause = list_visibility_clause(CustomEntity, viewer_id, is_admin)
+    if vis_clause is not None:
+        stmt = stmt.where(vis_clause)
 
     result = await session.execute(stmt)
     return result.scalar_one()

@@ -29,7 +29,7 @@ export { getModels, getModelById, getActiveModels, createModel, updateModel, del
 export { testModelAccessStream, testModelAccessSync, testEmbedding, testRerank } from './api/accessTest'
 export type { AccessTestErrorDetail, TestAccessParams, TestAccessResult, TestEmbeddingParams, TestEmbeddingResult, TestRerankParams, TestRerankResult } from './types/accessTest'
 export type { McpServer, McpTool, McpCategory, McpServerListResult, McpServerVersion, McpVersionLifecycle, CreateMcpServerParams, UpdateMcpServerParams, UpdateToolBillingParams, CreateMcpCategoryParams, CreateMcpVersionParams, DeprecateMcpVersionParams } from './types/mcp'
-export { getMcpServers, getMcpServerById, createMcpServer, updateMcpServer, deleteMcpServer, getMcpTools, refreshMcpTools, updateToolBilling, healthCheckMcpServer, getMcpCategories, createMcpCategory, deleteMcpCategory, getMcpServerVersions, createMcpServerVersion, activateMcpServerVersion, deprecateMcpServerVersion } from './api/mcp'
+export { getMcpServers, getMcpServerById, getMcpServerMarketDetail, createMcpServer, updateMcpServer, deleteMcpServer, getMcpTools, refreshMcpTools, updateToolBilling, healthCheckMcpServer, getMcpCategories, createMcpCategory, deleteMcpCategory, getMcpServerVersions, createMcpServerVersion, activateMcpServerVersion, deprecateMcpServerVersion } from './api/mcp'
 export type { SearchResultItem, SearchResponse, SearchRequest } from './types/search'
 export { search } from './api/search'
 export type {
@@ -38,7 +38,7 @@ export type {
   SkillSummaryView, SkillFullView, SkillIntegrityView,
 } from './types/skill'
 export {
-  getSkills, getSkillById, createSkill, updateSkill, deleteSkill,
+  getSkills, getSkillById, getSkillMarketDetail, createSkill, updateSkill, deleteSkill,
   createSkillSecurityAudit, getSkillDownloadUrl, getSkillCategories,
   createSkillCategory, deleteSkillCategory,
   getSkillVersions, createSkillVersion, activateSkillVersion,
@@ -105,3 +105,7 @@ export type { EntityType, FeedbackType, RatingView, RateParams, RateResponse, Fe
 export { getRating, rateResource, listFeedbacks } from './api/rating'
 export type { StatsRange, UsageTrendPoint, ToolDistItem, ActionDistItem, McpUsageStats, SkillUsageStats } from './types/usageStats'
 export { getMcpUsageStats, getSkillUsageStats } from './api/usageStats'
+export type { PublishReviewEntityType, PublishReviewStatus, PublishReview, PublishReviewListResult, SubmitPublishReviewParams, PublishReviewActionParams, PublishReviewQuery } from './types/publish-review'
+export { getPublishReviews, getPublishReviewById, submitPublishReview, approvePublishReview, rejectPublishReview, withdrawPublishReview } from './api/publish-requests'
+export type { PublishSettings, UpdatePublishSettingsParams } from './types/publish-settings'
+export { getPublishSettings, updatePublishSettings } from './api/publish-settings'

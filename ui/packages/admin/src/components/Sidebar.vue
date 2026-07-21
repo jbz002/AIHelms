@@ -65,6 +65,7 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
     icon: ClipboardCheck,
     items: [
       { label: '审批管理', icon: ClipboardCheck, path: '/resource-approval', permission: 'resource_application:read' },
+      { label: '发布审核', icon: ShieldCheck, path: '/publish-reviews', permission: 'publish_review:read' },
       { label: '日志管理', icon: FileText, path: '/logs', permission: 'usage_log:read' },
       { label: '导出任务', icon: Download, path: '/export-tasks', permission: 'usage_log:read' },
     ],

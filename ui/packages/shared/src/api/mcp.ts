@@ -33,6 +33,10 @@ export function getMcpServerById(id: number): Promise<McpServer> {
   return request<McpServer>(`/api/v1/mcp/servers/${id}`)
 }
 
+export function getMcpServerMarketDetail(id: number): Promise<McpServer> {
+  return request<McpServer>(`/api/v1/mcp/servers/${id}/market-detail`, { silent: true })
+}
+
 export function createMcpServer(params: CreateMcpServerParams): Promise<McpServer> {
   return request<McpServer>('/api/v1/mcp/servers', { method: 'POST', body: params })
 }

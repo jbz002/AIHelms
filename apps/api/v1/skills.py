@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.deps import get_ai_key_identity, get_current_user, get_db, require_permission
 from exceptions import ConflictError, NotFoundError, ValidationError
 from services import ai_policies_service, skill_service, skill_view_service
+from services.visibility_service import can_access
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
@@ -69,11 +70,12 @@ async def list_published_skills(
     page_size: int = Query(50, ge=1, le=200),
     category: str | None = None,
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     """公开接口：已认证用户可查看已发布的 Skill 列表。"""
     data = await skill_service.list_skills(
-        session, page, page_size, category, is_published=True
+        session, page, page_size, category, is_published=True,
+        viewer_id=current_user["id"], is_admin=current_user["is_admin"],
     )
     return {"code": 200, "message": "ok", "data": data}
 
@@ -103,6 +105,27 @@ async def get_skill(
         data = await skill_service.get_skill(session, skill_id)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.get("/{skill_id}/market-detail")
+async def get_skill_market_detail(
+    skill_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """直链详情：all/selected/unlisted 登录可读，private 仅创建者+管理员。"""
+    try:
+        data = await skill_service.get_skill(session, skill_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 不存在")
+    if not can_access(
+        current_user["id"],
+        current_user["is_admin"],
+        data.get("visibility_type", "all"),
+        data.get("created_by"),
+    ):
+        raise HTTPException(status_code=403, detail="无权访问该资源")
     return {"code": 200, "message": "ok", "data": data}
 
 
@@ -282,6 +305,7 @@ async def create_skill(
     usage_instructions: str = Form(""),
     is_published: bool = Form(False),
     requires_approval: bool = Form(False),
+    visibility_type: str = Form("all"),
     source_url: str = Form(""),
     zip_file: UploadFile | None = File(None),
     session: AsyncSession = Depends(get_db),
@@ -310,6 +334,7 @@ async def create_skill(
         usage_instructions=usage_instructions,
         is_published=is_published,
         requires_approval=requires_approval,
+        visibility_type=visibility_type,
         zip_content=zip_content,
         zip_filename=zip_filename,
         source_url=source_url or None,
@@ -333,9 +358,10 @@ async def update_skill(
     is_active: bool | None = Form(None),
     is_published: bool | None = Form(None),
     requires_approval: bool | None = Form(None),
+    visibility_type: str | None = Form(None),
     zip_file: UploadFile | None = File(None),
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permission("skill:update")),
+    current_user: dict = Depends(require_permission("skill:update")),
 ):
     kwargs: dict = {}
     if name is not None:
@@ -365,6 +391,8 @@ async def update_skill(
         kwargs["is_published"] = is_published
     if requires_approval is not None:
         kwargs["requires_approval"] = requires_approval
+    if visibility_type is not None:
+        kwargs["visibility_type"] = visibility_type
 
     zip_content = None
     zip_filename = None
@@ -376,6 +404,7 @@ async def update_skill(
         data = await skill_service.update_skill(
             session,
             skill_id,
+            actor_id=current_user["id"],
             zip_content=zip_content,
             zip_filename=zip_filename,
             **kwargs,

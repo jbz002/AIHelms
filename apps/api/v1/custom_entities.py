@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_db, require_permission
-from exceptions import NotFoundError, ValidationError, ConflictError
+from exceptions import ConflictError, NotFoundError, ValidationError
 from services import custom_entity_service
 
 router = APIRouter(prefix="/custom-entities", tags=["custom-entities"])
@@ -39,7 +39,7 @@ class CreateEntityRequest(BaseModel):
     description: str = Field("", max_length=2000)
     tags: list[str] | None = None
     is_published: bool = False
-    visibility_type: str = Field("all", pattern=r"^(all|selected|private)$")
+    visibility_type: str = Field("all", pattern=r"^(all|selected|private|unlisted)$")
     requires_approval: bool = False
 
 
@@ -49,7 +49,9 @@ class UpdateEntityRequest(BaseModel):
     description: str | None = None
     tags: list[str] | None = None
     is_published: bool | None = None
-    visibility_type: str | None = Field(None, pattern=r"^(all|selected|private)$")
+    visibility_type: str | None = Field(
+        None, pattern=r"^(all|selected|private|unlisted)$"
+    )
 
 
 # ─── 类型管理端点 ─────────────────────────────────────────────────────────
@@ -207,12 +209,14 @@ async def update_entity(
     entity_id: int,
     req: UpdateEntityRequest,
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permission("custom_entity:update")),
+    current_user: dict = Depends(require_permission("custom_entity:update")),
 ):
     """更新自定义实体实例"""
     kwargs = {k: v for k, v in req.model_dump().items() if v is not None}
     try:
-        data = await custom_entity_service.update_entity(session, entity_id, **kwargs)
+        data = await custom_entity_service.update_entity(
+            session, entity_id, actor_id=current_user["id"], **kwargs
+        )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="自定义实体实例不存在")
     except ValidationError as e:

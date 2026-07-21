@@ -24,6 +24,7 @@ export interface Skill {
   is_active: boolean
   is_published: boolean
   requires_approval: boolean
+  visibility_type: string
   install_count: number
   avg_score?: number
   rating_count?: number

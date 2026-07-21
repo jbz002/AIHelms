@@ -672,6 +672,7 @@ CREATE TABLE IF NOT EXISTS aihelms.skills (
     is_active BOOLEAN DEFAULT true,
     is_published BOOLEAN DEFAULT false,
     requires_approval BOOLEAN DEFAULT false,
+    visibility_type VARCHAR(20) DEFAULT 'all',
     install_count INTEGER DEFAULT 0,
     frontmatter JSONB DEFAULT '{}',
     summary_text TEXT DEFAULT '',
@@ -684,6 +685,7 @@ CREATE INDEX IF NOT EXISTS idx_skills_category ON aihelms.skills(category);
 CREATE INDEX IF NOT EXISTS idx_skills_name ON aihelms.skills(name);
 CREATE INDEX IF NOT EXISTS idx_skills_published ON aihelms.skills(is_published);
 CREATE INDEX IF NOT EXISTS idx_skills_business_scenario ON aihelms.skills(business_scenario_id);
+CREATE INDEX IF NOT EXISTS idx_skills_visibility ON aihelms.skills(visibility_type);
 
 
 -- AI Policies 审查基线
@@ -1362,3 +1364,41 @@ CREATE TABLE IF NOT EXISTS aihelms.entity_rating_stats (
 CREATE TRIGGER trg_entity_rating_stats_updated_at
     BEFORE UPDATE ON aihelms.entity_rating_stats
     FOR EACH ROW EXECUTE FUNCTION aihelms.update_updated_at_column();
+
+-- ─── 可见性增强 + 发布门控（模块 07）──────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS aihelms.publish_reviews (
+    id BIGSERIAL PRIMARY KEY,
+    entity_type VARCHAR(32) NOT NULL,        -- mcp_server / skill / custom_entity
+    entity_id BIGINT NOT NULL,
+    requested_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',  -- pending / approved / rejected / withdrawn
+    review_notes TEXT NOT NULL DEFAULT '',
+    reviewed_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    reviewed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_publish_reviews_entity
+    ON aihelms.publish_reviews(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_publish_reviews_status
+    ON aihelms.publish_reviews(status);
+CREATE INDEX IF NOT EXISTS idx_publish_reviews_requested_by
+    ON aihelms.publish_reviews(requested_by);
+
+CREATE TRIGGER trg_publish_reviews_updated_at
+    BEFORE UPDATE ON aihelms.publish_reviews
+    FOR EACH ROW EXECUTE FUNCTION aihelms.update_updated_at_column();
+
+CREATE TABLE IF NOT EXISTS aihelms.publish_settings (
+    id INTEGER PRIMARY KEY DEFAULT 1,
+    publish_review_enabled BOOLEAN NOT NULL DEFAULT false,
+    updated_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT publish_settings_singleton CHECK (id = 1)
+);
+
+INSERT INTO aihelms.publish_settings (id)
+VALUES (1)
+ON CONFLICT (id) DO NOTHING;

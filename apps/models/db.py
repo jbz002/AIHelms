@@ -950,6 +950,7 @@ class Skill(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
+    visibility_type: Mapped[str] = mapped_column(String(20), default="all")
     install_count: Mapped[int] = mapped_column(Integer, default=0)
     security_status: Mapped[str] = mapped_column(String(32), default="not_scanned")
     security_decision: Mapped[str] = mapped_column(String(32), default="")
@@ -1456,3 +1457,35 @@ class Document(Base):
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(server_default=func.now())
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+
+
+class PublishReview(Base):
+    __tablename__ = "publish_reviews"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    requested_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    review_notes: Mapped[str] = mapped_column(Text, default="")
+    reviewed_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class PublishSettings(Base):
+    __tablename__ = "publish_settings"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    publish_review_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

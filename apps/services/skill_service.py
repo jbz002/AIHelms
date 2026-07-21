@@ -65,9 +65,25 @@ async def list_skills(
     page_size: int = 50,
     category: str | None = None,
     is_published: bool | None = None,
+    viewer_id: int | None = None,
+    is_admin: bool = False,
 ) -> dict:
-    total = await skill_repo.count_all(session, category, is_published)
-    items = await skill_repo.find_all(session, page, page_size, category, is_published)
+    total = await skill_repo.count_all(
+        session,
+        category=category,
+        is_published=is_published,
+        viewer_id=viewer_id,
+        is_admin=is_admin,
+    )
+    items = await skill_repo.find_all(
+        session,
+        page=page,
+        page_size=page_size,
+        category=category,
+        is_published=is_published,
+        viewer_id=viewer_id,
+        is_admin=is_admin,
+    )
     latest_audit_map = await _latest_audit_map(session, items)
     serialized = [_serialize(s, latest_audit_map) for s in items]
     from services import rating_service
@@ -102,6 +118,7 @@ async def create_skill(
     usage_instructions: str = "",
     is_published: bool = False,
     requires_approval: bool = False,
+    visibility_type: str = "all",
     zip_content: bytes | None = None,
     zip_filename: str = "",
     source_url: str | None = None,
@@ -134,6 +151,13 @@ async def create_skill(
         zip_path = full_path
         zip_size = len(zip_content)
 
+    # 发布门控：开启时发布动作转提交申请，资源先以未发布态落库
+    from services import publish_review_service as _prs
+
+    effective_published, submit_review_flag = await _prs.resolve_publish(
+        session, is_published
+    )
+
     skill = Skill(
         skill_id=sid,
         name=name,
@@ -148,14 +172,19 @@ async def create_skill(
         zip_path=zip_path,
         zip_size=zip_size,
         zip_filename=zip_filename,
-        is_published=is_published,
+        is_published=effective_published,
         requires_approval=requires_approval,
+        visibility_type=visibility_type,
         created_by=created_by,
     )
     skill = await skill_repo.create(session, skill)
 
+    # 门控开启时把发布动作转为评审申请（资源保持未发布）
+    if submit_review_flag and created_by:
+        await _prs.submit_review(session, _prs.ENTITY_SKILL, skill.id, created_by)
+
     # 发布且不需要审批时，自动同步到所有主 Key
-    if is_published and not requires_approval:
+    if skill.is_published and not skill.requires_approval:
         from services import ai_key_service
 
         await ai_key_service.sync_public_resource_to_all_keys(
@@ -201,6 +230,7 @@ async def create_skill(
 async def update_skill(
     session: AsyncSession,
     skill_id: int,
+    actor_id: int | None = None,
     zip_content: bytes | None = None,
     zip_filename: str | None = None,
     **kwargs,
@@ -214,9 +244,20 @@ async def update_skill(
     if not skill:
         raise NotFoundError("skill", skill_id)
 
+    was_published = skill.is_published
     for key, value in kwargs.items():
         if hasattr(skill, key) and value is not None:
             setattr(skill, key, value)
+
+    # 发布门控：False→True 变更且门控开启时，转提交申请，保持未发布
+    if not was_published and skill.is_published and actor_id is not None:
+        from services import publish_review_service, publish_settings_service
+
+        if await publish_settings_service.is_gate_enabled(session):
+            skill.is_published = False
+            await publish_review_service.submit_review(
+                session, publish_review_service.ENTITY_SKILL, skill_id, actor_id
+            )
 
     # 发布且不需要审批时同步到所有主 Key，否则从主 Key 中移除
     if skill.is_published and not skill.requires_approval:
@@ -235,6 +276,27 @@ async def update_skill(
     await session.commit()
     await session.refresh(skill)
     return _serialize(skill)
+
+
+async def set_published(
+    session: AsyncSession, skill_id: int, value: bool
+) -> None:
+    """审核通过后置 is_published（绕过门控，直接生效 + ai_key 同步）。"""
+    skill = await skill_repo.find_by_id(session, skill_id)
+    if not skill:
+        raise NotFoundError("skill", skill_id)
+    skill.is_published = value
+    from services import ai_key_service
+
+    if value and not skill.requires_approval:
+        await ai_key_service.sync_public_resource_to_all_keys(
+            session, "skills", skill.id
+        )
+    else:
+        await ai_key_service.remove_public_resource_from_all_keys(
+            session, "skills", skill.id
+        )
+    await session.flush()
 
 
 def _version_zip_dir(skill_uuid: str) -> str:

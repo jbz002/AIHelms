@@ -46,5 +46,18 @@
   "market.rating.anonymous": "User",
   "market.rating.prev": "Prev",
   "market.rating.next": "Next",
-  "market.rating.submitSuccess": "Rating submitted"
+  "market.rating.submitSuccess": "Rating submitted",
+  "market.detail.back": "Back to market",
+  "market.detail.typeSkill": "Skill",
+  "market.detail.typeMcp": "MCP",
+  "market.detail.unlistedTip": "This resource is not publicly listed. It is only accessible via a direct link.",
+  "market.detail.noPermission": "You do not have permission to access this resource",
+  "market.detail.notFound": "Resource does not exist or has been removed",
+  "market.detail.applyReason": "Request reason",
+  "market.detail.applyPlaceholder": "Describe your scenario and reason...",
+  "market.detail.apply": "Request access",
+  "market.detail.applying": "Submitting...",
+  "market.detail.applySuccess": "Request submitted, awaiting approval",
+  "market.detail.noApproval": "No approval required. Claim it on the market page.",
+  "market.detail.goMarket": "Go to market"
 }

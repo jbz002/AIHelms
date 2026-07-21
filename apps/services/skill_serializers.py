@@ -73,6 +73,7 @@ def _serialize(skill: Skill, latest_audit_map: dict[int, str] | None = None) -> 
         "is_active": skill.is_active,
         "is_published": skill.is_published,
         "requires_approval": skill.requires_approval,
+        "visibility_type": skill.visibility_type,
         "install_count": skill.install_count,
         "frontmatter": skill.frontmatter,
         "summary_text": skill.summary_text,

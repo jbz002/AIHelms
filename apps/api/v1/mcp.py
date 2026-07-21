@@ -8,6 +8,7 @@ from core.config import settings
 from core.deps import get_current_user, get_db, require_permission
 from exceptions import ConflictError, NotFoundError, ValidationError
 from services import ai_key_service, mcp_service
+from services.visibility_service import can_access
 
 router = APIRouter(prefix="/mcp", tags=["mcp"])
 
@@ -47,7 +48,7 @@ class CreateServerRequest(BaseModel):
     internal_cost_per_call: float = 0
     external_cost_per_call: float = 0
     is_published: bool = False
-    visibility_type: str = Field("all", pattern=r"^(all|selected)$")
+    visibility_type: str = Field("all", pattern=r"^(all|selected|private|unlisted)$")
     requires_approval: bool = False
 
 
@@ -79,7 +80,9 @@ class UpdateServerRequest(BaseModel):
     external_cost_per_call: float | None = None
     is_active: bool | None = None
     is_published: bool | None = None
-    visibility_type: str | None = Field(None, pattern=r"^(all|selected)$")
+    visibility_type: str | None = Field(
+        None, pattern=r"^(all|selected|private|unlisted)$"
+    )
     requires_approval: bool | None = None
 
 
@@ -128,7 +131,7 @@ async def list_published_servers(
     page_size: int = Query(50, ge=1, le=200),
     category: str | None = None,
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
     """公开接口：已认证用户可查看已发布的 MCP Server 列表。"""
     data = await mcp_service.list_servers(
@@ -139,6 +142,8 @@ async def list_published_servers(
         is_active=None,
         is_published=True,
         status=None,
+        viewer_id=current_user["id"],
+        is_admin=current_user["is_admin"],
     )
     return {"code": 200, "message": "ok", "data": data}
 
@@ -170,6 +175,27 @@ async def get_server(
         data = await mcp_service.get_server(session, server_id)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="MCP Server 不存在")
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.get("/servers/{server_id}/market-detail")
+async def get_server_market_detail(
+    server_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """直链详情：all/selected/unlisted 登录可读，private 仅创建者+管理员。"""
+    try:
+        data = await mcp_service.get_server(session, server_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="MCP Server 不存在")
+    if not can_access(
+        current_user["id"],
+        current_user["is_admin"],
+        data.get("visibility_type", "all"),
+        data.get("created_by"),
+    ):
+        raise HTTPException(status_code=403, detail="无权访问该资源")
     return {"code": 200, "message": "ok", "data": data}
 
 
@@ -222,11 +248,13 @@ async def update_server(
     server_id: int,
     req: UpdateServerRequest,
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permission("mcp:update")),
+    current_user: dict = Depends(require_permission("mcp:update")),
 ):
     kwargs = req.model_dump(exclude_none=True)
     try:
-        data = await mcp_service.update_server(session, server_id, **kwargs)
+        data = await mcp_service.update_server(
+            session, server_id, actor_id=current_user["id"], **kwargs
+        )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="MCP Server 不存在")
     except ConflictError as e:

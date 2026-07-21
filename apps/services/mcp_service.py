@@ -29,12 +29,15 @@ async def list_servers(
     is_active: bool | None = None,
     is_published: bool | None = None,
     status: str | None = None,
+    viewer_id: int | None = None,
+    is_admin: bool = False,
 ) -> dict:
     total = await mcp_repo.count_servers(
-        session, category, is_active, is_published, status
+        session, category, is_active, is_published, status, viewer_id, is_admin
     )
     items = await mcp_repo.find_all_servers(
-        session, page, page_size, category, is_active, is_published, status
+        session, page, page_size, category, is_active, is_published, status,
+        viewer_id, is_admin,
     )
     serialized = [_serialize_server(s) for s in items]
     from services import rating_service
@@ -112,6 +115,13 @@ async def create_server(
     if existing:
         raise ConflictError(f"MCP Server 名称 '{server_name}' 已存在")
 
+    # 发布门控：开启时发布动作转提交申请，资源先以未发布态落库
+    from services import publish_review_service as _prs
+
+    effective_published, submit_review_flag = await _prs.resolve_publish(
+        session, is_published
+    )
+
     sid = str(uuid.uuid4())
     server = McpServer(
         server_id=sid,
@@ -138,13 +148,17 @@ async def create_server(
         billing_type=billing_type,
         internal_cost_per_call=internal_cost_per_call,
         external_cost_per_call=external_cost_per_call,
-        is_published=is_published,
+        is_published=effective_published,
         visibility_type=visibility_type,
         requires_approval=requires_approval,
         created_by=created_by,
     )
     server = await mcp_repo.create_server(session, server)
     await session.flush()
+
+    # 门控开启时把发布动作转为评审申请（资源保持未发布）
+    if submit_review_flag and created_by:
+        await _prs.submit_review(session, _prs.ENTITY_MCP, server.id, created_by)
 
     try:
         await _sync_server_to_litellm(server)
@@ -191,6 +205,7 @@ async def create_server(
 async def update_server(
     session: AsyncSession,
     server_id: int,
+    actor_id: int | None = None,
     **kwargs,
 ) -> dict:
     server = await mcp_repo.find_server_by_id(session, server_id)
@@ -232,9 +247,20 @@ async def update_server(
                 f"相同 URL 和传输方式的 MCP Server 已存在: '{dup.name}'"
             )
 
+    was_published = server.is_published
     for key, value in kwargs.items():
         if hasattr(server, key) and value is not None:
             setattr(server, key, value)
+
+    # 发布门控：False→True 变更且门控开启时，转提交申请，保持未发布
+    if not was_published and server.is_published and actor_id is not None:
+        from services import publish_review_service, publish_settings_service
+
+        if await publish_settings_service.is_gate_enabled(session):
+            server.is_published = False
+            await publish_review_service.submit_review(
+                session, publish_review_service.ENTITY_MCP, server_id, actor_id
+            )
 
     # 发布且不需要审批时同步到所有主 Key，否则从主 Key 中移除
     if server.is_published and not server.requires_approval:
@@ -263,6 +289,27 @@ async def update_server(
     await session.refresh(server)
 
     return _serialize_server(server)
+
+
+async def set_published(
+    session: AsyncSession, server_id: int, value: bool
+) -> None:
+    """审核通过后置 is_published（绕过门控，直接生效 + ai_key 同步）。"""
+    server = await mcp_repo.find_server_by_id(session, server_id)
+    if not server:
+        raise NotFoundError("mcp_server", server_id)
+    server.is_published = value
+    from services import ai_key_service
+
+    if value and not server.requires_approval:
+        await ai_key_service.sync_public_resource_to_all_keys(
+            session, "mcps", server.id
+        )
+    else:
+        await ai_key_service.remove_public_resource_from_all_keys(
+            session, "mcps", server.id
+        )
+    await session.flush()
 
 
 async def delete_server(session: AsyncSession, server_id: int) -> None:

@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import Skill, SkillCategory
+from services.visibility_service import list_visibility_clause
 
 # ─── Skill ───────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,8 @@ async def find_all(
     category: str | None = None,
     is_published: bool | None = None,
     is_active: bool | None = None,
+    viewer_id: int | None = None,
+    is_admin: bool = False,
 ) -> list[Skill]:
     stmt = select(Skill).order_by(Skill.id.desc())
     if category:
@@ -44,6 +47,9 @@ async def find_all(
         stmt = stmt.where(Skill.is_published == is_published)
     if is_active is not None:
         stmt = stmt.where(Skill.is_active == is_active)
+    vis_clause = list_visibility_clause(Skill, viewer_id, is_admin)
+    if vis_clause is not None:
+        stmt = stmt.where(vis_clause)
     offset = (page - 1) * page_size
     stmt = stmt.limit(page_size).offset(offset)
     result = await session.execute(stmt)
@@ -55,6 +61,8 @@ async def count_all(
     category: str | None = None,
     is_published: bool | None = None,
     is_active: bool | None = None,
+    viewer_id: int | None = None,
+    is_admin: bool = False,
 ) -> int:
     stmt = select(func.count(Skill.id))
     if category:
@@ -63,6 +71,9 @@ async def count_all(
         stmt = stmt.where(Skill.is_published == is_published)
     if is_active is not None:
         stmt = stmt.where(Skill.is_active == is_active)
+    vis_clause = list_visibility_clause(Skill, viewer_id, is_admin)
+    if vis_clause is not None:
+        stmt = stmt.where(vis_clause)
     result = await session.execute(stmt)
     return result.scalar_one()
 

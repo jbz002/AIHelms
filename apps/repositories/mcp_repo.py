@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import McpCallLog, McpCategory, McpServer, McpTool
+from services.visibility_service import list_visibility_clause
 
 # ─── McpServer ───────────────────────────────────────────────────────────────
 
@@ -63,6 +64,8 @@ async def find_all_servers(
     is_active: bool | None = None,
     is_published: bool | None = None,
     status: str | None = None,
+    viewer_id: int | None = None,
+    is_admin: bool = False,
 ) -> list[McpServer]:
     stmt = select(McpServer).order_by(McpServer.id)
     if category:
@@ -73,6 +76,9 @@ async def find_all_servers(
         stmt = stmt.where(McpServer.is_published == is_published)
     if status:
         stmt = stmt.where(McpServer.status == status)
+    vis_clause = list_visibility_clause(McpServer, viewer_id, is_admin)
+    if vis_clause is not None:
+        stmt = stmt.where(vis_clause)
     offset = (page - 1) * page_size
     stmt = stmt.limit(page_size).offset(offset)
     result = await session.execute(stmt)
@@ -85,6 +91,8 @@ async def count_servers(
     is_active: bool | None = None,
     is_published: bool | None = None,
     status: str | None = None,
+    viewer_id: int | None = None,
+    is_admin: bool = False,
 ) -> int:
     stmt = select(func.count(McpServer.id))
     if category:
@@ -95,6 +103,9 @@ async def count_servers(
         stmt = stmt.where(McpServer.is_published == is_published)
     if status:
         stmt = stmt.where(McpServer.status == status)
+    vis_clause = list_visibility_clause(McpServer, viewer_id, is_admin)
+    if vis_clause is not None:
+        stmt = stmt.where(vis_clause)
     result = await session.execute(stmt)
     return result.scalar_one()
 

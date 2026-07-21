@@ -159,6 +159,12 @@ const router = createRouter({
           meta: { permission: 'resource_application:read' },
         },
         {
+          path: 'publish-reviews',
+          name: 'PublishReviewManage',
+          component: () => import('../views/publish-review/PublishReviewManage.vue'),
+          meta: { permission: 'publish_review:read' },
+        },
+        {
           path: 'audit',
           name: 'AuditLogManage',
           component: () => import('../views/audit/AuditLogManage.vue'),

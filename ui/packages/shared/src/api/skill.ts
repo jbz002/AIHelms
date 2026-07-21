@@ -29,6 +29,10 @@ export function getSkillById(id: number): Promise<Skill> {
   return request<Skill>(`/api/v1/skills/${id}`)
 }
 
+export function getSkillMarketDetail(id: number): Promise<Skill> {
+  return request<Skill>(`/api/v1/skills/${id}/market-detail`, { silent: true })
+}
+
 interface SkillFormFields {
   name: string
   icon?: string
@@ -40,6 +44,7 @@ interface SkillFormFields {
   usage_instructions?: string
   is_published?: boolean
   requires_approval?: boolean
+  visibility_type?: string
   zip_file?: File | null
   source_url?: string
 }
@@ -56,6 +61,7 @@ function buildSkillFormData(fields: SkillFormFields): FormData {
   if (fields.usage_instructions !== undefined) fd.append('usage_instructions', fields.usage_instructions)
   if (fields.is_published !== undefined) fd.append('is_published', String(fields.is_published))
   if (fields.requires_approval !== undefined) fd.append('requires_approval', String(fields.requires_approval))
+  if (fields.visibility_type !== undefined) fd.append('visibility_type', fields.visibility_type)
   if (fields.zip_file) fd.append('zip_file', fields.zip_file)
   if (fields.source_url) fd.append('source_url', fields.source_url)
   return fd
@@ -77,6 +83,7 @@ export function updateSkill(id: number, fields: Partial<SkillFormFields>): Promi
   if (fields.usage_instructions !== undefined) fd.append('usage_instructions', fields.usage_instructions)
   if (fields.is_published !== undefined) fd.append('is_published', String(fields.is_published))
   if (fields.requires_approval !== undefined) fd.append('requires_approval', String(fields.requires_approval))
+  if (fields.visibility_type !== undefined) fd.append('visibility_type', fields.visibility_type)
   if (fields.zip_file) fd.append('zip_file', fields.zip_file)
   return request<Skill>(`/api/v1/skills/${id}`, { method: 'PUT', body: fd })
 }

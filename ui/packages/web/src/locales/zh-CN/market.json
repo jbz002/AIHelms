@@ -46,5 +46,18 @@
   "market.rating.anonymous": "用户",
   "market.rating.prev": "上一页",
   "market.rating.next": "下一页",
-  "market.rating.submitSuccess": "评分已提交"
+  "market.rating.submitSuccess": "评分已提交",
+  "market.detail.back": "返回市场",
+  "market.detail.typeSkill": "Skill",
+  "market.detail.typeMcp": "MCP",
+  "market.detail.unlistedTip": "此资源未公开上架，仅可通过直链访问",
+  "market.detail.noPermission": "无权访问该资源",
+  "market.detail.notFound": "资源不存在或已被移除",
+  "market.detail.applyReason": "申请理由",
+  "market.detail.applyPlaceholder": "请描述使用场景和理由...",
+  "market.detail.apply": "申请使用",
+  "market.detail.applying": "提交中...",
+  "market.detail.applySuccess": "申请已提交，等待审批",
+  "market.detail.noApproval": "无需审批，请前往市场页领用",
+  "market.detail.goMarket": "前往市场"
 }

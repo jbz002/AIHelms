@@ -72,6 +72,7 @@ const form = ref({
   usage_instructions: '',
   is_published: false,
   requires_approval: false,
+  visibility_type: 'all',
   source_url: '',
 })
 const sourceMode = ref<'zip' | 'url'>('zip')
@@ -157,6 +158,8 @@ async function loadData(): Promise<void> {
         usage_instructions: s.usage_instructions,
         is_published: s.is_published,
         requires_approval: s.requires_approval,
+        visibility_type: s.visibility_type || 'all',
+        source_url: '',
       }
     } else {
       form.value.category = cats[0]?.name || 'general'
@@ -198,6 +201,7 @@ async function handleSave(): Promise<void> {
       usage_instructions: form.value.usage_instructions,
       is_published: form.value.is_published,
       requires_approval: form.value.requires_approval,
+      visibility_type: form.value.visibility_type,
       zip_file: sourceMode.value === 'zip' ? zipFile.value : undefined,
       source_url: sourceMode.value === 'url' ? form.value.source_url : undefined,
     }
@@ -502,6 +506,20 @@ onMounted(loadData)
             <UsageStatsPanel entity-type="skill" :entity-id="skillId" />
           </div>
 
+          <div class="col-span-2">
+            <label class="mb-1 block text-sm font-medium text-slate-700">可见性</label>
+            <select
+              v-model="form.visibility_type"
+              class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
+            >
+              <option value="all">公开（进入市场列表）</option>
+              <option value="private">仅创建者（私有）</option>
+              <option value="unlisted">不列出（仅直链可访问）</option>
+            </select>
+            <p class="mt-1 text-xs text-slate-400">
+              private 仅创建者和管理员可见；unlisted 不进市场列表，持有直链的登录用户可查看详情
+            </p>
+          </div>
           <div class="col-span-2 flex items-center gap-4">
             <label class="flex items-center gap-2 text-sm text-slate-700">
               <input v-model="form.is_published" type="checkbox" class="h-4 w-4 rounded border-slate-300" />
