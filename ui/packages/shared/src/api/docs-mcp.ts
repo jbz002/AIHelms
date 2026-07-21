@@ -21,6 +21,7 @@ import type {
   DocumentListResult,
   IngestStats,
   IngestBatchParams,
+  DocumentDashboardSummary,
 } from '../types/docs-mcp'
 
 export function getDocsMcpStats() {
@@ -268,4 +269,8 @@ export function ingestDocumentBatch(params?: IngestBatchParams) {
     method: 'POST',
     body: params || {},
   })
+}
+
+export function getDocumentDashboardSummary() {
+  return request<DocumentDashboardSummary>('/api/v1/documents/dashboard-summary')
 }

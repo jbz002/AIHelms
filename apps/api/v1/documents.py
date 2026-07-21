@@ -172,6 +172,15 @@ async def get_ingest_stats(
     return {"code": 200, "message": "ok", "data": result}
 
 
+@document_router.get("/dashboard-summary")
+async def get_dashboard_summary(
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("document:read")),
+):
+    result = await document_service.get_dashboard_summary(session)
+    return {"code": 200, "message": "ok", "data": result}
+
+
 @document_router.post("/ingest-batch", summary="批量入库文档")
 async def ingest_batch(
     req: IngestBatchRequest,

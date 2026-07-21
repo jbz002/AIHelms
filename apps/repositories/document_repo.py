@@ -230,6 +230,37 @@ async def count_grouped_by_status(
     ]
 
 
+async def count_grouped_by_library_source_status(
+    session: AsyncSession,
+) -> list[dict]:
+    """按 library + source_type + ingest_status 三维分组计数。
+
+    供 /documents/dashboard-summary 聚合：一次查询同时算出全局 by_source/
+    by_status/total_documents 以及按 library 细分的同维度指标。library 用
+    func.lower 归一化，避免与 docs-mcp 库名大小写漂移导致前端漏匹配。
+    """
+    stmt = select(
+        func.lower(Document.library).label("library"),
+        Document.source_type,
+        Document.ingest_status,
+        func.count().label("count"),
+    ).group_by(
+        func.lower(Document.library),
+        Document.source_type,
+        Document.ingest_status,
+    )
+    result = await session.execute(stmt)
+    return [
+        {
+            "library": row.library,
+            "source_type": row.source_type,
+            "ingest_status": row.ingest_status,
+            "count": row.count,
+        }
+        for row in result.all()
+    ]
+
+
 async def list_by_ingest_status(
     session: AsyncSession,
     statuses: list[str],

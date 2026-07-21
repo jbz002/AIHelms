@@ -244,3 +244,21 @@ export interface IngestBatchParams {
   library?: string
   source_type?: string
 }
+
+export interface DocumentDashboardSummaryGlobal {
+  by_status: Record<string, number>
+  by_source: Record<string, number>
+  total_documents: number
+  upload_storage_bytes: number
+}
+
+export interface DocumentDashboardLibraryBreakdown {
+  by_source: Record<string, number>
+  by_status: Record<string, number>
+  total_documents: number
+}
+
+export interface DocumentDashboardSummary {
+  global: DocumentDashboardSummaryGlobal
+  by_library: Record<string, DocumentDashboardLibraryBreakdown>
+}
