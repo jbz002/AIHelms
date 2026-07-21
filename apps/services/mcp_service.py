@@ -36,8 +36,15 @@ async def list_servers(
         session, category, is_active, is_published, status, viewer_id, is_admin
     )
     items = await mcp_repo.find_all_servers(
-        session, page, page_size, category, is_active, is_published, status,
-        viewer_id, is_admin,
+        session,
+        page,
+        page_size,
+        category,
+        is_active,
+        is_published,
+        status,
+        viewer_id,
+        is_admin,
     )
     serialized = [_serialize_server(s) for s in items]
     from services import rating_service
@@ -291,9 +298,7 @@ async def update_server(
     return _serialize_server(server)
 
 
-async def set_published(
-    session: AsyncSession, server_id: int, value: bool
-) -> None:
+async def set_published(session: AsyncSession, server_id: int, value: bool) -> None:
     """审核通过后置 is_published（绕过门控，直接生效 + ai_key 同步）。"""
     server = await mcp_repo.find_server_by_id(session, server_id)
     if not server:

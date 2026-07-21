@@ -6,9 +6,15 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.database import async_session
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import Skill, SkillCategory, SkillUsageLog, SkillVersion
-from repositories import ai_policies_repo, skill_repo, skill_version_repo
+from repositories import (
+    ai_policies_repo,
+    skill_repo,
+    skill_version_repo,
+    storage_deletion_compensation_repo,
+)
 from services import versioning_service
 from services.skill_content_service import ParsedSkillContent
 from services.skill_serializers import _latest_audit_map, _serialize, _serialize_version
@@ -346,24 +352,48 @@ async def delete_skill(session: AsyncSession, skill_id: int) -> None:
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
         raise NotFoundError("skill", skill_id)
-    # 收集所有版本各自的 zip 文件去重后清理（v1 可能与主表同路径）
+    # 收集所有版本各自的 zip 文件去重（v1 可能与主表同路径）
     version_paths = {v.zip_path for v in (skill.versions or []) if v.zip_path}
     if skill.zip_path:
         version_paths.add(skill.zip_path)
-    for path in version_paths:
-        if os.path.exists(path):
-            try:
-                os.remove(path)
-            except OSError:
-                logger.warning("failed to remove zip file: %s", path)
+
     from services import ai_key_service
 
+    # 先提交 DB（主 Key 同步、审计标记、删除主表），成功后再清文件。
+    # 文件清理失败不回滚 DB，记补偿记录由定时任务重试，避免孤儿文件。
     await ai_key_service.remove_public_resource_from_all_keys(
         session, "skills", skill_id
     )
     await ai_policies_repo.mark_audits_deleted_for_skill(session, skill_id)
     await skill_repo.delete(session, skill_id)
     await session.commit()
+
+    await _purge_files_after_commit("skill", skill_id, version_paths)
+
+
+async def _purge_files_after_commit(
+    entity_type: str, entity_id: int, paths: set[str]
+) -> None:
+    """DB 提交后清理文件；失败写补偿记录（独立 session）。"""
+    for path in paths:
+        if not path or not os.path.exists(path):
+            continue
+        try:
+            os.remove(path)
+        except OSError as exc:
+            logger.warning("failed to remove file, record compensation: %s", path)
+            try:
+                async with async_session() as comp_session:
+                    await storage_deletion_compensation_repo.create(
+                        comp_session,
+                        entity_type=entity_type,
+                        entity_id=entity_id,
+                        storage_path=path,
+                        last_error=str(exc),
+                    )
+                    await comp_session.commit()
+            except Exception:  # noqa: BLE001
+                logger.exception("record storage compensation failed: %s", path)
 
 
 async def get_skill_zip(

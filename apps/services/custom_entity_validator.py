@@ -1,9 +1,11 @@
 """
 自定义实体校验器 - 动态 Pydantic 模型构建
 """
+
 import logging
 from typing import Any, Dict, List
-from pydantic import BaseModel, Field, create_model
+
+from pydantic import BaseModel, create_model
 from pydantic.fields import FieldInfo
 
 logger = logging.getLogger(__name__)
@@ -58,9 +60,7 @@ def build_model(schema_definition: Dict[str, Any]) -> type[BaseModel]:
     return DynamicModel
 
 
-def _map_datatype_to_python(
-    datatype: str, field_def: Dict[str, Any]
-) -> type:
+def _map_datatype_to_python(datatype: str, field_def: Dict[str, Any]) -> type:
     """映射字段类型到 Python 类型"""
     from typing import List
 

@@ -3,15 +3,17 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from exceptions import NotFoundError, ConflictError, ValidationError
+from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import AiKey
-from repositories import ai_key_repo
-from repositories import ai_key_model_limit_repo
-from repositories import user_repo
-from repositories import department_repo
-from repositories import project_repo
-from repositories import model_repo
-from repositories import mcp_repo
+from repositories import (
+    ai_key_model_limit_repo,
+    ai_key_repo,
+    department_repo,
+    mcp_repo,
+    model_repo,
+    project_repo,
+    user_repo,
+)
 from services import litellm_client
 from services.model_service import ANTHROPIC_MODEL_SUFFIX
 
@@ -643,8 +645,9 @@ async def create_personal_main_key(
 
 async def get_public_resources(session: AsyncSession) -> dict[str, list]:
     """获取所有已发布且不需要审批的资源 ID。"""
-    from models.db import Model, Skill, McpServer, Agent
     from sqlalchemy import select
+
+    from models.db import Agent, McpServer, Model, Skill
 
     models_result = await session.execute(
         select(Model.model_id).where(

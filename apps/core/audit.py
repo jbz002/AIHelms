@@ -11,6 +11,9 @@ import asyncio
 import json
 import logging
 import time
+from uuid import uuid4
+
+from starlette.datastructures import State
 
 from core.database import async_session
 from models.db import AdminAuditLog
@@ -18,6 +21,7 @@ from models.db import AdminAuditLog
 logger = logging.getLogger(__name__)
 
 WRITE_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
+REQUEST_ID_HEADER = "x-request-id"
 
 # 路径白名单（前缀匹配）
 PATH_WHITELIST_PREFIXES = (
@@ -38,6 +42,44 @@ SENSITIVE_KEYS = {
     "api_key",
     "credential_values",
 }
+
+
+class RequestIdMiddleware:
+    """为每个请求生成/透传 request_id，注入 state + X-Request-Id 响应头。
+
+    供审计日志链路关联与跨日志追踪。须注册在 AuditLogMiddleware 之外层
+    （后 add_middleware = 更外层），确保审计读取 state.request_id 时已就绪。
+    """
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        state = scope.setdefault("state", State())
+        headers = {
+            k.decode("latin-1"): v.decode("latin-1", errors="replace")
+            for k, v in scope.get("headers", [])
+        }
+        request_id = headers.get(REQUEST_ID_HEADER, "").strip()[:64] or uuid4().hex
+        state["request_id"] = request_id
+
+        async def wrapped_send(message):
+            if message["type"] == "http.response.start":
+                existing = message.get("headers") or []
+                has_id = any(
+                    len(h) >= 2 and h[0].decode("latin-1").lower() == REQUEST_ID_HEADER
+                    for h in existing
+                )
+                if not has_id:
+                    existing.append([b"x-request-id", request_id.encode()])
+                    message["headers"] = existing
+            await send(message)
+
+        await self.app(scope, receive, wrapped_send)
 
 
 class AuditLogMiddleware:
@@ -157,6 +199,8 @@ def _schedule_audit(
     user_agent = headers.get("user-agent", "")[:500]
 
     request_summary = _redact_body(body_bytes)
+    request_id = state.get("request_id", "")
+    detail = state.get("audit_detail") or {}
 
     asyncio.create_task(
         _write_audit_log(
@@ -171,6 +215,8 @@ def _schedule_audit(
             user_agent=user_agent,
             duration_ms=duration_ms,
             request_summary=request_summary,
+            request_id=request_id,
+            detail=detail,
         )
     )
 
@@ -234,23 +280,33 @@ async def _write_audit_log(
     user_agent: str,
     duration_ms: int,
     request_summary: str,
+    request_id: str = "",
+    detail: dict | None = None,
 ) -> None:
-    try:
-        async with async_session() as session:
-            log = AdminAuditLog(
-                user_id=user_id,
-                username=username,
-                identity_type=identity_type,
-                method=method,
-                path=path,
-                action=action,
-                status_code=status_code,
-                ip=ip,
-                user_agent=user_agent,
-                duration_ms=duration_ms,
-                request_summary=request_summary,
-            )
-            session.add(log)
-            await session.commit()
-    except Exception:  # noqa: BLE001
-        logger.warning("write audit log failed", exc_info=True)
+    detail = detail or {}
+    for attempt in range(2):
+        try:
+            async with async_session() as session:
+                log = AdminAuditLog(
+                    user_id=user_id,
+                    username=username,
+                    identity_type=identity_type,
+                    method=method,
+                    path=path,
+                    action=action,
+                    status_code=status_code,
+                    ip=ip,
+                    user_agent=user_agent,
+                    duration_ms=duration_ms,
+                    request_summary=request_summary,
+                    request_id=request_id,
+                    detail=detail,
+                )
+                session.add(log)
+                await session.commit()
+            return
+        except Exception:  # noqa: BLE001
+            if attempt == 0:
+                await asyncio.sleep(0.2)
+                continue
+            logger.warning("write audit log failed", exc_info=True)

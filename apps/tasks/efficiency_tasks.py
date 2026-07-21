@@ -43,15 +43,13 @@ async def _aggregate() -> None:
                 session.add(sync_state)
                 await session.flush()
 
-            earliest = await session.execute(
-                text("""
+            earliest = await session.execute(text("""
                     SELECT MIN(ts) FROM (
                         SELECT MIN(started_at) AS ts FROM aihelms.llm_call_logs
                         UNION ALL
                         SELECT MIN(called_at) AS ts FROM aihelms.mcp_call_logs
                     ) t
-                """)
-            )
+                """))
             earliest_ts = earliest.scalar()
             summary_count = await session.execute(
                 text("SELECT COUNT(*) FROM aihelms.cost_summary_daily")
@@ -150,7 +148,9 @@ async def _aggregate() -> None:
 
             sync_state.last_sync_at = now
             await session.commit()
-            logger.info("efficiency aggregation completed: rebuild_start=%s", rebuild_start)
+            logger.info(
+                "efficiency aggregation completed: rebuild_start=%s", rebuild_start
+            )
     except Exception:
         logger.error("efficiency aggregation failed", exc_info=True)
 
@@ -187,8 +187,7 @@ async def _update_budget_used(session) -> None:
             {"duration": duration},
         )
     # 没有调用记录的 Key，归零
-    await session.execute(
-        text("""
+    await session.execute(text("""
             UPDATE aihelms.ai_keys
             SET budget_used = 0
             WHERE (budget_limit IS NOT NULL
@@ -201,5 +200,4 @@ async def _update_budget_used(session) -> None:
                   SELECT DISTINCT ai_key_id FROM aihelms.mcp_call_logs
                   WHERE ai_key_id IS NOT NULL
               )
-        """)
-    )
+        """))

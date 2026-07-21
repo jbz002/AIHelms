@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_db, require_permission
-from exceptions import NotFoundError, ConflictError
+from exceptions import ConflictError, NotFoundError
 from services import provider_service
 
 router = APIRouter(prefix="/providers", tags=["providers"])
@@ -79,7 +79,8 @@ async def update_provider(
 ):
     try:
         provider = await provider_service.update_provider(
-            session, provider_id,
+            session,
+            provider_id,
             name=req.name,
             provider_type=req.provider_type,
             billing_type=req.billing_type,

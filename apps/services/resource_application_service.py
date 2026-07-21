@@ -96,11 +96,16 @@ async def approve_application(
     if app.status != "pending":
         raise ConflictError("该申请已处理")
 
-    app.status = "approved"
-    app.reviewed_by = reviewer_id
-    app.reviewed_at = datetime.utcnow()
-    app.review_notes = review_notes
-    app.approval_config = approval_config or {}
+    await resource_application_repo.update_status_with_lock(
+        session,
+        app_id,
+        app.lock_version,
+        status="approved",
+        reviewed_by=reviewer_id,
+        reviewed_at=datetime.utcnow(),
+        review_notes=review_notes,
+        approval_config=approval_config or {},
+    )
 
     await _grant_resource(session, app)
 
@@ -121,10 +126,16 @@ async def reject_application(
     if app.status != "pending":
         raise ConflictError("该申请已处理")
 
-    app.status = "rejected"
-    app.reviewed_by = reviewer_id
-    app.reviewed_at = datetime.utcnow()
-    app.review_notes = review_notes
+    await resource_application_repo.update_status_with_lock(
+        session,
+        app_id,
+        app.lock_version,
+        status="rejected",
+        reviewed_by=reviewer_id,
+        reviewed_at=datetime.utcnow(),
+        review_notes=review_notes,
+        approval_config=app.approval_config or {},
+    )
 
     await session.commit()
     await session.refresh(app)

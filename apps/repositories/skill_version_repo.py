@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from exceptions import ConflictError
 from models.db import SkillVersion
 
 
@@ -85,6 +86,26 @@ async def set_active(session: AsyncSession, version_id: int) -> None:
     )
 
 
+async def set_active_with_lock(
+    session: AsyncSession, version_id: int, expected_lock_version: int
+) -> None:
+    """乐观锁激活：lock_version 不匹配（被并发改）→ rowcount 0 → ConflictError。"""
+    result = await session.execute(
+        update(SkillVersion)
+        .where(
+            SkillVersion.id == version_id,
+            SkillVersion.lock_version == expected_lock_version,
+        )
+        .values(
+            is_active=True,
+            lifecycle_status="active",
+            lock_version=expected_lock_version + 1,
+        )
+    )
+    if result.rowcount == 0:
+        raise ConflictError("资源已被他人修改，请刷新重试")
+
+
 async def mark_deprecated(
     session: AsyncSession, version_id: int, sunset_date: datetime | None
 ) -> None:
@@ -93,6 +114,29 @@ async def mark_deprecated(
         .where(SkillVersion.id == version_id)
         .values(lifecycle_status="deprecated", sunset_date=sunset_date)
     )
+
+
+async def mark_deprecated_with_lock(
+    session: AsyncSession,
+    version_id: int,
+    sunset_date: datetime | None,
+    expected_lock_version: int,
+) -> None:
+    """乐观锁弃用：lock_version 不匹配 → ConflictError。"""
+    result = await session.execute(
+        update(SkillVersion)
+        .where(
+            SkillVersion.id == version_id,
+            SkillVersion.lock_version == expected_lock_version,
+        )
+        .values(
+            lifecycle_status="deprecated",
+            sunset_date=sunset_date,
+            lock_version=expected_lock_version + 1,
+        )
+    )
+    if result.rowcount == 0:
+        raise ConflictError("资源已被他人修改，请刷新重试")
 
 
 async def update_security_status(

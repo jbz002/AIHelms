@@ -47,9 +47,7 @@ class DoclingClient:
         """
         url = f"{self._base_url}/v1/convert/file"
         try:
-            async with httpx.AsyncClient(
-                timeout=self._timeout, proxy=None
-            ) as client:
+            async with httpx.AsyncClient(timeout=self._timeout, proxy=None) as client:
                 files = {"files": (file_name, file_bytes, content_type)}
                 data = {
                     "to_formats": "md",
@@ -57,7 +55,9 @@ class DoclingClient:
                 }
                 logger.info(
                     "docling convert: %s (%s, ocr=%s)",
-                    file_name, content_type, do_ocr,
+                    file_name,
+                    content_type,
+                    do_ocr,
                 )
                 resp = await client.post(url, files=files, data=data)
 
@@ -87,9 +87,7 @@ class DoclingClient:
         except DoclingError:
             raise
         except httpx.ConnectError as e:
-            raise DoclingError(
-                f"无法连接 docling-serve ({self._base_url}): {e}"
-            ) from e
+            raise DoclingError(f"无法连接 docling-serve ({self._base_url}): {e}") from e
         except httpx.TimeoutException as e:
             raise DoclingError(
                 f"docling-serve 转换超时 ({self._timeout}s): {file_name}"

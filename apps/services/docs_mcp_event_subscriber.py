@@ -226,9 +226,7 @@ async def _reconcile_stale_crawling_tasks() -> None:
             if not stale_tasks:
                 return
 
-            logger.info(
-                "reconcile: found %d stale crawling tasks", len(stale_tasks)
-            )
+            logger.info("reconcile: found %d stale crawling tasks", len(stale_tasks))
             for task in stale_tasks:
                 try:
                     detail = await docs_mcp_client.get_job_detail(task.job_id)
@@ -245,9 +243,7 @@ async def _reconcile_stale_crawling_tasks() -> None:
                         error_message = error
                     if not error_message:
                         error_message = detail.get("errorMessage")
-                    synced = await crawl_task_service.sync_task_status(
-                        session, task.id
-                    )
+                    synced = await crawl_task_service.sync_task_status(session, task.id)
                     if synced:
                         logger.info(
                             "reconcile: task %s synced to %s (was crawling)",

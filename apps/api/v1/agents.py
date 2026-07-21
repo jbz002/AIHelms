@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.deps import get_db, get_current_user, require_permission
-from exceptions import NotFoundError, ConflictError
+from core.deps import get_current_user, get_db, require_permission
+from exceptions import ConflictError, NotFoundError
 from services import agent_service
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -81,7 +81,10 @@ async def create_category(
 ):
     try:
         data = await agent_service.create_category(
-            session, name=req.name, description=req.description, sort_order=req.sort_order
+            session,
+            name=req.name,
+            description=req.description,
+            sort_order=req.sort_order,
         )
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -118,7 +121,11 @@ async def create_platform(
 ):
     try:
         data = await agent_service.create_platform(
-            session, name=req.name, label=req.label, description=req.description, sort_order=req.sort_order
+            session,
+            name=req.name,
+            label=req.label,
+            description=req.description,
+            sort_order=req.sort_order,
         )
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -151,7 +158,9 @@ async def list_published_agents(
     _: dict = Depends(get_current_user),
 ):
     """List published agents visible to all authenticated users."""
-    data = await agent_service.list_agents(session, page, page_size, category, platform, is_published=True)
+    data = await agent_service.list_agents(
+        session, page, page_size, category, platform, is_published=True
+    )
     return {"code": 200, "message": "ok", "data": data}
 
 
@@ -165,7 +174,9 @@ async def list_agents(
     session: AsyncSession = Depends(get_db),
     _: dict = Depends(require_permission("agent:read")),
 ):
-    data = await agent_service.list_agents(session, page, page_size, category, platform, is_published)
+    data = await agent_service.list_agents(
+        session, page, page_size, category, platform, is_published
+    )
     return {"code": 200, "message": "ok", "data": data}
 
 
@@ -279,7 +290,9 @@ async def list_usage_logs(
     _: dict = Depends(require_permission("agent:read")),
 ):
     try:
-        data = await agent_service.list_usage_logs(session, agent_id, page, page_size, user_id)
+        data = await agent_service.list_usage_logs(
+            session, agent_id, page, page_size, user_id
+        )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="智能体不存在")
     return {"code": 200, "message": "ok", "data": data}

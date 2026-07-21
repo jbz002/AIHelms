@@ -1,6 +1,7 @@
 """
 自定义实体 Service 层
 """
+
 import logging
 from typing import Any, Dict
 
@@ -227,9 +228,7 @@ async def create_entity(
 
     # 门控开启时把发布动作转为评审申请（资源保持未发布）
     if submit_review_flag and created_by:
-        await _prs.submit_review(
-            session, _prs.ENTITY_CUSTOM, entity.id, created_by
-        )
+        await _prs.submit_review(session, _prs.ENTITY_CUSTOM, entity.id, created_by)
 
     await session.commit()
     await session.refresh(entity)
@@ -307,9 +306,7 @@ async def update_entity(
     return _serialize_entity(entity)
 
 
-async def set_published(
-    session: AsyncSession, entity_id: int, value: bool
-) -> None:
+async def set_published(session: AsyncSession, entity_id: int, value: bool) -> None:
     """审核通过后置 is_published（绕过门控，直接生效 + 可见性同步）。"""
     entity = await custom_entity_repo.find_entity_by_id(session, entity_id)
     if not entity:

@@ -1,13 +1,16 @@
 """AI 效能数据查询仓库层。"""
 
-import logging
 import datetime
-from datetime import date, timezone
+import logging
+from datetime import date
 
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.db import AiKey, CostSummaryDaily, EfficiencyReport, EfficiencySuggestion, User
+from models.db import (
+    CostSummaryDaily,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -67,13 +70,18 @@ async def get_daily_cost_and_users(
         " GROUP BY 1 ORDER BY 1"
     )
     result = await session.execute(sql, {"start": start_date, "end": end_date})
-    raw = {r[0]: {"active_users": int(r[1]), "cost": float(r[2])} for r in result.fetchall()}
+    raw = {
+        r[0]: {"active_users": int(r[1]), "cost": float(r[2])}
+        for r in result.fetchall()
+    }
     rows = []
     while current <= end_date:
         item = raw.get(current, {"active_users": 0, "cost": 0.0})
         rows.append({"date": str(current), **item})
         if granularity == "month":
-            current = (current.replace(day=28) + datetime.timedelta(days=4)).replace(day=1)
+            current = (current.replace(day=28) + datetime.timedelta(days=4)).replace(
+                day=1
+            )
         else:
             current += step
     return rows
@@ -260,11 +268,16 @@ async def get_dept_adoption_table(
     for r in result.fetchall():
         total = int(r[2])
         active = int(r[3])
-        rows.append({
-            "id": r[0], "name": r[1], "total": total, "active": active,
-            "coverage": round(active / total * 100, 1) if total > 0 else 0,
-            "daily_calls": round(int(r[4]) / days, 1),
-        })
+        rows.append(
+            {
+                "id": r[0],
+                "name": r[1],
+                "total": total,
+                "active": active,
+                "coverage": round(active / total * 100, 1) if total > 0 else 0,
+                "daily_calls": round(int(r[4]) / days, 1),
+            }
+        )
     return rows
 
 
@@ -286,11 +299,16 @@ async def get_project_adoption_table(
     for r in result.fetchall():
         total = int(r[2])
         active = int(r[3])
-        rows.append({
-            "id": r[0], "name": r[1], "total": total, "active": active,
-            "coverage": round(active / total * 100, 1) if total > 0 else 0,
-            "daily_calls": round(int(r[4]) / days, 1),
-        })
+        rows.append(
+            {
+                "id": r[0],
+                "name": r[1],
+                "total": total,
+                "active": active,
+                "coverage": round(active / total * 100, 1) if total > 0 else 0,
+                "daily_calls": round(int(r[4]) / days, 1),
+            }
+        )
     return rows
 
 
@@ -321,7 +339,9 @@ async def get_adoption_scope_users(
         f" GROUP BY u.id, u.username, u.display_name, u.position, d.name"
         f" ORDER BY total_calls DESC, u.id DESC"
     )
-    result = await session.execute(sql, {"start": start_date, "end": end_date, "scope_id": scope_id})
+    result = await session.execute(
+        sql, {"start": start_date, "end": end_date, "scope_id": scope_id}
+    )
     return [
         {
             "id": r[0],
@@ -332,15 +352,19 @@ async def get_adoption_scope_users(
             "total_calls": int(r[5] or 0),
             "llm_calls": int(r[6] or 0),
             "mcp_calls": int(r[7] or 0),
-            "last_active": str(r[8].date() if hasattr(r[8], "date") else r[8]) if r[8] else "",
+            "last_active": (
+                str(r[8].date() if hasattr(r[8], "date") else r[8]) if r[8] else ""
+            ),
         }
         for r in result.fetchall()
     ]
 
 
-
 async def get_agent_hotness(
-    session: AsyncSession, start_date: date, end_date: date, dimension: str = "department"
+    session: AsyncSession,
+    start_date: date,
+    end_date: date,
+    dimension: str = "department",
 ) -> list[dict]:
     if dimension == "project":
         scope_join = "LEFT JOIN aihelms.user_projects uscope ON uscope.user_id = l.user_id LEFT JOIN aihelms.projects scope ON scope.id = uscope.project_id"
@@ -358,12 +382,19 @@ async def get_agent_hotness(
         f" GROUP BY a.id, a.name, a.platform, a.created_at"
         f" ORDER BY monthly_calls DESC"
     )
-    result = await session.execute(sql, {"start": start_date, "end_next": end_date + datetime.timedelta(days=1)})
+    result = await session.execute(
+        sql, {"start": start_date, "end_next": end_date + datetime.timedelta(days=1)}
+    )
     today = date.today()
     return [
         {
-            "id": r[0], "name": r[1], "platform": r[2], "department": r[3] or "",
-            "scope_names": r[3] or "", "user_count": int(r[4]), "monthly_calls": int(r[5]),
+            "id": r[0],
+            "name": r[1],
+            "platform": r[2],
+            "department": r[3] or "",
+            "scope_names": r[3] or "",
+            "user_count": int(r[4]),
+            "monthly_calls": int(r[5]),
             "days_online": (today - r[6].date()).days if r[6] else 0,
         }
         for r in result.fetchall()
@@ -371,7 +402,10 @@ async def get_agent_hotness(
 
 
 async def get_mcp_hotness(
-    session: AsyncSession, start_date: date, end_date: date, dimension: str = "department"
+    session: AsyncSession,
+    start_date: date,
+    end_date: date,
+    dimension: str = "department",
 ) -> list[dict]:
     if dimension == "project":
         scope_join = "LEFT JOIN aihelms.user_projects uscope ON uscope.user_id = l.user_id LEFT JOIN aihelms.projects scope ON scope.id = uscope.project_id"
@@ -387,15 +421,27 @@ async def get_mcp_hotness(
         f" {scope_join}"
         f" WHERE s.is_active = true GROUP BY s.id, s.name ORDER BY monthly_calls DESC"
     )
-    result = await session.execute(sql, {"start": start_date, "end_next": end_date + datetime.timedelta(days=1)})
+    result = await session.execute(
+        sql, {"start": start_date, "end_next": end_date + datetime.timedelta(days=1)}
+    )
     return [
-        {"id": r[0], "name": r[1], "user_count": int(r[2]), "monthly_calls": int(r[3]), "cost": float(r[4]), "scope_names": r[5] or ""}
+        {
+            "id": r[0],
+            "name": r[1],
+            "user_count": int(r[2]),
+            "monthly_calls": int(r[3]),
+            "cost": float(r[4]),
+            "scope_names": r[5] or "",
+        }
         for r in result.fetchall()
     ]
 
 
 async def get_skill_hotness(
-    session: AsyncSession, start_date: date, end_date: date, dimension: str = "department"
+    session: AsyncSession,
+    start_date: date,
+    end_date: date,
+    dimension: str = "department",
 ) -> list[dict]:
     if dimension == "project":
         scope_join = "LEFT JOIN aihelms.user_projects uscope ON uscope.user_id = l.user_id LEFT JOIN aihelms.projects scope ON scope.id = uscope.project_id"
@@ -411,15 +457,26 @@ async def get_skill_hotness(
         f" WHERE s.is_active = true GROUP BY s.id, s.name"
         f" ORDER BY monthly_downloads DESC"
     )
-    result = await session.execute(sql, {"start": start_date, "end_next": end_date + datetime.timedelta(days=1)})
+    result = await session.execute(
+        sql, {"start": start_date, "end_next": end_date + datetime.timedelta(days=1)}
+    )
     return [
-        {"id": r[0], "name": r[1], "install_count": int(r[2]), "monthly_downloads": int(r[3]), "scope_names": r[4] or ""}
+        {
+            "id": r[0],
+            "name": r[1],
+            "install_count": int(r[2]),
+            "monthly_downloads": int(r[3]),
+            "scope_names": r[4] or "",
+        }
         for r in result.fetchall()
     ]
 
 
 async def get_unused_users(
-    session: AsyncSession, start_date: date, end_date: date, dimension: str = "department"
+    session: AsyncSession,
+    start_date: date,
+    end_date: date,
+    dimension: str = "department",
 ) -> list[dict]:
     if dimension == "project":
         scope_join = "JOIN aihelms.user_projects uscope ON uscope.user_id = u.id JOIN aihelms.projects scope ON scope.id = uscope.project_id"
@@ -439,39 +496,13 @@ async def get_unused_users(
     result = await session.execute(sql, {"start": start_date, "end": end_date})
     return [
         {
-            "display_name": r[1], "department": r[2], "position": r[3],
-            "has_key": bool(r[4]), "last_active": str(r[5]) if r[5] else None,
+            "display_name": r[1],
+            "department": r[2],
+            "position": r[3],
+            "has_key": bool(r[4]),
+            "last_active": str(r[5]) if r[5] else None,
         }
         for r in result.fetchall()
     ]
 
-from repositories.efficiency_cost_repo import (
-    get_cost_attribution_detail,
-    get_cost_by_dept,
-    get_cost_by_dimension,
-    get_cost_by_type,
-    get_cost_detail_by_date,
-    get_cost_detail_by_department,
-    get_cost_detail_by_dimension,
-    get_cost_detail_by_mcp,
-    get_cost_detail_by_model,
-    get_cost_trend,
-    get_dept_per_capita_cost,
-    get_per_capita_cost_by_dimension,
-)
-from repositories.efficiency_budget_repo import (
-    get_all_keys_with_budget,
-    get_budget_used_for_key,
-    get_budget_used_for_keys,
-    get_cumulative_cost_by_date,
-    get_dept_budget_usage,
-    get_key_top10_budget,
-    get_project_budget_usage,
-)
-from repositories.efficiency_report_repo import (
-    create_report,
-    get_report_by_id,
-    list_reports,
-    list_suggestions_by_report,
-    update_suggestion_status,
-)
+

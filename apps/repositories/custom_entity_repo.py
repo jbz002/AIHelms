@@ -1,6 +1,7 @@
 """
 自定义实体 Repository 层
 """
+
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +12,9 @@ from services.visibility_service import list_visibility_clause
 # ─── Type CRUD ─────────────────────────────────────────────────────────────
 
 
-async def create_type(session: AsyncSession, type_def: CustomEntityType) -> CustomEntityType:
+async def create_type(
+    session: AsyncSession, type_def: CustomEntityType
+) -> CustomEntityType:
     """创建自定义实体类型"""
     session.add(type_def)
     await session.flush()
@@ -19,7 +22,9 @@ async def create_type(session: AsyncSession, type_def: CustomEntityType) -> Cust
     return type_def
 
 
-async def find_type_by_key(session: AsyncSession, type_key: str) -> CustomEntityType | None:
+async def find_type_by_key(
+    session: AsyncSession, type_key: str
+) -> CustomEntityType | None:
     """根据 type_key 查找类型"""
     result = await session.execute(
         select(CustomEntityType).where(CustomEntityType.type_key == type_key)
@@ -27,7 +32,9 @@ async def find_type_by_key(session: AsyncSession, type_key: str) -> CustomEntity
     return result.scalar_one_or_none()
 
 
-async def find_type_by_id(session: AsyncSession, type_id: int) -> CustomEntityType | None:
+async def find_type_by_id(
+    session: AsyncSession, type_id: int
+) -> CustomEntityType | None:
     """根据 ID 查找类型"""
     result = await session.execute(
         select(CustomEntityType).where(CustomEntityType.id == type_id)
@@ -70,7 +77,9 @@ async def count_types(
     return result.scalar_one()
 
 
-async def update_type(session: AsyncSession, type_def: CustomEntityType) -> CustomEntityType:
+async def update_type(
+    session: AsyncSession, type_def: CustomEntityType
+) -> CustomEntityType:
     """更新类型"""
     await session.flush()
     await session.refresh(type_def)
@@ -96,7 +105,9 @@ async def create_entity(session: AsyncSession, entity: CustomEntity) -> CustomEn
     return entity
 
 
-async def find_entity_by_id(session: AsyncSession, entity_id: int) -> CustomEntity | None:
+async def find_entity_by_id(
+    session: AsyncSession, entity_id: int
+) -> CustomEntity | None:
     """根据 ID 查找实例"""
     result = await session.execute(
         select(CustomEntity).where(CustomEntity.id == entity_id)

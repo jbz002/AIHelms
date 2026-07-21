@@ -300,9 +300,8 @@ async def sync_task_status(
     else:
         return None
 
-    if (
-        local_target == task.status
-        and (not remote_error_msg or remote_error_msg == task.error_message)
+    if local_target == task.status and (
+        not remote_error_msg or remote_error_msg == task.error_message
     ):
         return None
 

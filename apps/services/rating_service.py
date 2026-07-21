@@ -4,7 +4,8 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from exceptions import NotFoundError, ValidationError
+from core.distributed_lock import redis_lock
+from exceptions import LockBusyError, NotFoundError, ValidationError
 from models.entity_types import FEEDBACK_TYPES, MCP_SERVER, RATABLE_ENTITY_TYPES, SKILL
 from repositories import mcp_repo, rating_repo, skill_repo
 
@@ -42,12 +43,16 @@ async def rate(
 
     await _assert_entity_exists(session, entity_type, entity_id)
 
+    lock_key = f"aihelms:lock:rating:{entity_type}:{entity_id}"
     try:
-        await rating_repo.upsert_rating(
-            session, entity_type, entity_id, user_id, score, feedback_type, comment
-        )
-        stats = await rating_repo.recompute_stats(session, entity_type, entity_id)
-        await session.commit()
+        async with redis_lock(lock_key):
+            await rating_repo.upsert_rating(
+                session, entity_type, entity_id, user_id, score, feedback_type, comment
+            )
+            stats = await rating_repo.recompute_stats(session, entity_type, entity_id)
+            await session.commit()
+    except LockBusyError:
+        raise
     except Exception:
         await session.rollback()
         raise

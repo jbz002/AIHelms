@@ -2,14 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_db, require_permission
-from exceptions import NotFoundError, ConflictError
+from exceptions import ConflictError, NotFoundError
 from models.user import (
     CreateUserRequest,
-    UpdateUserRequest,
     ResetPasswordRequest,
-    UpdateUserRolesRequest,
     UpdateUserDepartmentsRequest,
     UpdateUserProjectsRequest,
+    UpdateUserRequest,
+    UpdateUserRolesRequest,
 )
 from services import user_service
 
@@ -73,7 +73,8 @@ async def update_user(
 ):
     try:
         user = await user_service.update_user(
-            session, user_id,
+            session,
+            user_id,
             email=req.email,
             phone=req.phone,
             display_name=req.display_name,

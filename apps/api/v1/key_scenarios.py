@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_db, require_permission
-from exceptions import NotFoundError, ConflictError
+from exceptions import ConflictError, NotFoundError
 from services import key_scenario_service
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,9 @@ async def list_scenarios(
     session: AsyncSession = Depends(get_db),
     _: dict = Depends(require_permission("user:read")),
 ):
-    result = await key_scenario_service.list_scenarios(session, page, page_size, keyword)
+    result = await key_scenario_service.list_scenarios(
+        session, page, page_size, keyword
+    )
     return {"code": 200, "message": "ok", "data": result}
 
 

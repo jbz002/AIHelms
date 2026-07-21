@@ -14,7 +14,7 @@ router = APIRouter(prefix="/efficiency")
 
 def _parse_scope_ids(scope_ids: str, scope_id: str, department: str) -> list[int]:
     raw = scope_ids or scope_id or department
-    return [int(item) for item in raw.split(',') if item.strip().isdigit()]
+    return [int(item) for item in raw.split(",") if item.strip().isdigit()]
 
 
 def _parse_period(period: str | None) -> tuple[date, date]:
@@ -148,7 +148,9 @@ async def get_adoption_resources(
         start, end = start_date, end_date
     else:
         start, end = _parse_period(period)
-    data = await efficiency_service.get_adoption_resources(session, start, end, type, dimension)
+    data = await efficiency_service.get_adoption_resources(
+        session, start, end, type, dimension
+    )
     return {"code": 200, "message": "ok", "data": data}
 
 

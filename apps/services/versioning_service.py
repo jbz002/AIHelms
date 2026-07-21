@@ -33,10 +33,17 @@ async def activate_version(
          维持部分唯一索引 uq_*_active 的单 active 不变式。
       3. master.current_version_id = version.id + apply_snapshot 拷贝运行时快照。
       4. 提交。
+
+    乐观锁：若版本模型带 lock_version 字段（SkillVersion），用 CAS 激活，
+    并发激活同一版本后提交者抛 ConflictError；MCPVersion 无该字段走原路径。
     """
     await on_sync(master, version)
     await repo.deactivate_others(session, parent_id, version.id)
-    await repo.set_active(session, version.id)
+    expected = getattr(version, "lock_version", None)
+    if expected is not None and hasattr(repo, "set_active_with_lock"):
+        await repo.set_active_with_lock(session, version.id, expected)
+    else:
+        await repo.set_active(session, version.id)
     master.current_version_id = version.id
     await apply_snapshot(master, version)
     await session.commit()
@@ -51,5 +58,9 @@ async def deprecate(
     """弃用版本。守卫：active 版本不可直接弃用（需先切换到其它版本）。"""
     if version.is_active:
         raise ValidationError("需先切换到其他版本再弃用")
-    await repo.mark_deprecated(session, version.id, sunset_date)
+    expected = getattr(version, "lock_version", None)
+    if expected is not None and hasattr(repo, "mark_deprecated_with_lock"):
+        await repo.mark_deprecated_with_lock(session, version.id, sunset_date, expected)
+    else:
+        await repo.mark_deprecated(session, version.id, sunset_date)
     await session.commit()

@@ -677,6 +677,7 @@ class ResourceApplication(Base):
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()
     )
+    lock_version: Mapped[int] = mapped_column(Integer, default=0)
 
     user: Mapped["User"] = relationship(foreign_keys=[user_id], lazy="selectin")
     reviewer: Mapped["User | None"] = relationship(
@@ -776,6 +777,7 @@ class EntityRating(Base):
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()
     )
+    lock_version: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class EntityRatingStats(Base):
@@ -1047,6 +1049,7 @@ class SkillVersion(Base):
         BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    lock_version: Mapped[int] = mapped_column(Integer, default=0)
 
     skill: Mapped["Skill"] = relationship(
         back_populates="versions", foreign_keys=[skill_id]
@@ -1161,8 +1164,48 @@ class AdminAuditLog(Base):
     user_agent: Mapped[str] = mapped_column(String(500), default="")
     duration_ms: Mapped[int] = mapped_column(Integer, default=0)
     request_summary: Mapped[str] = mapped_column(Text, default="")
+    request_id: Mapped[str] = mapped_column(String(64), default="")
+    detail: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class IdempotencyRecord(Base):
+    __tablename__ = "idempotency_records"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    key: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    response_code: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    response_body: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    expires_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+
+
+class StorageDeletionCompensation(Base):
+    __tablename__ = "storage_deletion_compensations"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    storage_path: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    retries: Mapped[int] = mapped_column(Integer, default=0)
+    last_error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

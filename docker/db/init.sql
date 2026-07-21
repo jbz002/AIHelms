@@ -521,7 +521,8 @@ CREATE TABLE IF NOT EXISTS aihelms.resource_applications (
     review_notes TEXT DEFAULT '',
     approval_config JSONB DEFAULT '{}',
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    lock_version INTEGER NOT NULL DEFAULT 0
 );
 
 -- MCP 调用日志
@@ -815,6 +816,7 @@ CREATE TABLE IF NOT EXISTS aihelms.skill_versions (
     last_validated_at TIMESTAMPTZ,
     created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    lock_version INTEGER NOT NULL DEFAULT 0,
     UNIQUE(skill_id, version)
 );
 
@@ -949,12 +951,45 @@ CREATE TABLE IF NOT EXISTS aihelms.admin_audit_logs (
     user_agent VARCHAR(500) DEFAULT '',
     duration_ms INT DEFAULT 0,
     request_summary TEXT DEFAULT '',        -- 脱敏后的 request body（完整存储，不截断）
+    request_id VARCHAR(64) NOT NULL DEFAULT '',  -- 请求链路 ID（中间件注入，供跨日志关联）
+    detail JSONB NOT NULL DEFAULT '{}',     -- 结构化扩展（scope/batch entity_ids 等）
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_logs_created_at ON aihelms.admin_audit_logs(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_user_id ON aihelms.admin_audit_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_audit_logs_action ON aihelms.admin_audit_logs(action);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_request_id
+    ON aihelms.admin_audit_logs(request_id) WHERE request_id <> '';
+
+-- 幂等记录（S6）：Idempotency-Key + request_hash 命中返回首次响应
+CREATE TABLE IF NOT EXISTS aihelms.idempotency_records (
+    id BIGSERIAL PRIMARY KEY,
+    key VARCHAR(128) NOT NULL UNIQUE,
+    entity_type VARCHAR(32) NOT NULL,
+    entity_id BIGINT,
+    request_hash VARCHAR(64) NOT NULL,
+    response_code SMALLINT,
+    response_body JSONB,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON aihelms.idempotency_records(expires_at);
+
+-- 存储删除补偿（S6）：DB 提交后删文件失败 → 补偿记录，定时重试
+CREATE TABLE IF NOT EXISTS aihelms.storage_deletion_compensations (
+    id BIGSERIAL PRIMARY KEY,
+    entity_type VARCHAR(32) NOT NULL,
+    entity_id BIGINT,
+    storage_path TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    retries INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    completed_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_storage_comp_status
+    ON aihelms.storage_deletion_compensations(status, created_at);
 
 -- 公共导出任务
 CREATE TABLE IF NOT EXISTS aihelms.export_tasks (
@@ -1355,6 +1390,7 @@ CREATE TABLE IF NOT EXISTS aihelms.entity_ratings (
     comment TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    lock_version INTEGER NOT NULL DEFAULT 0,
     UNIQUE(entity_type, entity_id, user_id)
 );
 

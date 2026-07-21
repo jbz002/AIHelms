@@ -23,7 +23,9 @@ async def authenticate(session: AsyncSession, username: str, password: str) -> U
     return user
 
 
-async def login(session: AsyncSession, username: str, password: str) -> tuple[str, User]:
+async def login(
+    session: AsyncSession, username: str, password: str
+) -> tuple[str, User]:
     user = await authenticate(session, username, password)
     permissions = await get_user_permissions(session, user.id)
     token_data = {
@@ -54,7 +56,8 @@ async def get_current_user_info(session: AsyncSession, user_id: int) -> dict:
     permissions = await get_user_permissions(session, user_id)
     departments = [
         {"id": ud.department.id, "name": ud.department.name}
-        for ud in user.departments if ud.department
+        for ud in user.departments
+        if ud.department
     ]
     return {
         "id": user.id,
@@ -68,12 +71,21 @@ async def get_current_user_info(session: AsyncSession, user_id: int) -> dict:
         "is_admin": user.is_admin,
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "permissions": permissions,
-        "roles": [{"id": ur.role.id, "name": ur.role.name, "display_name": ur.role.display_name} for ur in user.roles],
+        "roles": [
+            {
+                "id": ur.role.id,
+                "name": ur.role.name,
+                "display_name": ur.role.display_name,
+            }
+            for ur in user.roles
+        ],
         "departments": departments,
     }
 
 
-async def change_password(session: AsyncSession, user_id: int, old_password: str, new_password: str) -> None:
+async def change_password(
+    session: AsyncSession, user_id: int, old_password: str, new_password: str
+) -> None:
     result = await session.execute(select(User).where(User.id == user_id))
     user = result.scalar_one_or_none()
     if not user:
@@ -105,7 +117,9 @@ async def ensure_super_admin(password: str) -> None:
         if existing_admin:
             session.add(UserRole(user_id=existing_admin.id, role_id=admin_role.id))
             await session.commit()
-            logger.info("assigned super_admin role to existing admin user %d", existing_admin.id)
+            logger.info(
+                "assigned super_admin role to existing admin user %d", existing_admin.id
+            )
             return
 
         hashed = get_password_hash(password)

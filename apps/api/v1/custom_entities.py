@@ -1,6 +1,7 @@
 """
 自定义实体 API 路由
 """
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession

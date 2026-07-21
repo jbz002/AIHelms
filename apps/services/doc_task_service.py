@@ -62,7 +62,7 @@ def _from_crawl(task: object) -> dict:
     if task.status == "ingesting" and task.pages_ingested > 0:
         progress_text = f"入库 {task.pages_ingested}/{task.pages_crawled} 页"
     elif task.status == "ingested":
-        progress_text = f"已入库 {task.pages_crawled} 页"
+        progress_text = f"已入库 {task.pages_ingested} 页"
     else:
         progress_text = f"{task.pages_crawled}/{task.pages_total} 页"
     logger.debug(
@@ -147,8 +147,7 @@ async def list_tasks(
         cutoff = _date_cutoff(date_range)
         if cutoff:
             unified = [
-                u for u in unified
-                if u["created_at"] and u["created_at"] >= cutoff
+                u for u in unified if u["created_at"] and u["created_at"] >= cutoff
             ]
 
     unified.sort(key=lambda x: x["created_at"] or "", reverse=True)

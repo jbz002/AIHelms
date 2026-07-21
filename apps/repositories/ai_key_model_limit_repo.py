@@ -1,10 +1,12 @@
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import AiKeyModelLimit
 
 
-async def find_by_key_id(session: AsyncSession, ai_key_id: int) -> list[AiKeyModelLimit]:
+async def find_by_key_id(
+    session: AsyncSession, ai_key_id: int
+) -> list[AiKeyModelLimit]:
     result = await session.execute(
         select(AiKeyModelLimit)
         .where(AiKeyModelLimit.ai_key_id == ai_key_id)

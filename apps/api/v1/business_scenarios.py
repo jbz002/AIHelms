@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_db, require_permission
-from exceptions import NotFoundError, ConflictError
+from exceptions import ConflictError, NotFoundError
 from services import business_scenario_service
 
 logger = logging.getLogger(__name__)

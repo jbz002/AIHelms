@@ -1,10 +1,13 @@
-from sqlalchemy import select, func
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from exceptions import ConflictError
 from models.db import ResourceApplication
 
 
-async def create(session: AsyncSession, app: ResourceApplication) -> ResourceApplication:
+async def create(
+    session: AsyncSession, app: ResourceApplication
+) -> ResourceApplication:
     session.add(app)
     await session.flush()
     await session.refresh(app)
@@ -74,3 +77,34 @@ async def count_all(
         stmt = stmt.where(ResourceApplication.status == status)
     result = await session.execute(stmt)
     return result.scalar_one()
+
+
+async def update_status_with_lock(
+    session: AsyncSession,
+    app_id: int,
+    expected_lock_version: int,
+    *,
+    status: str,
+    reviewed_by: int,
+    reviewed_at,
+    review_notes: str,
+    approval_config: dict,
+) -> None:
+    """乐观锁审批状态流转：lock_version 不匹配（并发审批）→ ConflictError。"""
+    result = await session.execute(
+        update(ResourceApplication)
+        .where(
+            ResourceApplication.id == app_id,
+            ResourceApplication.lock_version == expected_lock_version,
+        )
+        .values(
+            status=status,
+            reviewed_by=reviewed_by,
+            reviewed_at=reviewed_at,
+            review_notes=review_notes,
+            approval_config=approval_config,
+            lock_version=expected_lock_version + 1,
+        )
+    )
+    if result.rowcount == 0:
+        raise ConflictError("该申请已被他人处理，请刷新重试")

@@ -9,6 +9,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from exceptions import (
     ConflictError,
     ForbiddenError,
+    LockBusyError,
     NotFoundError,
     UnauthorizedError,
     ValidationError,
@@ -30,6 +31,13 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(ConflictError)
     async def conflict_handler(request: Request, exc: ConflictError) -> JSONResponse:
+        return JSONResponse(
+            status_code=409,
+            content={"code": 409, "message": str(exc), "data": None},
+        )
+
+    @app.exception_handler(LockBusyError)
+    async def lock_busy_handler(request: Request, exc: LockBusyError) -> JSONResponse:
         return JSONResponse(
             status_code=409,
             content={"code": 409, "message": str(exc), "data": None},

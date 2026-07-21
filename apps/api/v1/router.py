@@ -30,6 +30,7 @@ from api.v1.resource_applications import router as resource_applications_router
 from api.v1.roles import router as roles_router
 from api.v1.search import router as search_router
 from api.v1.skills import router as skills_router
+from api.v1.storage_compensations import router as storage_compensations_router
 from api.v1.usage_logs import router as usage_logs_router
 from api.v1.usage_stats import router as usage_stats_router
 from api.v1.users import router as users_router
@@ -66,6 +67,7 @@ router.include_router(api_keys_router, tags=["安全"])
 router.include_router(ai_policies_router, tags=["安全"])
 router.include_router(usage_logs_router, tags=["资源审计"])
 router.include_router(export_tasks_router, tags=["资源审计"])
+router.include_router(storage_compensations_router, tags=["资源审计"])
 router.include_router(business_scenarios_router, tags=["AI 身份"])
 router.include_router(efficiency_router, tags=["AI 效能"])
 router.include_router(crawl_router, tags=["系统"])

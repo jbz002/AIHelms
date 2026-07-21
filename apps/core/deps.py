@@ -11,7 +11,7 @@ from core.api_key_utils import hash_api_key, looks_like_api_key
 from core.config import settings
 from core.database import async_session
 from core.security import ALGORITHM
-from repositories import api_key_repo, ai_key_repo
+from repositories import ai_key_repo, api_key_repo
 
 logger = logging.getLogger(__name__)
 

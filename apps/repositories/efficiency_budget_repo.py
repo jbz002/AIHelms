@@ -2,19 +2,26 @@
 
 from datetime import date
 
-from sqlalchemy import text, select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import AiKey
 
+
 async def get_all_keys_with_budget(session: AsyncSession) -> list[AiKey]:
     result = await session.execute(
-        select(AiKey).where(AiKey.is_active.is_(True), AiKey.budget_limit.isnot(None), AiKey.budget_limit > 0)
+        select(AiKey).where(
+            AiKey.is_active.is_(True),
+            AiKey.budget_limit.isnot(None),
+            AiKey.budget_limit > 0,
+        )
     )
     return list(result.scalars().all())
 
 
-async def get_budget_used_for_keys(session: AsyncSession, start_date: date, end_date: date) -> float:
+async def get_budget_used_for_keys(
+    session: AsyncSession, start_date: date, end_date: date
+) -> float:
     sql = text(
         "SELECT COALESCE(SUM(c.internal_cost), 0)"
         " FROM aihelms.cost_summary_daily c"
@@ -22,18 +29,32 @@ async def get_budget_used_for_keys(session: AsyncSession, start_date: date, end_
         " WHERE c.summary_date >= :start AND c.summary_date <= :end"
         " AND k.is_active = true AND k.budget_limit IS NOT NULL AND k.budget_limit > 0"
     )
-    return float((await session.execute(sql, {"start": start_date, "end": end_date})).scalar() or 0)
+    return float(
+        (await session.execute(sql, {"start": start_date, "end": end_date})).scalar()
+        or 0
+    )
 
 
-async def get_budget_used_for_key(session: AsyncSession, key_id: int, start_date: date, end_date: date) -> float:
+async def get_budget_used_for_key(
+    session: AsyncSession, key_id: int, start_date: date, end_date: date
+) -> float:
     sql = text(
         "SELECT COALESCE(SUM(internal_cost), 0) FROM aihelms.cost_summary_daily"
         " WHERE ai_key_id = :key_id AND summary_date >= :start AND summary_date <= :end"
     )
-    return float((await session.execute(sql, {"key_id": key_id, "start": start_date, "end": end_date})).scalar() or 0)
+    return float(
+        (
+            await session.execute(
+                sql, {"key_id": key_id, "start": start_date, "end": end_date}
+            )
+        ).scalar()
+        or 0
+    )
 
 
-async def get_dept_budget_usage(session: AsyncSession, start_date: date, end_date: date) -> list[dict]:
+async def get_dept_budget_usage(
+    session: AsyncSession, start_date: date, end_date: date
+) -> list[dict]:
     sql = text(
         "WITH user_key_budget AS ("
         " SELECT d.id, COALESCE(SUM(k.budget_limit), 0) AS budget, COUNT(DISTINCT k.id) AS key_count"
@@ -75,15 +96,26 @@ async def get_dept_budget_usage(session: AsyncSession, start_date: date, end_dat
     for r in result.fetchall():
         user_budget, user_used = float(r[2]), float(r[3])
         scope_budget, scope_used = float(r[5]), float(r[6])
-        rows.append({
-            "id": r[0], "name": r[1], "budget": user_budget + scope_budget, "used": user_used + scope_used,
-            "user_key_budget": user_budget, "user_key_used": user_used, "user_key_count": int(r[4]),
-            "scope_key_budget": scope_budget, "scope_key_used": scope_used, "scope_key_count": int(r[7]),
-        })
+        rows.append(
+            {
+                "id": r[0],
+                "name": r[1],
+                "budget": user_budget + scope_budget,
+                "used": user_used + scope_used,
+                "user_key_budget": user_budget,
+                "user_key_used": user_used,
+                "user_key_count": int(r[4]),
+                "scope_key_budget": scope_budget,
+                "scope_key_used": scope_used,
+                "scope_key_count": int(r[7]),
+            }
+        )
     return rows
 
 
-async def get_project_budget_usage(session: AsyncSession, start_date: date, end_date: date) -> list[dict]:
+async def get_project_budget_usage(
+    session: AsyncSession, start_date: date, end_date: date
+) -> list[dict]:
     sql = text(
         "WITH user_key_budget AS ("
         " SELECT p.id, COALESCE(SUM(k.budget_limit), 0) AS budget, COUNT(DISTINCT k.id) AS key_count"
@@ -125,15 +157,26 @@ async def get_project_budget_usage(session: AsyncSession, start_date: date, end_
     for r in result.fetchall():
         user_budget, user_used = float(r[2]), float(r[3])
         scope_budget, scope_used = float(r[5]), float(r[6])
-        rows.append({
-            "id": r[0], "name": r[1], "budget": user_budget + scope_budget, "used": user_used + scope_used,
-            "user_key_budget": user_budget, "user_key_used": user_used, "user_key_count": int(r[4]),
-            "scope_key_budget": scope_budget, "scope_key_used": scope_used, "scope_key_count": int(r[7]),
-        })
+        rows.append(
+            {
+                "id": r[0],
+                "name": r[1],
+                "budget": user_budget + scope_budget,
+                "used": user_used + scope_used,
+                "user_key_budget": user_budget,
+                "user_key_used": user_used,
+                "user_key_count": int(r[4]),
+                "scope_key_budget": scope_budget,
+                "scope_key_used": scope_used,
+                "scope_key_count": int(r[7]),
+            }
+        )
     return rows
 
 
-async def get_key_top10_budget(session: AsyncSession, start_date: date, end_date: date) -> list[dict]:
+async def get_key_top10_budget(
+    session: AsyncSession, start_date: date, end_date: date
+) -> list[dict]:
     sql = text(
         "SELECT k.id, k.name, k.owner_type, COALESCE(u.display_name, d.name, p.name, '') AS owner,"
         " k.key_type, k.budget_limit, COALESCE(SUM(c.internal_cost), 0) AS used"
@@ -149,12 +192,17 @@ async def get_key_top10_budget(session: AsyncSession, start_date: date, end_date
     result = await session.execute(sql, {"start": start_date, "end": end_date})
     return [
         {
-            "name": r[1], "owner_type": r[2], "owner": r[3] or "", "key_type": r[4],
-            "budget": float(r[5]), "used": float(r[6]),
+            "name": r[1],
+            "owner_type": r[2],
+            "owner": r[3] or "",
+            "key_type": r[4],
+            "budget": float(r[5]),
+            "used": float(r[6]),
             "rate": round(float(r[6]) / float(r[5]) * 100, 1) if float(r[5]) > 0 else 0,
         }
         for r in result.fetchall()
     ]
+
 
 async def get_cumulative_cost_by_date(
     session: AsyncSession, start_date: date, end_date: date
@@ -171,5 +219,3 @@ async def get_cumulative_cost_by_date(
         cumulative += float(r[1])
         rows.append({"date": str(r[0]), "actual": round(cumulative, 2)})
     return rows
-
-

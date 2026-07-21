@@ -1,4 +1,4 @@
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import AiKey
@@ -17,9 +17,7 @@ async def find_by_id(session: AsyncSession, key_id: int) -> AiKey | None:
 
 
 async def find_by_litellm_key_id(session: AsyncSession, token: str) -> AiKey | None:
-    result = await session.execute(
-        select(AiKey).where(AiKey.litellm_key_id == token)
-    )
+    result = await session.execute(select(AiKey).where(AiKey.litellm_key_id == token))
     return result.scalar_one_or_none()
 
 
@@ -74,7 +72,9 @@ async def find_all_main_keys(session: AsyncSession) -> list[AiKey]:
     return list(result.scalars().all())
 
 
-async def find_main_key(session: AsyncSession, owner_type: str, owner_id: int, key_type: str) -> AiKey | None:
+async def find_main_key(
+    session: AsyncSession, owner_type: str, owner_id: int, key_type: str
+) -> AiKey | None:
     result = await session.execute(
         select(AiKey).where(
             AiKey.owner_type == owner_type,

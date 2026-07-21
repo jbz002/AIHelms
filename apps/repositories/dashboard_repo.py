@@ -6,7 +6,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 
-async def get_range_status(session: AsyncSession, start_date: date, end_date: date) -> dict:
+async def get_range_status(
+    session: AsyncSession, start_date: date, end_date: date
+) -> dict:
     """Return dashboard data range status from platform tables."""
     sql = text("""
         WITH platform_logs AS (
@@ -40,7 +42,9 @@ async def get_range_status(session: AsyncSession, start_date: date, end_date: da
     }
 
 
-async def get_request_trend(session: AsyncSession, start_date: date, end_date: date) -> list[dict]:
+async def get_request_trend(
+    session: AsyncSession, start_date: date, end_date: date
+) -> list[dict]:
     days = (end_date - start_date).days + 1
     if days <= 1:
         llm_sql = text("""
@@ -62,7 +66,9 @@ async def get_request_trend(session: AsyncSession, start_date: date, end_date: d
         ]:
             for row in result.fetchall():
                 hourly[int(row[0])] += int(row[1])
-        return [{"label": f"{h}:00", "hour": h, "requests": c} for h, c in hourly.items()]
+        return [
+            {"label": f"{h}:00", "hour": h, "requests": c} for h, c in hourly.items()
+        ]
 
     sql = text("""
         WITH platform_logs AS (

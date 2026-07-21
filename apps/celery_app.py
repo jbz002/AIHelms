@@ -48,6 +48,10 @@ celery_app.conf.beat_schedule = {
         "task": "export_task.cleanup",
         "schedule": crontab(hour=3, minute=30),
     },
+    "retry-storage-compensations": {
+        "task": "storage_deletion_compensation.retry",
+        "schedule": crontab(minute=15),
+    },
 }
 
 # 显式导入 tasks 包以注册所有 celery 任务

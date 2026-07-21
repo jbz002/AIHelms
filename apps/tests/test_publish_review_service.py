@@ -45,7 +45,9 @@ async def _make_skill() -> int:
 
 async def _cleanup_skill(skill_id: int) -> None:
     async with _session() as s:
-        await s.execute(delete(PublishReview).where(PublishReview.entity_id == skill_id))
+        await s.execute(
+            delete(PublishReview).where(PublishReview.entity_id == skill_id)
+        )
         await s.execute(delete(SkillVersion).where(SkillVersion.skill_id == skill_id))
         await s.execute(delete(Skill).where(Skill.id == skill_id))
         await s.commit()
@@ -93,7 +95,9 @@ async def test_approve_sets_published():
         await session.close()
 
         session = _session()
-        updated = await publish_review_service.approve(session, review.id, user_id, notes="ok")
+        updated = await publish_review_service.approve(
+            session, review.id, user_id, notes="ok"
+        )
         await session.close()
         assert updated.status == "approved"
 
@@ -116,7 +120,9 @@ async def test_reject_keeps_unpublished():
         await session.close()
 
         session = _session()
-        updated = await publish_review_service.reject(session, review.id, user_id, notes="no")
+        updated = await publish_review_service.reject(
+            session, review.id, user_id, notes="no"
+        )
         await session.close()
         assert updated.status == "rejected"
 

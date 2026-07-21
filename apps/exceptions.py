@@ -23,3 +23,11 @@ class UnauthorizedError(Exception):
 class ValidationError(Exception):
     def __init__(self, message: str):
         super().__init__(message)
+
+
+class LockBusyError(Exception):
+    """分布式锁被占用：重算类操作已有另一 worker 在执行。"""
+
+    def __init__(self, key: str):
+        super().__init__(f"操作正在进行中，请稍后重试: {key}")
+        self.key = key

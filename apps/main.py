@@ -4,10 +4,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from api.v1.router import router as api_v1_router
-from core.audit import AuditLogMiddleware
+from core.audit import AuditLogMiddleware, RequestIdMiddleware
 from core.config import settings
 from core.database import close_engine
 from core.exception_handlers import register_exception_handlers
+from core.idempotency import IdempotencyMiddleware
 from core.logging import setup_logging
 from core.migrate import run_migrations
 from services.auth_service import ensure_super_admin
@@ -61,6 +62,8 @@ app = FastAPI(
 )
 
 app.add_middleware(AuditLogMiddleware)
+app.add_middleware(IdempotencyMiddleware)
+app.add_middleware(RequestIdMiddleware)
 register_exception_handlers(app)
 app.include_router(api_v1_router, prefix="/api/v1")
 

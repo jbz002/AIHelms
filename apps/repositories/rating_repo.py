@@ -3,9 +3,10 @@
 手动 lookup-then-update-or-create（无 ON CONFLICT），聚合走 text()。
 """
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from exceptions import ConflictError
 from models.db import EntityRating, EntityRatingStats
 
 
@@ -33,10 +34,21 @@ async def upsert_rating(
 ) -> EntityRating:
     existing = await find_my_rating(session, entity_type, entity_id, user_id)
     if existing:
-        existing.score = score
-        existing.feedback_type = feedback_type
-        existing.comment = comment
-        await session.flush()
+        result = await session.execute(
+            update(EntityRating)
+            .where(
+                EntityRating.id == existing.id,
+                EntityRating.lock_version == existing.lock_version,
+            )
+            .values(
+                score=score,
+                feedback_type=feedback_type,
+                comment=comment,
+                lock_version=existing.lock_version + 1,
+            )
+        )
+        if result.rowcount == 0:
+            raise ConflictError("评分已被他人修改，请刷新重试")
         await session.refresh(existing)
         return existing
 
