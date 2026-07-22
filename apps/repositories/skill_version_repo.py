@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -161,3 +161,55 @@ async def update_security_status(
             latest_ai_policies_audit_id=audit_id,
         )
     )
+
+
+# ─── Drift detection (S9) ────────────────────────────────────────────────────
+
+
+async def list_url_active(
+    session: AsyncSession, limit: int = 100
+) -> list[SkillVersion]:
+    """所有 source_type='url' 且 lifecycle_status='active' 的版本。
+
+    从未检测的（last_drift_check_at IS NULL）优先，其次按最早检测时间，
+    确保长期未检查的版本先被扫描。limit 控制单批扫描量。
+    """
+    stmt = (
+        select(SkillVersion)
+        .where(
+            SkillVersion.source_type == "url",
+            SkillVersion.lifecycle_status == "active",
+        )
+        .order_by(SkillVersion.last_drift_check_at.asc().nullsfirst())
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def update_drift_status(
+    session: AsyncSession,
+    version_id: int,
+    *,
+    drift_detected: bool,
+    drifted_files: list[str],
+    check_error: str = "",
+) -> None:
+    """回写漂移检测结果。check_error 非空表示本次拉取失败（此时 drift_detected 应为 False）。"""
+    await session.execute(
+        update(SkillVersion)
+        .where(SkillVersion.id == version_id)
+        .values(
+            drift_detected=drift_detected,
+            drifted_files=drifted_files,
+            drift_check_error=check_error,
+            last_drift_check_at=datetime.now(timezone.utc),
+        )
+    )
+
+
+async def find_next_version_candidate(
+    session: AsyncSession, skill_id: int, candidate: str
+) -> SkillVersion | None:
+    """查询候选版本号是否已被占用（resync 自动 bump 冲突重试用）。"""
+    return await find_by_skill_and_version(session, skill_id, candidate)

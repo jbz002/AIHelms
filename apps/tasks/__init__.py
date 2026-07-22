@@ -5,4 +5,5 @@ from tasks.efficiency_tasks import *  # noqa: F401, F403
 from tasks.export_task_tasks import *  # noqa: F401, F403
 from tasks.llm_log_tasks import *  # noqa: F401, F403
 from tasks.mcp_tasks import *  # noqa: F401, F403
+from tasks.skill_drift_tasks import *  # noqa: F401, F403
 from tasks.storage_compensation_tasks import *  # noqa: F401, F403

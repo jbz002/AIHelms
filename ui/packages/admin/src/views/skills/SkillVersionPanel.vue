@@ -6,6 +6,8 @@ import {
   activateSkillVersion,
   deprecateSkillVersion,
   createSkillVersionSecurityAudit,
+  checkSkillVersionDrift,
+  resyncSkillVersion,
   toast,
   usePermission,
   type Skill,
@@ -32,6 +34,9 @@ const loading = ref(false)
 const actingId = ref<number | null>(null)
 const showCreate = ref(false)
 const deprecateTarget = ref<SkillVersion | null>(null)
+const checkingDriftId = ref<number | null>(null)
+const resyncTarget = ref<SkillVersion | null>(null)
+const resyncVersion = ref('')
 
 const form = ref({
   version: '',
@@ -156,6 +161,68 @@ function openCreate(): void {
   showCreate.value = true
 }
 
+async function handleCheckDrift(v: SkillVersion): Promise<void> {
+  checkingDriftId.value = v.id
+  try {
+    await checkSkillVersionDrift(props.skillId, v.id)
+    toast.success('漂移检测完成')
+    await loadVersions()
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '漂移检测失败')
+  } finally {
+    checkingDriftId.value = null
+  }
+}
+
+function openResync(v: SkillVersion): void {
+  resyncTarget.value = v
+  resyncVersion.value = ''
+}
+
+async function confirmResync(): Promise<void> {
+  if (!resyncTarget.value) return
+  const target = resyncTarget.value
+  actingId.value = target.id
+  try {
+    await resyncSkillVersion(
+      props.skillId,
+      target.id,
+      resyncVersion.value.trim() || undefined,
+    )
+    toast.success('已创建新版本，请完成安全审查后再激活')
+    resyncTarget.value = null
+    await loadVersions()
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '重新同步失败')
+  } finally {
+    actingId.value = null
+  }
+}
+
+function driftBadge(
+  v: SkillVersion,
+): { cls: string; label: string; tip: string } | null {
+  if (v.source_type !== 'url') return null
+  if (v.drift_detected) {
+    return {
+      cls: 'bg-red-50 text-red-600',
+      label: '内容漂移',
+      tip: `变更文件：${(v.drifted_files ?? []).join(', ') || '—'}`,
+    }
+  }
+  if (v.drift_check_error) {
+    return { cls: 'bg-amber-50 text-amber-600', label: '检测失败', tip: v.drift_check_error }
+  }
+  if (v.last_drift_check_at) {
+    return {
+      cls: 'bg-slate-100 text-slate-500',
+      label: '已检测',
+      tip: `上次检测：${new Date(v.last_drift_check_at).toLocaleString()}`,
+    }
+  }
+  return { cls: 'bg-slate-100 text-slate-400', label: '待检测', tip: '尚未执行漂移检测' }
+}
+
 function handleZipChange(event: Event): void {
   const target = event.target as HTMLInputElement
   const file = target.files?.[0] || null
@@ -249,6 +316,12 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
         <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px]" :class="securityBadge(v).cls">
           {{ securityBadge(v).label }}
         </span>
+        <span
+          v-if="driftBadge(v)"
+          class="shrink-0 cursor-help rounded px-1.5 py-0.5 text-[10px]"
+          :class="driftBadge(v)!.cls"
+          :title="driftBadge(v)!.tip"
+        >{{ driftBadge(v)!.label }}</span>
         <div v-if="canManage || canScan" class="flex shrink-0 gap-1">
           <button
             v-if="canScan && !v.is_active && v.security_status !== 'queued' && v.security_status !== 'running'"
@@ -273,6 +346,21 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             @click="deprecateTarget = v"
           >
             弃用
+          </button>
+          <button
+            v-if="canManage && v.source_type === 'url'"
+            class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-200 disabled:opacity-50"
+            :disabled="checkingDriftId === v.id"
+            @click="handleCheckDrift(v)"
+          >
+            {{ checkingDriftId === v.id ? '...' : '检测漂移' }}
+          </button>
+          <button
+            v-if="canManage && v.source_type === 'url' && v.drift_detected"
+            class="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600 hover:bg-amber-100"
+            @click="openResync(v)"
+          >
+            重新同步
           </button>
         </div>
       </div>
@@ -320,6 +408,36 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
         <div class="flex justify-end gap-3">
           <button class="rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-700 hover:bg-slate-200" @click="showCreate = false">取消</button>
           <button class="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700" @click="handleCreate">创建</button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="resyncTarget"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
+    >
+      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
+        <h3 class="mb-2 text-lg font-semibold text-slate-900">重新同步漂移版本</h3>
+        <p class="mb-3 text-sm text-slate-500">
+          将重新拉取版本 <span class="font-mono">v{{ resyncTarget.version }}</span> 的源内容并作为新版本入库。新版本需通过安全审查后才能激活。
+        </p>
+        <div class="mb-4">
+          <label class="mb-1 block text-xs font-medium text-slate-600">新版本号（留空自动 +patch）</label>
+          <input
+            v-model="resyncVersion"
+            placeholder="如 1.0.1"
+            class="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-amber-500 focus:outline-none"
+          />
+        </div>
+        <div class="flex justify-end gap-3">
+          <button class="rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-700 hover:bg-slate-200" @click="resyncTarget = null">取消</button>
+          <button
+            class="rounded-lg bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+            :disabled="actingId === resyncTarget.id"
+            @click="confirmResync"
+          >
+            {{ actingId === resyncTarget.id ? '同步中…' : '确认重新同步' }}
+          </button>
         </div>
       </div>
     </div>

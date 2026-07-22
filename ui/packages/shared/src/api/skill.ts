@@ -139,6 +139,27 @@ export function createSkillVersionSecurityAudit(
   )
 }
 
+export function checkSkillVersionDrift(
+  skillId: number,
+  versionId: number,
+): Promise<SkillVersion> {
+  return request<SkillVersion>(
+    `/api/v1/skills/${skillId}/versions/${versionId}/drift-check`,
+    { method: 'POST' },
+  )
+}
+
+export function resyncSkillVersion(
+  skillId: number,
+  versionId: number,
+  newVersion?: string,
+): Promise<SkillVersion> {
+  return request<SkillVersion>(
+    `/api/v1/skills/${skillId}/versions/${versionId}/resync`,
+    { method: 'POST', body: { new_version: newVersion ?? null } },
+  )
+}
+
 export function getSkillDownloadUrl(id: number): string {
   return `/api/v1/skills/${id}/download`
 }

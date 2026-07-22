@@ -8,7 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_ai_key_identity, get_current_user, get_db, require_permission
 from exceptions import ConflictError, NotFoundError, ValidationError
-from services import ai_policies_service, skill_service, skill_view_service
+from services import (
+    ai_policies_service,
+    skill_drift_service,
+    skill_service,
+    skill_view_service,
+)
 from services.visibility_service import can_access
 
 router = APIRouter(prefix="/skills", tags=["skills"])
@@ -22,6 +27,10 @@ class CreateCategoryRequest(BaseModel):
 
 class DeprecateVersionRequest(BaseModel):
     sunset_date: datetime | None = None
+
+
+class ResyncVersionRequest(BaseModel):
+    new_version: str | None = Field(None, max_length=64)
 
 
 @router.get("/categories")
@@ -296,6 +305,58 @@ async def create_skill_version_ai_policies_audit(
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return {"code": 200, "message": "审查任务已创建", "data": data}
+
+
+@router.post(
+    "/{skill_id}/versions/{version_id}/drift-check",
+    summary="立即检测版本漂移",
+)
+async def check_skill_version_drift(
+    skill_id: int,
+    version_id: int,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("skill:update")),
+):
+    """重新拉取 url 源内容并比对 hash，回写 drift 字段。ZIP 模式版本返回 400。"""
+    try:
+        data = await skill_drift_service.check_single_drift(session, version_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 或版本不存在")
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "漂移检测完成", "data": data}
+
+
+@router.post(
+    "/{skill_id}/versions/{version_id}/resync",
+    summary="重新同步漂移版本",
+)
+async def resync_skill_version(
+    skill_id: int,
+    version_id: int,
+    req: ResyncVersionRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_permission("skill:update")),
+):
+    """把漂移版本当前源内容作为新版本入库（inactive + 未审查，需后续审查→激活）。"""
+    try:
+        data = await skill_drift_service.resync_as_new_version(
+            session,
+            version_id,
+            new_version=req.new_version,
+            created_by=current_user["id"],
+        )
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 或版本不存在")
+    except ConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {
+        "code": 200,
+        "message": "已创建新版本，请完成安全审查后再激活",
+        "data": data,
+    }
 
 
 @router.post("", summary="创建 Skill")

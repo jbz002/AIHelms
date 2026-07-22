@@ -4,6 +4,7 @@ import {
   getSkillSummary,
   getSkillFull,
   getSkillIntegrity,
+  checkSkillVersionDrift,
   usePermission,
   type SkillSummaryView,
   type SkillFullView,
@@ -11,7 +12,7 @@ import {
   type ManifestFile,
 } from '@aihelms/shared'
 import MarkdownRenderer from '@aihelms/shared/src/components/MarkdownRenderer.vue'
-import { ChevronDown, ChevronUp, FileCheck, ShieldCheck, CheckCircle2, AlertTriangle, XCircle } from 'lucide-vue-next'
+import { ChevronDown, ChevronUp, ShieldCheck, CheckCircle2, AlertTriangle, XCircle } from 'lucide-vue-next'
 import { toast } from '@aihelms/shared'
 
 interface Props {
@@ -29,6 +30,7 @@ const integrityData = ref<SkillIntegrityView | null>(null)
 const summaryLoading = ref(false)
 const fullLoading = ref(false)
 const showIntegrity = ref(false)
+const checkingDrift = ref(false)
 
 async function loadSummary(): Promise<void> {
   if (summaryData.value) return
@@ -54,12 +56,27 @@ async function loadFull(): Promise<void> {
   }
 }
 
-async function loadIntegrity(): Promise<void> {
-  if (integrityData.value) return
+async function loadIntegrity(force = false): Promise<void> {
+  if (!force && integrityData.value) return
   try {
     integrityData.value = await getSkillIntegrity(props.skillId)
   } catch {
     toast.error('加载完整性信息失败')
+  }
+}
+
+async function handleCheckDrift(): Promise<void> {
+  if (!integrityData.value?.version_id) return
+  checkingDrift.value = true
+  try {
+    await checkSkillVersionDrift(props.skillId, integrityData.value.version_id)
+    integrityData.value = null
+    await loadIntegrity(true)
+    toast.success('漂移检测完成')
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '漂移检测失败')
+  } finally {
+    checkingDrift.value = false
   }
 }
 
@@ -258,9 +275,27 @@ watch(
             <span class="min-w-28 shrink-0 text-gray-500">source_type</span>
             <span class="text-gray-700">{{ integrityData.source_type }}</span>
           </div>
-          <div v-if="integrityData.drift_detected" class="rounded-lg bg-amber-50 px-3 py-2 text-amber-700">
-            <FileCheck class="mr-1 inline h-4 w-4" />
-            检测到内容漂移，文件：{{ integrityData.drifted_files.join(', ') }}
+          <div v-if="integrityData.source_type === 'url' && integrityData.version_id" class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs text-gray-500">
+                上次检测：{{ integrityData.last_drift_check_at ? new Date(integrityData.last_drift_check_at).toLocaleString() : '未检测' }}
+              </span>
+              <button
+                class="rounded px-2 py-0.5 text-xs font-medium text-gray-600 hover:bg-gray-200 disabled:opacity-50"
+                :disabled="checkingDrift"
+                @click="handleCheckDrift"
+              >
+                {{ checkingDrift ? '检测中…' : '立即检测' }}
+              </button>
+            </div>
+            <div v-if="integrityData.drift_detected" class="mt-2 flex items-start gap-1 text-amber-700">
+              <AlertTriangle class="mt-0.5 h-4 w-4 shrink-0" />
+              <span class="text-sm">检测到内容漂移，变更文件：{{ integrityData.drifted_files.join(', ') }}</span>
+            </div>
+            <div v-if="integrityData.drift_check_error" class="mt-2 flex items-start gap-1 text-red-600">
+              <XCircle class="mt-0.5 h-4 w-4 shrink-0" />
+              <span class="text-sm">上次检测失败：{{ integrityData.drift_check_error }}</span>
+            </div>
           </div>
           <!-- manifest 文件清单（按 category 分组） -->
           <div v-if="manifestGroups.length">

@@ -44,6 +44,7 @@ export {
   createSkillCategory, deleteSkillCategory,
   getSkillVersions, createSkillVersion, activateSkillVersion,
   deprecateSkillVersion, createSkillVersionSecurityAudit,
+  checkSkillVersionDrift, resyncSkillVersion,
   getSkillSummary, getSkillFull, getSkillIntegrity,
 } from './api/skill'
 export type { AiPolicyAudit, AiPolicyAuditSummary, AiPolicyAuditListResult, AiPolicyAuditQuery, AiPolicyFinding, AiPolicyAuditFileSummary, AiPolicyRiskCatalogItem, AiPolicySettings, AiPolicyVerdict, AiPolicyName, AiPolicyPreset, AiPolicySignatureRule, AiPolicySignatureRules, AiPolicyAuditHistoryItem } from './types/aiPolicies'

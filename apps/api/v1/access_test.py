@@ -3,7 +3,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.deps import get_db, require_permission
+from core.deps import get_current_user, get_db
 from models.db import Model
 from repositories import model_repo
 from services import access_test_service
@@ -50,7 +50,7 @@ class TestRerankRequest(BaseModel):
 async def test_access(
     req: TestAccessRequest,
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("user:read")),
+    current_user: dict = Depends(get_current_user),
 ):
     # 自动判断模型类型
     model_id = req.model
@@ -151,7 +151,7 @@ async def _resolve_model(
 async def test_embedding(
     req: TestEmbeddingRequest,
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("user:read")),
+    current_user: dict = Depends(get_current_user),
 ):
     model_obj, test_model = await _resolve_model(session, req.model)
     user_key, error_detail = await precheck_access_test(
@@ -179,7 +179,7 @@ async def test_embedding(
 async def test_rerank(
     req: TestRerankRequest,
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("user:read")),
+    current_user: dict = Depends(get_current_user),
 ):
     model_obj, test_model = await _resolve_model(session, req.model)
     user_key, error_detail = await precheck_access_test(

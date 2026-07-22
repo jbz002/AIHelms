@@ -74,6 +74,10 @@ dev/test0525
 # Test reports (local only)
 dev/test/
 
+# Local task artifacts (not source)
+task-record-*.png
+docs/测试.docx
+
 # playwright test
 
 .playwright*

@@ -38,6 +38,11 @@ def _serialize_version(v: SkillVersion) -> dict:
         "composite_hash": v.composite_hash,
         "file_hashes": v.file_hashes,
         "drift_detected": v.drift_detected,
+        "drifted_files": v.drifted_files or [],
+        "last_drift_check_at": (
+            v.last_drift_check_at.isoformat() if v.last_drift_check_at else None
+        ),
+        "drift_check_error": v.drift_check_error or "",
         "protocol_valid": v.protocol_valid,
         "protocol_errors": v.protocol_errors,
         "last_validated_at": (

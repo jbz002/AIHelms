@@ -88,6 +88,7 @@ export interface SkillVersion {
   drift_detected: boolean
   drifted_files: string[]
   last_drift_check_at: string | null
+  drift_check_error?: string
   protocol_valid: boolean
   protocol_errors: ProtocolIssue[]
   last_validated_at: string | null
@@ -141,6 +142,7 @@ export interface SkillFullView {
 
 export interface SkillIntegrityView {
   skill_id: number
+  version_id: number | null
   version: string
   source_type: string
   composite_hash: string
@@ -149,6 +151,7 @@ export interface SkillIntegrityView {
   drift_detected: boolean
   drifted_files: string[]
   last_drift_check_at: string | null
+  drift_check_error?: string
   protocol_valid: boolean
   protocol_errors: ProtocolIssue[]
 }

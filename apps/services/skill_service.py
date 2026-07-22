@@ -209,6 +209,8 @@ async def create_skill(
         is_active=True,
         lifecycle_status="active",
         source="manual",
+        source_type="url" if source_url else "zip",
+        source_url=source_url or "",
         zip_path=zip_path,
         zip_size=zip_size,
         zip_filename=zip_filename,
@@ -513,6 +515,7 @@ async def create_version(
     usage_instructions: str = "",
     change_log: str = "",
     source: str = "manual",
+    source_url: str = "",
     created_by: int | None = None,
 ) -> dict:
     skill = await skill_repo.find_by_id(session, skill_id)
@@ -528,6 +531,8 @@ async def create_version(
         is_active=False,
         lifecycle_status="inactive",
         source=source,
+        source_type="url" if source_url else "zip",
+        source_url=source_url or "",
         agent_install_prompt=agent_install_prompt or skill.agent_install_prompt,
         usage_instructions=usage_instructions or skill.usage_instructions,
         change_log=change_log,

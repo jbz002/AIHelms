@@ -1040,6 +1040,7 @@ class SkillVersion(Base):
     drift_detected: Mapped[bool] = mapped_column(Boolean, default=False)
     drifted_files: Mapped[list] = mapped_column(JSONB, default=list)
     last_drift_check_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    drift_check_error: Mapped[str] = mapped_column(Text, default="")
     protocol_valid: Mapped[bool] = mapped_column(Boolean, default=False)
     protocol_errors: Mapped[list] = mapped_column(JSONB, default=list)
     last_validated_at: Mapped[datetime | None] = mapped_column(
