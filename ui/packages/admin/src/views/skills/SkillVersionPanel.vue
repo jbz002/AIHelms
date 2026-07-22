@@ -13,12 +13,16 @@ import {
   approveSkillVersionReview,
   rejectSkillVersionReview,
   withdrawSkillVersionReview,
+  listSkillTags,
+  createOrMoveSkillTag,
+  deleteSkillTag,
   toast,
   usePermission,
   type Skill,
   type SkillVersion,
+  type SkillTag,
 } from '@aihelms/shared'
-import { Plus, GitBranch, CheckCircle2, AlertTriangle, Archive, ShieldCheck } from 'lucide-vue-next'
+import { Plus, GitBranch, CheckCircle2, AlertTriangle, Archive, ShieldCheck, Tag } from 'lucide-vue-next'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 
 interface Props {
@@ -44,6 +48,10 @@ const checkingDriftId = ref<number | null>(null)
 const resyncTarget = ref<SkillVersion | null>(null)
 const resyncVersion = ref('')
 
+const tags = ref<SkillTag[]>([])
+const tagTarget = ref<SkillVersion | null>(null)
+const tagName = ref('')
+
 const form = ref({
   version: '',
   version_label: '',
@@ -60,10 +68,55 @@ async function loadVersions(): Promise<void> {
   loading.value = true
   try {
     versions.value = await getSkillVersions(props.skillId, true)
+    await loadTags()
   } catch (e) {
     toast.error((e as { message?: string }).message || '加载版本失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function loadTags(): Promise<void> {
+  try {
+    tags.value = await listSkillTags(props.skillId)
+  } catch {
+    tags.value = []
+  }
+}
+
+function tagsForVersion(v: SkillVersion): SkillTag[] {
+  return tags.value.filter((t) => t.version_id === v.id)
+}
+
+function openTagDialog(v: SkillVersion): void {
+  tagTarget.value = v
+  tagName.value = ''
+}
+
+async function confirmSetTag(): Promise<void> {
+  if (!tagTarget.value) return
+  const name = tagName.value.trim()
+  if (!name) {
+    toast.error('请填写标签名')
+    return
+  }
+  try {
+    await createOrMoveSkillTag(props.skillId, name, tagTarget.value.id)
+    toast.success(`标签 ${name} 已设置到版本 ${tagTarget.value.version}`)
+    tagName.value = ''
+    await loadTags()
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '设置标签失败')
+  }
+}
+
+async function handleRemoveTag(name: string): Promise<void> {
+  try {
+    await deleteSkillTag(props.skillId, name)
+    toast.success(`标签 ${name} 已删除`)
+    await loadTags()
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '删除标签失败')
   }
 }
 
@@ -405,6 +458,17 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
         <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px]" :class="securityBadge(v).cls">
           {{ securityBadge(v).label }}
         </span>
+        <div v-if="tagsForVersion(v).length" class="flex shrink-0 gap-1">
+          <span
+            v-for="t in tagsForVersion(v)"
+            :key="t.id"
+            class="rounded px-1.5 py-0.5 text-[10px]"
+            :class="t.is_system ? 'bg-slate-200 text-slate-500' : 'bg-purple-50 text-purple-600'"
+            :title="t.is_system ? '系统保留标签（只读，由最新已发布版本推导）' : `版本别名 → v${v.version}`"
+          >
+            {{ t.tag_name }}
+          </span>
+        </div>
         <span
           v-if="driftBadge(v)"
           class="shrink-0 cursor-help rounded px-1.5 py-0.5 text-[10px]"
@@ -412,6 +476,13 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
           :title="driftBadge(v)!.tip"
         >{{ driftBadge(v)!.label }}</span>
         <div v-if="canManage || canScan" class="flex shrink-0 gap-1">
+          <button
+            v-if="canManage"
+            class="rounded bg-purple-50 px-1.5 py-0.5 text-[10px] text-purple-600 hover:bg-purple-100"
+            @click="openTagDialog(v)"
+          >
+            <Tag class="mr-0.5 inline h-3 w-3" />标签
+          </button>
           <button
             v-if="canScan && !v.is_active && v.security_status !== 'queued' && v.security_status !== 'running'"
             class="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-600 hover:bg-indigo-100 disabled:opacity-50"
@@ -575,6 +646,50 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
           >
             {{ actingId === resyncTarget.id ? '同步中…' : '确认重新同步' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="tagTarget"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
+    >
+      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
+        <h3 class="mb-2 text-lg font-semibold text-slate-900">
+          版本标签 · v{{ tagTarget.version }}
+        </h3>
+        <p class="mb-3 text-xs text-slate-500">
+          标签指向具体版本（如 beta/stable），同名标签设置到新版本即移动。<span class="text-slate-400">latest 为系统保留，随最新已发布版本自动更新。</span>
+        </p>
+        <div v-if="tagsForVersion(tagTarget).length" class="mb-3 flex flex-wrap gap-1.5">
+          <span
+            v-for="t in tagsForVersion(tagTarget)"
+            :key="t.id"
+            class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px]"
+            :class="t.is_system ? 'bg-slate-200 text-slate-500' : 'bg-purple-50 text-purple-600'"
+          >
+            {{ t.tag_name }}
+            <button
+              v-if="!t.is_system"
+              class="text-purple-400 hover:text-purple-700"
+              @click="handleRemoveTag(t.tag_name)"
+            >×</button>
+          </span>
+        </div>
+        <div class="mb-4 flex gap-2">
+          <input
+            v-model="tagName"
+            placeholder="如 beta / stable"
+            class="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-purple-500 focus:outline-none"
+            @keyup.enter="confirmSetTag"
+          />
+          <button
+            class="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+            @click="confirmSetTag"
+          >设置</button>
+        </div>
+        <div class="flex justify-end">
+          <button class="rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-700 hover:bg-slate-200" @click="tagTarget = null">关闭</button>
         </div>
       </div>
     </div>

@@ -12,12 +12,14 @@ from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import Skill, SkillCategory, SkillUsageLog, SkillVersion
 from repositories import (
     ai_policies_repo,
+    skill_label_repo,
     skill_repo,
     skill_review_repo,
+    skill_tag_repo,
     skill_version_repo,
     storage_deletion_compensation_repo,
 )
-from services import versioning_service
+from services import skill_tag_service, versioning_service
 from services.skill_content_service import ParsedSkillContent
 from services.skill_lifecycle_service import (
     DRAFT,
@@ -122,7 +124,10 @@ async def list_skills(
         is_admin=is_admin,
     )
     latest_audit_map = await _latest_audit_map(session, items)
-    serialized = [_serialize(s, latest_audit_map) for s in items]
+    label_map = await skill_label_repo.map_by_skills(session, [s.id for s in items])
+    serialized = [
+        _serialize(s, latest_audit_map, labels=label_map.get(s.id)) for s in items
+    ]
     from services import rating_service
 
     await rating_service.enrich_items_with_ratings(session, "skill", serialized)
@@ -139,7 +144,25 @@ async def get_skill(session: AsyncSession, skill_id: int) -> dict:
     if not skill:
         raise NotFoundError("skill", skill_id)
     latest_audit_map = await _latest_audit_map(session, [skill])
-    return _serialize(skill, latest_audit_map)
+    version_tags_map = await _build_version_tags_map(session, skill.id)
+    labels = await skill_label_repo.list_by_skill(session, skill_id)
+    return _serialize(
+        skill,
+        latest_audit_map,
+        labels=labels,
+        version_tags_map=version_tags_map,
+    )
+
+
+async def _build_version_tags_map(
+    session: AsyncSession, skill_id: int
+) -> dict[int, list[str]]:
+    """单 skill 详情：按 version_id 分组的 tag_name 映射。"""
+    tags = await skill_tag_repo.find_by_skill(session, skill_id)
+    mapping: dict[int, list[str]] = {}
+    for tag in tags:
+        mapping.setdefault(tag.version_id, []).append(tag.tag_name)
+    return mapping
 
 
 async def create_skill(
@@ -261,6 +284,7 @@ async def create_skill(
     skill.current_version_id = v1.id
     await session.commit()
     await session.refresh(skill)
+    await skill_tag_service.refresh_latest_tag(session, skill.id)
     return _serialize(skill)
 
 
@@ -615,9 +639,7 @@ async def activate_version(
 
     # 状态守卫：只有 draft / pending_review 可激活（deprecated/yanked/rejected/scanning 不可）
     if version.lifecycle_status not in (DRAFT, PENDING_REVIEW):
-        raise ValidationError(
-            f"版本当前状态为 {version.lifecycle_status}，不可激活"
-        )
+        raise ValidationError(f"版本当前状态为 {version.lifecycle_status}，不可激活")
 
     # 硬门控：通过安全审查（passed / attention_required）或存在 approved 审核任务
     security_ok = (
@@ -649,6 +671,7 @@ async def activate_version(
         on_sync=_noop_sync,
         apply_snapshot=_apply_version_snapshot_to_skill,
     )
+    await skill_tag_service.refresh_latest_tag(session, skill_id)
     await session.refresh(skill)
     latest_audit_map = await _latest_audit_map(session, [skill])
     return _serialize(skill, latest_audit_map)
@@ -677,9 +700,7 @@ async def deprecate_version(
 # ─── S3 · 生命周期状态机精细化 ────────────────────────────────────────────────
 
 
-async def yank_version(
-    session: AsyncSession, skill_id: int, version_id: int
-) -> dict:
+async def yank_version(session: AsyncSession, skill_id: int, version_id: int) -> dict:
     """撤回已发布版本：published → yanked，命中 current_version_id 则重算次新 published。"""
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
@@ -711,6 +732,7 @@ async def yank_version(
             else:
                 skill.current_version_id = None
         await session.commit()
+        await skill_tag_service.refresh_latest_tag(session, skill_id)
     await session.refresh(skill)
     latest_audit_map = await _latest_audit_map(session, [skill])
     return _serialize(skill, latest_audit_map)
@@ -761,7 +783,10 @@ async def submit_version_review(
     task = await review_submit(session, version_id, submitted_by)
     await session.commit()
     await session.refresh(version)
-    return {"version": _serialize_version(version), "review_task": _serialize_review_task(task)}
+    return {
+        "version": _serialize_version(version),
+        "review_task": _serialize_review_task(task),
+    }
 
 
 async def approve_version_review(
@@ -777,7 +802,10 @@ async def approve_version_review(
     task = await review_approve(session, task, reviewer_id, decision_notes)
     await session.commit()
     await session.refresh(version)
-    return {"version": _serialize_version(version), "review_task": _serialize_review_task(task)}
+    return {
+        "version": _serialize_version(version),
+        "review_task": _serialize_review_task(task),
+    }
 
 
 async def reject_version_review(
@@ -795,7 +823,10 @@ async def reject_version_review(
     version.lifecycle_status = REJECTED
     await session.commit()
     await session.refresh(version)
-    return {"version": _serialize_version(version), "review_task": _serialize_review_task(task)}
+    return {
+        "version": _serialize_version(version),
+        "review_task": _serialize_review_task(task),
+    }
 
 
 async def withdraw_version_review(
@@ -809,7 +840,10 @@ async def withdraw_version_review(
     version.lifecycle_status = DRAFT
     await session.commit()
     await session.refresh(version)
-    return {"version": _serialize_version(version), "review_task": _serialize_review_task(task)}
+    return {
+        "version": _serialize_version(version),
+        "review_task": _serialize_review_task(task),
+    }
 
 
 async def _noop_sync(skill: Skill, version: SkillVersion) -> None:

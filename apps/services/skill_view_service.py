@@ -102,6 +102,7 @@ async def get_skill_integrity(session: AsyncSession, skill_id: int) -> dict:
             "protocol_valid": False,
             "protocol_errors": [],
             "version_id": None,
+        }
     return {
         "skill_id": skill.id,
         "version_id": active.id,

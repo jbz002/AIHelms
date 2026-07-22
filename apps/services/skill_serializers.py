@@ -20,7 +20,7 @@ async def _latest_audit_map(session, skills: list[Skill]) -> dict[int, str]:
     return {audit.id: audit.audit_id for audit in audits}
 
 
-def _serialize_version(v: SkillVersion) -> dict:
+def _serialize_version(v: SkillVersion, tags: list[str] | None = None) -> dict:
     return {
         "id": v.id,
         "skill_id": v.skill_id,
@@ -28,6 +28,7 @@ def _serialize_version(v: SkillVersion) -> dict:
         "version_label": v.version_label,
         "is_active": v.is_active,
         "lifecycle_status": v.lifecycle_status,
+        "tags": tags or [],
         "sunset_date": v.sunset_date.isoformat() if v.sunset_date else None,
         "source": v.source,
         "source_type": v.source_type,
@@ -70,7 +71,12 @@ def _serialize_review_task(t: SkillReviewTask) -> dict:
     }
 
 
-def _serialize(skill: Skill, latest_audit_map: dict[int, str] | None = None) -> dict:
+def _serialize(
+    skill: Skill,
+    latest_audit_map: dict[int, str] | None = None,
+    labels: list[dict] | None = None,
+    version_tags_map: dict[int, list[str]] | None = None,
+) -> dict:
     latest_audit_map = latest_audit_map or {}
     latest_audit_code = (
         latest_audit_map.get(skill.latest_ai_policies_audit_id)
@@ -79,7 +85,10 @@ def _serialize(skill: Skill, latest_audit_map: dict[int, str] | None = None) -> 
     )
     active = next((v for v in (skill.versions or []) if v.is_active), None)
     versions_sorted = sorted((skill.versions or []), key=lambda v: v.id, reverse=True)
-    serialized_versions = [_serialize_version(v) for v in versions_sorted]
+    serialized_versions = [
+        _serialize_version(v, version_tags_map.get(v.id) if version_tags_map else None)
+        for v in versions_sorted
+    ]
     projection = build_projection(
         serialized_versions, skill.current_version_id, skill.hidden
     )
@@ -92,6 +101,7 @@ def _serialize(skill: Skill, latest_audit_map: dict[int, str] | None = None) -> 
         "category": skill.category,
         "version": skill.version,
         "tags": skill.tags,
+        "labels": labels or [],
         "author": skill.author,
         "agent_install_prompt": skill.agent_install_prompt,
         "usage_instructions": skill.usage_instructions,

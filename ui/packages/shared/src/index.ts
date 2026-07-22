@@ -38,6 +38,8 @@ export type {
   SkillReviewTask, SkillReviewTaskStatus, SkillLifecycleProjection,
   SkillSummaryView, SkillFullView, SkillIntegrityView,
   ManifestFile, ProtocolIssue,
+  SkillTag, LabelDefinition, SkillLabelGrant,
+  CreateLabelDefinitionParams, UpdateLabelDefinitionParams,
 } from './types/skill'
 export {
   getSkills, getSkillById, getSkillMarketDetail, createSkill, updateSkill, deleteSkill,
@@ -49,6 +51,9 @@ export {
   yankSkillVersion, submitSkillVersionReview, approveSkillVersionReview,
   rejectSkillVersionReview, withdrawSkillVersionReview, setSkillHidden,
   getSkillSummary, getSkillFull, getSkillIntegrity,
+  listSkillTags, createOrMoveSkillTag, deleteSkillTag,
+  listSkillLabels, grantSkillLabel, revokeSkillLabel,
+  listLabelDefinitions, createLabelDefinition, updateLabelDefinition, deleteLabelDefinition,
 } from './api/skill'
 export type { SkillVersionReviewResult } from './api/skill'
 export type { AiPolicyAudit, AiPolicyAuditSummary, AiPolicyAuditListResult, AiPolicyAuditQuery, AiPolicyFinding, AiPolicyAuditFileSummary, AiPolicyRiskCatalogItem, AiPolicySettings, AiPolicyVerdict, AiPolicyName, AiPolicyPreset, AiPolicySignatureRule, AiPolicySignatureRules, AiPolicyAuditHistoryItem } from './types/aiPolicies'
@@ -89,6 +94,7 @@ export { getDocsMcpStats, getDocsMcpJobs, getDocsMcpJobDetail, createDocsMcpJob,
 export { default as MarkdownRenderer } from './components/MarkdownRenderer.vue'
 export { default as StarRating } from './components/StarRating.vue'
 export { default as FeedbackList } from './components/FeedbackList.vue'
+export { default as LabelBadge } from './components/LabelBadge.vue'
 export { useAuth } from './composables/useAuth'
 export { usePermission } from './composables/usePermission'
 export { toast } from './utils/toast'

@@ -9,14 +9,21 @@ import {
   getSkillCategories,
   getSkillDownloadUrl,
   setSkillHidden,
+  listLabelDefinitions,
+  grantSkillLabel,
+  revokeSkillLabel,
+  listSkillLabels,
   toast,
   updateSkill,
+  LabelBadge,
   type Skill,
   type SkillCategory,
+  type LabelDefinition,
+  type SkillLabelGrant,
   type ProtocolIssue,
   usePermission,
 } from '@aihelms/shared'
-import { ArrowLeft, Download, FileText, PlayCircle, ShieldCheck, Trash2 } from 'lucide-vue-next'
+import { ArrowLeft, Download, FileText, PlayCircle, ShieldCheck, Trash2, Award } from 'lucide-vue-next'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import IconPicker from '../../components/IconPicker.vue'
 import SkillVersionPanel from './SkillVersionPanel.vue'
@@ -83,6 +90,13 @@ const form = ref({
 })
 const sourceMode = ref<'zip' | 'url'>('zip')
 const sourceUrlError = ref('')
+
+const canManageLabel = hasPermission('skill:label:manage')
+const labelDefs = ref<LabelDefinition[]>([])
+const labels = ref<SkillLabelGrant[]>([])
+const granting = ref(false)
+const grantLabelName = ref('')
+const grantNote = ref('')
 
 const protocolBanner = computed<{
   cls: string
@@ -179,6 +193,10 @@ async function loadData(): Promise<void> {
     if (!isNew.value && skillId.value) {
       const s = await getSkillById(skillId.value)
       skill.value = s
+      labels.value = s.labels ?? []
+      if (canManageLabel) {
+        labelDefs.value = await listLabelDefinitions(true).catch(() => [])
+      }
       form.value = {
         name: s.name,
         icon: s.icon,
@@ -200,6 +218,33 @@ async function loadData(): Promise<void> {
     toast.error((e as { message?: string }).message || '加载失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function handleGrantLabel(): Promise<void> {
+  if (!skillId.value || !grantLabelName.value) return
+  granting.value = true
+  try {
+    await grantSkillLabel(skillId.value, grantLabelName.value, grantNote.value.trim())
+    toast.success('治理标签已授予')
+    grantLabelName.value = ''
+    grantNote.value = ''
+    labels.value = await listSkillLabels(skillId.value)
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '授予失败')
+  } finally {
+    granting.value = false
+  }
+}
+
+async function handleRevokeLabel(name: string): Promise<void> {
+  if (!skillId.value) return
+  try {
+    await revokeSkillLabel(skillId.value, name)
+    toast.success('治理标签已撤销')
+    labels.value = await listSkillLabels(skillId.value)
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '撤销失败')
   }
 }
 
@@ -642,6 +687,46 @@ onMounted(loadData)
                 @click="handleToggleHidden"
               >
                 {{ skill.hidden ? '恢复上架' : '下架' }}
+              </button>
+            </div>
+          </div>
+          <div v-if="skill" class="col-span-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
+            <div class="mb-2 flex items-center gap-1.5">
+              <Award class="h-4 w-4 text-amber-500" />
+              <p class="text-sm font-medium text-slate-700">治理标签</p>
+              <p class="text-xs text-slate-400">运营标注位（recommended/official/verified），不进质量分。</p>
+            </div>
+            <div v-if="labels.length" class="mb-2 flex flex-wrap items-center gap-1.5">
+              <span v-for="l in labels" :key="l.id" class="inline-flex items-center gap-1">
+                <LabelBadge :name="l.name" :display_name_key="l.display_name_key" :color="l.color" size="sm" />
+                <button
+                  v-if="canManageLabel"
+                  class="text-slate-300 hover:text-red-500"
+                  title="撤销"
+                  @click="handleRevokeLabel(l.name)"
+                >×</button>
+              </span>
+            </div>
+            <p v-else class="mb-2 text-xs text-slate-400">暂无治理标签</p>
+            <div v-if="canManageLabel" class="flex flex-wrap items-center gap-2">
+              <select
+                v-model="grantLabelName"
+                class="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 focus:border-amber-500 focus:outline-none"
+              >
+                <option value="" disabled>选择标签</option>
+                <option v-for="d in labelDefs" :key="d.id" :value="d.name">{{ d.name }}</option>
+              </select>
+              <input
+                v-model="grantNote"
+                placeholder="备注（可选）"
+                class="flex-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-800 focus:border-amber-500 focus:outline-none"
+              />
+              <button
+                class="rounded-md bg-amber-50 px-3 py-1 text-xs font-medium text-amber-600 hover:bg-amber-100 disabled:opacity-50"
+                :disabled="!grantLabelName || granting"
+                @click="handleGrantLabel"
+              >
+                {{ granting ? '...' : '授予' }}
               </button>
             </div>
           </div>

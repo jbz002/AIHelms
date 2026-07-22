@@ -29,6 +29,7 @@ from api.v1.rating import router as rating_router
 from api.v1.resource_applications import router as resource_applications_router
 from api.v1.roles import router as roles_router
 from api.v1.search import router as search_router
+from api.v1.skill_governance import router as skill_governance_router
 from api.v1.skills import router as skills_router
 from api.v1.storage_compensations import router as storage_compensations_router
 from api.v1.usage_logs import router as usage_logs_router
@@ -54,6 +55,7 @@ router.include_router(models_router, tags=["模型纳管"])
 router.include_router(access_test_router, tags=["模型纳管"])
 router.include_router(mcp_router, tags=["AI 市场"])
 router.include_router(skills_router, tags=["AI 市场"])
+router.include_router(skill_governance_router, tags=["AI 市场"])
 router.include_router(search_router, prefix="/search", tags=["AI 市场"])
 router.include_router(custom_entities_router, tags=["AI 市场"])
 router.include_router(rating_router, tags=["评分反馈"])

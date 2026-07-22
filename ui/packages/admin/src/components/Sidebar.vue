@@ -34,6 +34,7 @@ import {
   Download,
   ShieldCheck,
   BookOpen,
+  Award,
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -82,6 +83,7 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
     icon: Store,
     items: [
       { label: 'Skill管理', icon: Zap, path: '/skills', permission: 'skill:read' },
+      { label: '治理标签', icon: Award, path: '/skills/label-definitions', permission: 'skill:label:manage' },
       { label: 'MCP管理', icon: Plug, path: '/mcp', permission: 'mcp:read' },
     ],
   },

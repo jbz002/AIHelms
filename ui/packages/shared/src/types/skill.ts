@@ -15,6 +15,7 @@ export interface Skill {
   category: string
   version: string
   tags: string[]
+  labels?: SkillLabelGrant[]
   agent_install_prompt: string
   usage_instructions: string
   zip_path: string
@@ -107,6 +108,53 @@ export interface SkillVersion {
   latest_ai_policies_audit_id?: number | null
   created_by: number | null
   created_at: string | null
+  tags?: string[]
+}
+
+export interface SkillTag {
+  id: number
+  skill_id: number
+  tag_name: string
+  version_id: number
+  is_system: boolean
+  created_at: string | null
+}
+
+export interface LabelDefinition {
+  id: number
+  name: string
+  display_name_key: string
+  color: string
+  sort_order: number
+  is_active: boolean
+  created_at: string | null
+}
+
+export interface SkillLabelGrant {
+  id: number
+  label_id: number
+  name: string
+  display_name_key: string
+  color: string
+  sort_order: number
+  granted_by: number | null
+  granted_at: string | null
+  note: string
+}
+
+export interface CreateLabelDefinitionParams {
+  name: string
+  display_name_key: string
+  color?: string
+  sort_order?: number
+  is_active?: boolean
+}
+
+export interface UpdateLabelDefinitionParams {
+  display_name_key?: string
+  color?: string
+  sort_order?: number
+  is_active?: boolean
 }
 
 export interface CreateSkillVersionParams {
