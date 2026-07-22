@@ -8,6 +8,8 @@ from api.v1.api_keys import router as api_keys_router
 from api.v1.audit_logs import router as audit_logs_router
 from api.v1.auth import router as auth_router
 from api.v1.business_scenarios import router as business_scenarios_router
+from api.v1.cli import router as cli_router
+from api.v1.cli_tokens import router as cli_tokens_router
 from api.v1.crawl import router as crawl_router
 from api.v1.credentials import router as credentials_router
 from api.v1.custom_entities import router as custom_entities_router
@@ -57,6 +59,7 @@ router.include_router(mcp_router, tags=["AI 市场"])
 router.include_router(skills_router, tags=["AI 市场"])
 router.include_router(skill_governance_router, tags=["AI 市场"])
 router.include_router(search_router, prefix="/search", tags=["AI 市场"])
+router.include_router(cli_router, tags=["AI 市场"])
 router.include_router(custom_entities_router, tags=["AI 市场"])
 router.include_router(rating_router, tags=["评分反馈"])
 router.include_router(usage_stats_router, tags=["使用统计"])
@@ -66,6 +69,7 @@ router.include_router(publish_requests_router, tags=["发布门控"])
 router.include_router(publish_settings_router, tags=["发布门控"])
 router.include_router(audit_logs_router, tags=["安全"])
 router.include_router(api_keys_router, tags=["安全"])
+router.include_router(cli_tokens_router, tags=["安全"])
 router.include_router(ai_policies_router, tags=["安全"])
 router.include_router(usage_logs_router, tags=["资源审计"])
 router.include_router(export_tasks_router, tags=["资源审计"])

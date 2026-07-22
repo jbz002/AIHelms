@@ -189,6 +189,12 @@ const router = createRouter({
           meta: { permission: 'api_key:read' },
         },
         {
+          path: 'cli-tokens',
+          name: 'CliTokenManage',
+          component: () => import('../views/cli-tokens/CliTokenManage.vue'),
+          meta: { permission: 'cli_token:read' },
+        },
+        {
           path: 'logs',
           name: 'LogsManage',
           component: () => import('../views/logs/LogsManage.vue'),

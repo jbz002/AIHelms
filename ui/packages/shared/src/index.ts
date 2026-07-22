@@ -66,6 +66,9 @@ export type { AuditLog, AuditLogQuery, AuditLogListResult, AuditLogActor, AuditL
 export { getAuditLogs, getAuditLogFilters } from './api/auditLog'
 export type { ApiKey, ApiKeyListResult, CreateApiKeyParams, UpdateApiKeyParams } from './types/apiKey'
 export { getApiKeys, getApiKeyById, createApiKey, updateApiKey, deleteApiKey } from './api/apiKey'
+export type { CliToken, CliTokenListResult, CreateCliTokenParams, UpdateCliTokenParams, CliScope } from './types/cliToken'
+export { CLI_SCOPE_OPTIONS } from './types/cliToken'
+export { getCliTokens, getCliTokenById, createCliToken, updateCliToken, toggleCliToken, deleteCliToken } from './api/cliToken'
 export type {
   BusinessScenario, CreateBusinessScenarioParams, UpdateBusinessScenarioParams, BusinessScenarioListResult,
 } from './types/businessScenario'

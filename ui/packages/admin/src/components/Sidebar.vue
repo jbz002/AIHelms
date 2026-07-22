@@ -35,6 +35,7 @@ import {
   ShieldCheck,
   BookOpen,
   Award,
+  Terminal,
 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -113,6 +114,7 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
       { label: 'Regex 规则', icon: FileText, path: '/ai-policies/rules', permission: 'ai_policies:read' },
       { label: '管理员日志', icon: Shield, path: '/audit', permission: 'audit_log:read' },
       { label: 'API Key', icon: KeyRound, path: '/api-keys', permission: 'api_key:read' },
+      { label: 'CLI 令牌', icon: Terminal, path: '/cli-tokens', permission: 'cli_token:read' },
     ],
   },
   {

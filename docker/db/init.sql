@@ -219,7 +219,11 @@ CREATE TABLE IF NOT EXISTS aihelms.ai_keys (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     expires_at TIMESTAMPTZ,
-    last_used_at TIMESTAMPTZ
+    last_used_at TIMESTAMPTZ,
+    token_kind VARCHAR(20) NOT NULL DEFAULT 'llm',   -- 'llm' | 'cli'（CLI 分发令牌判别）
+    token_hash VARCHAR(64) NOT NULL DEFAULT '',      -- sha256(full_token)，仅 cli 行
+    token_prefix VARCHAR(16) NOT NULL DEFAULT '',    -- 展示用前缀（不敏感）
+    scope_json JSONB NOT NULL DEFAULT '[]'           -- CLI 令牌分权 ['skill:search', ...]
 );
 
 -- 供应商（平台独有，组织凭证 + 额度监控）
@@ -1290,6 +1294,10 @@ INSERT INTO aihelms.permissions (code, name, resource, action, description) VALU
     ('api_key:read', '查看 API Key', 'api_key', 'read', '查看 API Key 列表和详情'),
     ('api_key:update', '编辑 API Key', 'api_key', 'update', '启用/禁用、修改 API Key'),
     ('api_key:delete', '删除 API Key', 'api_key', 'delete', '撤销 API Key'),
+    ('cli_token:create', '创建 CLI 令牌', 'cli_token', 'create', '创建 CLI 分发令牌'),
+    ('cli_token:read', '查看 CLI 令牌', 'cli_token', 'read', '查看 CLI 令牌列表和详情'),
+    ('cli_token:update', '编辑 CLI 令牌', 'cli_token', 'update', '启用/禁用、修改 CLI 令牌 scope'),
+    ('cli_token:delete', '撤销 CLI 令牌', 'cli_token', 'delete', '撤销 CLI 令牌'),
     ('usage_log:read', '查看使用日志', 'usage_log', 'read', '查看 LLM/MCP/Skill/智能体调用日志'),
     ('efficiency:read', '查看AI效能', 'efficiency', 'read', '查看AI效能分析数据和报告'),
     ('efficiency:write', '管理AI效能', 'efficiency', 'write', '生成报告、更新建议状态')

@@ -39,6 +39,18 @@ async def find_definition_by_name(
     return result.scalar_one_or_none()
 
 
+async def find_skill_ids_by_label_name(
+    session: AsyncSession, name: str
+) -> list[int]:
+    """按 label name 解析其关联的所有 skill_id（CLI 搜索 label 过滤用）。"""
+    result = await session.execute(
+        select(SkillLabel.skill_id)
+        .join(LabelDefinition, LabelDefinition.id == SkillLabel.label_id)
+        .where(LabelDefinition.name == name)
+    )
+    return [row[0] for row in result.all()]
+
+
 async def create_definition(
     session: AsyncSession, definition: LabelDefinition
 ) -> LabelDefinition:

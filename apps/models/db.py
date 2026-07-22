@@ -247,6 +247,10 @@ class AiKey(Base):
     )
     expires_at: Mapped[datetime | None] = mapped_column(nullable=True)
     last_used_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    token_kind: Mapped[str] = mapped_column(String(20), default="llm")
+    token_hash: Mapped[str] = mapped_column(String(64), default="")
+    token_prefix: Mapped[str] = mapped_column(String(16), default="")
+    scope_json: Mapped[list] = mapped_column(JSONB, default=list)
 
 
 class Provider(Base):

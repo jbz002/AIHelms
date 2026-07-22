@@ -1,4 +1,6 @@
-from sqlalchemy import func, select
+from datetime import datetime, timezone
+
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import AiKey
@@ -121,3 +123,49 @@ async def count_all(
         stmt = stmt.where(AiKey.key_type == key_type)
     result = await session.execute(stmt)
     return result.scalar_one()
+
+
+# ─── CLI scoped token（token_kind='cli'）──────────────────────────────────────
+
+
+async def find_cli_by_hash(session: AsyncSession, token_hash: str) -> AiKey | None:
+    """按 sha256 哈希查 CLI token（仅活跃）。"""
+    result = await session.execute(
+        select(AiKey).where(
+            AiKey.token_kind == "cli",
+            AiKey.token_hash == token_hash,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+async def find_cli_tokens(
+    session: AsyncSession,
+    page: int = 1,
+    page_size: int = 20,
+    owner_id: int | None = None,
+) -> list[AiKey]:
+    stmt = select(AiKey).where(AiKey.token_kind == "cli").order_by(AiKey.id.desc())
+    if owner_id:
+        stmt = stmt.where(AiKey.owner_id == owner_id)
+    offset = (page - 1) * page_size
+    stmt = stmt.limit(page_size).offset(offset)
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def count_cli_tokens(session: AsyncSession, owner_id: int | None = None) -> int:
+    stmt = select(func.count(AiKey.id)).where(AiKey.token_kind == "cli")
+    if owner_id:
+        stmt = stmt.where(AiKey.owner_id == owner_id)
+    result = await session.execute(stmt)
+    return result.scalar_one()
+
+
+async def touch_cli_last_used(session: AsyncSession, key_id: int) -> None:
+    # 列映射为 naive DateTime，传 tz-aware 会触发 offset 不匹配；用 naive UTC。
+    now_naive = datetime.now(timezone.utc).replace(tzinfo=None)
+    await session.execute(
+        update(AiKey).where(AiKey.id == key_id).values(last_used_at=now_naive)
+    )
+    await session.commit()
