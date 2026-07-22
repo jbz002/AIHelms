@@ -1,0 +1,37 @@
+{
+  "name": "@aihelms/cli",
+  "version": "0.1.0",
+  "description": "AIHelms Skill 分发通道 CLI",
+  "license": "GPL-3.0",
+  "bin": {
+    "aihelms": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "cac": "^6.7.14",
+    "fflate": "^0.8.2",
+    "prompts": "^2.4.2",
+    "semver": "^7.6.3",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/prompts": "^2.4.9",
+    "@types/semver": "^7.5.8",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

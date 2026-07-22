@@ -25,6 +25,7 @@ SCOPE_OPTIONS = [
     "skill:search",
     "skill:read",
     "skill:install",
+    "skill:publish",
     "skill:tag:read",
     "skill:label:read",
     "skill:*",

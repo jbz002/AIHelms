@@ -11,13 +11,14 @@ import uuid
 import zipfile
 
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, UploadFile
 from sqlalchemy import delete, select
 
+from api.v1.cli import cli_publish_version
 from core.database import get_worker_session_factory
 from core.deps import require_cli_scope
 from exceptions import NotFoundError, ValidationError
-from models.db import AiKey, Permission, Skill, SkillVersion
+from models.db import AiKey, Permission, Skill, SkillReviewTask, SkillVersion, User
 from repositories import ai_key_repo, skill_label_repo, skill_repo
 from services import cli_token_service, skill_service
 
@@ -77,6 +78,31 @@ async def _cleanup_skills(skill_ids: list[int]) -> None:
             delete(SkillVersion).where(SkillVersion.skill_id.in_(skill_ids))
         )
         await s.execute(delete(Skill).where(Skill.id.in_(skill_ids)))
+        await s.commit()
+
+
+async def _make_user(suffix: str | None = None) -> int:
+    uname = f"cli_test_{(suffix or uuid.uuid4().hex)[:8]}"
+    session = _session()
+    try:
+        user = User(
+            username=uname,
+            email=f"{uname}@test.local",
+            hashed_password="x",
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return user.id
+    finally:
+        await session.close()
+
+
+async def _cleanup_users(user_ids: list[int]) -> None:
+    if not user_ids:
+        return
+    async with _session() as s:
+        await s.execute(delete(User).where(User.id.in_(user_ids)))
         await s.commit()
 
 
@@ -326,3 +352,144 @@ async def _label_def_id(s, name: str) -> int:
     definition = await skill_label_repo.find_definition_by_name(s, name)
     assert definition is not None, "recommended 标签定义未 seed"
     return definition.id
+
+
+# ─── CLI publish（阶段二写端点）──────────────────────────────────────────────
+
+
+def _upload(zip_bytes: bytes, filename: str = "skill.zip") -> UploadFile:
+    return UploadFile(filename=filename, file=io.BytesIO(zip_bytes))
+
+
+@pytest.mark.asyncio
+async def test_cli_publish_creates_version_and_review_task():
+    uid = await _make_user("pub")
+    sid, uuid_id = await _make_published_skill("pub")
+    token_ids: list[int] = []
+    try:
+        session = _session()
+        try:
+            tdata, _raw = await cli_token_service.create_token(
+                session,
+                name="t_publish_ok",
+                description="",
+                scopes=["skill:publish"],
+                owner_id=uid,
+            )
+        finally:
+            await session.close()
+        token_ids.append(tdata["id"])
+
+        session = _session()
+        try:
+            resp = await cli_publish_version(
+                uuid_id,
+                version="2.0.0",
+                version_label="",
+                change_log="cli publish",
+                zip_file=_upload(_valid_zip("pub-skill")),
+                session=session,
+                identity={
+                    "ai_key_id": tdata["id"],
+                    "owner_id": uid,
+                    "owner_type": "user",
+                    "scopes": ["skill:publish"],
+                },
+            )
+        finally:
+            await session.close()
+
+        assert resp["code"] == 200
+        version = resp["data"]["version"]
+        assert version["lifecycle_status"] == "pending_review"
+        async with _session() as s:
+            task = (
+                await s.execute(
+                    select(SkillReviewTask).where(
+                        SkillReviewTask.skill_version_id == version["id"]
+                    )
+                )
+            ).scalar_one_or_none()
+            assert task is not None
+            assert task.status == "pending"
+    finally:
+        await _cleanup_skills([sid])
+        await _cleanup_tokens(token_ids)
+        await _cleanup_users([uid])
+
+
+@pytest.mark.asyncio
+async def test_cli_publish_rejects_without_scope():
+    checker = require_cli_scope("skill:publish")
+    with pytest.raises(HTTPException) as exc:
+        await checker({"scopes": ["skill:read"]})
+    assert exc.value.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cli_publish_rejects_department_token():
+    session = _session()
+    try:
+        with pytest.raises(HTTPException) as exc:
+            await cli_publish_version(
+                uuid.uuid4().hex,
+                version="1.0.0",
+                version_label="",
+                change_log="",
+                zip_file=_upload(_valid_zip("dept")),
+                session=session,
+                identity={
+                    "ai_key_id": 1,
+                    "owner_id": 2,
+                    "owner_type": "department",
+                    "scopes": ["skill:publish"],
+                },
+            )
+        assert exc.value.status_code == 403
+    finally:
+        await session.close()
+
+
+@pytest.mark.asyncio
+async def test_cli_publish_duplicate_version_409():
+    uid = await _make_user("dup")
+    sid, uuid_id = await _make_published_skill("dup")  # 已存在 1.0.0
+    token_ids: list[int] = []
+    try:
+        session = _session()
+        try:
+            tdata, _raw = await cli_token_service.create_token(
+                session,
+                name="t_publish_dup",
+                description="",
+                scopes=["skill:publish"],
+                owner_id=uid,
+            )
+        finally:
+            await session.close()
+        token_ids.append(tdata["id"])
+
+        session = _session()
+        try:
+            with pytest.raises(HTTPException) as exc:
+                await cli_publish_version(
+                    uuid_id,
+                    version="1.0.0",
+                    version_label="",
+                    change_log="",
+                    zip_file=_upload(_valid_zip("dup-skill")),
+                    session=session,
+                    identity={
+                        "ai_key_id": tdata["id"],
+                        "owner_id": uid,
+                        "owner_type": "user",
+                        "scopes": ["skill:publish"],
+                    },
+                )
+            assert exc.value.status_code == 409
+        finally:
+            await session.close()
+    finally:
+        await _cleanup_skills([sid])
+        await _cleanup_tokens(token_ids)
+        await _cleanup_users([uid])

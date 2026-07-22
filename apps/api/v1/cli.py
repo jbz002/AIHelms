@@ -1,16 +1,16 @@
-"""S7 阶段一 · CLI 分发通道 REST API。
+"""S7 · CLI 分发通道 REST API。
 
 独立 /api/v1/cli/* 前缀，全部 CLI scoped token 鉴权 + scope 校验。
 Skill 坐标用 UUID skill_id 字符串（无 slug/namespace）。
-只读 + 下载（发布端点推迟阶段二）。
+只读 + 下载（阶段一）+ 发布新版本（阶段二）。
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_cli_token_identity, get_db, require_cli_scope
-from exceptions import NotFoundError
+from exceptions import ConflictError, NotFoundError, ValidationError
 from repositories import skill_label_repo, skill_repo, skill_version_repo
 from services import (
     skill_label_service,
@@ -208,3 +208,46 @@ async def cli_list_labels(
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")
     return {"code": 200, "message": "ok", "data": data}
+
+
+@router.post("/skills/{identifier}/versions", summary="发布 Skill 版本")
+async def cli_publish_version(
+    identifier: str,
+    version: str = Form(...),
+    version_label: str = Form(""),
+    change_log: str = Form(""),
+    zip_file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_db),
+    identity: dict = Depends(require_cli_scope("skill:publish")),
+):
+    if identity["owner_type"] != "user":
+        raise HTTPException(status_code=403, detail="CLI publish 仅支持 user 类型令牌")
+    skill = await _resolve_skill(session, identifier)
+    zip_content = await zip_file.read()
+    zip_filename = zip_file.filename or ""
+    try:
+        vdata = await skill_service.create_version(
+            session,
+            skill.id,
+            version=version,
+            version_label=version_label,
+            change_log=change_log,
+            zip_content=zip_content,
+            zip_filename=zip_filename,
+            created_by=identity["owner_id"],
+        )
+        result = await skill_service.submit_version_review(
+            session, skill.id, int(vdata["id"]), identity["owner_id"]
+        )
+    except ConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    await skill_service.record_skill_usage(
+        session,
+        identity["owner_id"],
+        skill.id,
+        "cli_publish",
+        identity["ai_key_id"],
+    )
+    return {"code": 200, "message": "版本已提交审核", "data": result}
