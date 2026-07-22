@@ -20,6 +20,7 @@
   "market.action.close": "Close",
   "market.skill.agentPrompt": "Prompt",
   "market.skill.copyPrompt": "Copy install prompt",
+  "market.skill.downloadZip": "Download package",
   "market.skill.viewDetails": "View details",
   "market.skill.expandFull": "Expand full instructions",
   "market.skill.summary": "Summary",

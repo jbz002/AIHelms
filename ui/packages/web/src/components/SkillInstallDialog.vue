@@ -6,7 +6,7 @@ import { getSkillSummary, getSkillFull, toast } from '@aihelms/shared'
 import type { Skill, SkillSummaryView, SkillFullView } from '@aihelms/shared'
 import MarkdownRenderer from '@aihelms/shared/src/components/MarkdownRenderer.vue'
 import RatingWidget from './RatingWidget.vue'
-import { X, ChevronDown, Flame, CheckCircle2 } from 'lucide-vue-next'
+import { X, ChevronDown, Flame, CheckCircle2, Download } from 'lucide-vue-next'
 
 interface SkillInstallInfo {
   name: string
@@ -97,7 +97,7 @@ watch(() => props.visible, (v) => {
   if (v && props.skill) {
     loadInstallInfo()
   }
-})
+}, { immediate: true })
 
 watch(
   () => props.skill.id,
@@ -160,12 +160,22 @@ watch(
               <div class="rounded-lg bg-slate-900 p-4">
                 <pre class="whitespace-pre-wrap text-xs leading-relaxed text-green-300">{{ installInfo.agent_prompt }}</pre>
               </div>
-              <button
-                class="mt-2 rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-1.5 text-xs font-medium text-white shadow-sm"
-                @click="copyPrompt"
-              >
-                {{ promptCopied ? t('market.install.copied') : t('market.skill.copyPrompt') }}
-              </button>
+              <div class="mt-2 flex items-center gap-2">
+                <button
+                  class="rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-1.5 text-xs font-medium text-white shadow-sm"
+                  @click="copyPrompt"
+                >
+                  {{ promptCopied ? t('market.install.copied') : t('market.skill.copyPrompt') }}
+                </button>
+                <a
+                  v-if="installInfo.download_url"
+                  :href="installInfo.download_url"
+                  class="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-4 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+                >
+                  <Download class="h-3.5 w-3.5" />
+                  {{ t('market.skill.downloadZip') }}
+                </a>
+              </div>
             </div>
 
             <!-- Usage Instructions -->
