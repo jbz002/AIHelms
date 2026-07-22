@@ -697,6 +697,38 @@ async def deprecate_version(
     return _serialize_version(version)
 
 
+async def activate_version_builtin(
+    session: AsyncSession, skill_id: int, version_id: int
+) -> dict:
+    """S8 · 内置 skill 版本直接激活。
+
+    绕过 activate_version 的安全/协议门控（内置内容由平台预审，等同 create_skill
+    v1 直接 published 的语义），但复用 versioning_service 的单 active 激活机制，
+    维持「先 noop 同步 → 降级其它 active → 置目标 active/published → 快照回主表」
+    不变式与正常激活完全一致。
+    """
+    skill = await skill_repo.find_by_id(session, skill_id)
+    if not skill:
+        raise NotFoundError("skill", skill_id)
+    version = await skill_version_repo.find_by_id(session, version_id)
+    if not version or version.skill_id != skill_id:
+        raise NotFoundError("skill_version", version_id)
+    if version.is_active:
+        return _serialize(skill, await _latest_audit_map(session, [skill]))
+    await versioning_service.activate_version(
+        session,
+        version,
+        skill,
+        skill_id,
+        skill_version_repo,
+        on_sync=_noop_sync,
+        apply_snapshot=_apply_version_snapshot_to_skill,
+    )
+    await skill_tag_service.refresh_latest_tag(session, skill_id)
+    await session.refresh(skill)
+    return _serialize(skill, await _latest_audit_map(session, [skill]))
+
+
 # ─── S3 · 生命周期状态机精细化 ────────────────────────────────────────────────
 
 

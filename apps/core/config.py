@@ -98,6 +98,14 @@ class Settings(BaseSettings):
     ssrf_allowed_cidrs: str = ""  # MCP 内网白名单 CIDR（逗号分隔）
     ssrf_skill_url_domains: str = ""  # Skill URL 注册允许的仓库域名白名单
 
+    # 内置 Skills 开箱即用（S8）
+    builtin_skills_enabled: bool = True  # 总开关：关闭后不读 manifest 不同步
+    builtin_skills_manifest_path: str = (
+        "apps/builtin_skills/manifest.json"  # 相对仓库根
+    )
+    builtin_skills_allowed_domains: str = ""  # 远程 url 模式源域名白名单（逗号分隔）
+    builtin_skills_sync_on_startup: bool = True  # 启动时异步同步一次
+
     # Crawl4AI 网页抓取
     crawl4ai_enabled: bool = True
     crawl_timeout: int = 30  # 单页抓取超时（秒）

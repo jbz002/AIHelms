@@ -40,6 +40,7 @@ export type {
   ManifestFile, ProtocolIssue,
   SkillTag, LabelDefinition, SkillLabelGrant,
   CreateLabelDefinitionParams, UpdateLabelDefinitionParams,
+  BuiltinSkillStatusEntry,
 } from './types/skill'
 export {
   getSkills, getSkillById, getSkillMarketDetail, createSkill, updateSkill, deleteSkill,
@@ -54,6 +55,7 @@ export {
   listSkillTags, createOrMoveSkillTag, deleteSkillTag,
   listSkillLabels, grantSkillLabel, revokeSkillLabel,
   listLabelDefinitions, createLabelDefinition, updateLabelDefinition, deleteLabelDefinition,
+  getBuiltinSkills, getBuiltinSkillsStatus, syncBuiltinSkills,
 } from './api/skill'
 export type { SkillVersionReviewResult } from './api/skill'
 export type { AiPolicyAudit, AiPolicyAuditSummary, AiPolicyAuditListResult, AiPolicyAuditQuery, AiPolicyFinding, AiPolicyAuditFileSummary, AiPolicyRiskCatalogItem, AiPolicySettings, AiPolicyVerdict, AiPolicyName, AiPolicyPreset, AiPolicySignatureRule, AiPolicySignatureRules, AiPolicyAuditHistoryItem } from './types/aiPolicies'

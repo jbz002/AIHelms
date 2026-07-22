@@ -11,7 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_db, require_permission
 from exceptions import ConflictError, NotFoundError, ValidationError
-from services import skill_label_service, skill_tag_service
+from repositories import skill_label_repo, skill_repo
+from services import builtin_skills_service, skill_label_service, skill_tag_service
+from services.skill_serializers import _latest_audit_map, _serialize
 
 router = APIRouter(prefix="/skills", tags=["skills"])
 
@@ -110,6 +112,46 @@ async def delete_label_definition(
     except NotFoundError:
         raise HTTPException(status_code=404, detail="标签定义不存在")
     return {"code": 200, "message": "标签定义已停用", "data": None}
+
+
+# ─── 内置 Skills（S8）────────────────────────────────────────────────
+
+
+@router.get("/builtin", summary="查询内置Skills")
+async def list_builtin_skills(
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("skill:read")),
+):
+    skills = await skill_repo.list_builtin(session)
+    label_map = await skill_label_repo.map_by_skills(session, [s.id for s in skills])
+    latest_audit_map = await _latest_audit_map(session, skills)
+    items = [
+        _serialize(s, latest_audit_map, labels=label_map.get(s.id)) for s in skills
+    ]
+    return {"code": 200, "message": "ok", "data": {"items": items, "total": len(items)}}
+
+
+@router.get("/builtin/status", summary="查询内置Skills同步状态")
+async def get_builtin_skills_status(
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("skill:read")),
+):
+    rows = await builtin_skills_service.build_status(session)
+    return {"code": 200, "message": "ok", "data": rows}
+
+
+@router.post("/builtin/sync", status_code=202, summary="重新同步内置Skills")
+async def sync_builtin_skills(
+    _: dict = Depends(require_permission("skill:label:manage")),
+):
+    from tasks.builtin_skills_tasks import sync_builtin_skills as _task
+
+    _task.delay()
+    return {
+        "code": 202,
+        "message": "内置 Skills 同步任务已派发",
+        "data": {"task": "queued"},
+    }
 
 
 # ─── 版本别名 Tag ───────────────────────────────────────────────────

@@ -16,6 +16,7 @@ import type {
   SkillLabelGrant,
   CreateLabelDefinitionParams,
   UpdateLabelDefinitionParams,
+  BuiltinSkillStatusEntry,
 } from '../types/skill'
 import type { AiPolicyAudit } from '../types/aiPolicies'
 
@@ -327,4 +328,18 @@ export function updateLabelDefinition(
 
 export function deleteLabelDefinition(id: number): Promise<null> {
   return request<null>(`/api/v1/skills/label-definitions/${id}`, { method: 'DELETE' })
+}
+
+// ─── 内置 Skills（S8）─────────────────────────────────────────────────
+
+export function getBuiltinSkills(): Promise<{ items: Skill[]; total: number }> {
+  return request<{ items: Skill[]; total: number }>('/api/v1/skills/builtin')
+}
+
+export function getBuiltinSkillsStatus(): Promise<BuiltinSkillStatusEntry[]> {
+  return request<BuiltinSkillStatusEntry[]>('/api/v1/skills/builtin/status')
+}
+
+export function syncBuiltinSkills(): Promise<{ task: string }> {
+  return request<{ task: string }>('/api/v1/skills/builtin/sync', { method: 'POST' })
 }

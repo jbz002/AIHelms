@@ -85,6 +85,7 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
     items: [
       { label: 'Skill管理', icon: Zap, path: '/skills', permission: 'skill:read' },
       { label: '治理标签', icon: Award, path: '/skills/label-definitions', permission: 'skill:label:manage' },
+      { label: '内置Skills', icon: Package, path: '/skills/builtin', permission: 'skill:label:manage' },
       { label: 'MCP管理', icon: Plug, path: '/mcp', permission: 'mcp:read' },
     ],
   },

@@ -31,6 +31,8 @@ export interface Skill {
   rating_count?: number
   frontmatter: Record<string, unknown>
   summary_text: string
+  is_builtin?: boolean
+  builtin_slug?: string
   security_status?: 'not_scanned' | 'queued' | 'running' | 'completed' | 'failed'
   security_decision?: '' | 'passed' | 'attention_required' | 'high_risk' | 'failed'
   security_severity?:
@@ -198,6 +200,15 @@ export interface SkillListResult {
   total: number
   page: number
   page_size: number
+}
+
+export interface BuiltinSkillStatusEntry {
+  slug: string
+  name: string
+  version: string
+  category: string
+  synced: boolean
+  skill_id: number | null
 }
 
 export interface CreateSkillCategoryParams {

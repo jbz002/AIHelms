@@ -1,4 +1,5 @@
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -14,6 +15,8 @@ from core.migrate import run_migrations
 from services.auth_service import ensure_super_admin
 from services.docs_mcp_event_subscriber import run_docs_mcp_event_subscriber
 
+logger = logging.getLogger(__name__)
+
 # Initialize logging before anything else
 setup_logging()
 
@@ -22,6 +25,15 @@ setup_logging()
 async def lifespan(app: FastAPI):
     await run_migrations()
     await ensure_super_admin(settings.super_admin_password)
+    # S8 · 内置 skills 异步同步（不阻塞启动；失败仅告警）
+    if settings.builtin_skills_enabled and settings.builtin_skills_sync_on_startup:
+        try:
+            from tasks.builtin_skills_tasks import sync_builtin_skills
+
+            sync_builtin_skills.delay()
+            logger.info("builtin skills sync task dispatched")
+        except Exception:  # noqa: BLE001
+            logger.warning("builtin skills sync dispatch failed", exc_info=True)
     subscriber_task = asyncio.create_task(run_docs_mcp_event_subscriber())
     yield
     subscriber_task.cancel()

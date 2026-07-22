@@ -105,6 +105,12 @@ const router = createRouter({
           meta: { permission: 'skill:label:manage' },
         },
         {
+          path: 'skills/builtin',
+          name: 'SkillBuiltin',
+          component: () => import('../views/skills/BuiltinSkills.vue'),
+          meta: { permission: 'skill:label:manage' },
+        },
+        {
           path: 'ai-policies',
           name: 'AiPolicies',
           component: () => import('../views/ai-policies/AiPoliciesView.vue'),

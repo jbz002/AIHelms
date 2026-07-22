@@ -684,6 +684,8 @@ CREATE TABLE IF NOT EXISTS aihelms.skills (
     install_count INTEGER DEFAULT 0,
     frontmatter JSONB DEFAULT '{}',
     summary_text TEXT DEFAULT '',
+    is_builtin BOOLEAN DEFAULT false,                       -- S8 内置 skill 标记（幂等键 + 列表查询）
+    builtin_slug VARCHAR(64) DEFAULT '',                    -- S8 内置 skill 的稳定 slug（kebab-case）
     created_by BIGINT REFERENCES aihelms.users(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -695,6 +697,7 @@ CREATE INDEX IF NOT EXISTS idx_skills_published ON aihelms.skills(is_published);
 CREATE INDEX IF NOT EXISTS idx_skills_business_scenario ON aihelms.skills(business_scenario_id);
 CREATE INDEX IF NOT EXISTS idx_skills_visibility ON aihelms.skills(visibility_type);
 CREATE INDEX IF NOT EXISTS idx_skills_hidden ON aihelms.skills(hidden) WHERE hidden = true;
+CREATE INDEX IF NOT EXISTS idx_skills_builtin_slug ON aihelms.skills(builtin_slug) WHERE is_builtin = true;
 
 
 -- AI Policies 审查基线

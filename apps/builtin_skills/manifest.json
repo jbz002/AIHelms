@@ -1,0 +1,29 @@
+[
+  {
+    "slug": "code-review",
+    "name": "代码审查助手",
+    "version": "1.0.0",
+    "category": "dev",
+    "description": "对代码变更进行系统性审查，输出问题清单与改进建议。",
+    "sha256": "cad09aead02b6c3911ef5126f655db3575643cd665b2c2de67d92e55421642b9",
+    "path": "skills/code-review-1.0.0.zip"
+  },
+  {
+    "slug": "doc-summary",
+    "name": "文档摘要",
+    "version": "1.0.0",
+    "category": "office",
+    "description": "把长文档提炼为结构化摘要，保留要点与结论。",
+    "sha256": "914556c5d4c8bf89ec186cccb7d92fab3f997b92bd273dd8421d39583a1a0f08",
+    "path": "skills/doc-summary-1.0.0.zip"
+  },
+  {
+    "slug": "meeting-notes",
+    "name": "会议纪要",
+    "version": "1.0.0",
+    "category": "office",
+    "description": "把会议记录整理为决议、待办与议题纪要。",
+    "sha256": "4661e605880c3642d8947e325c05c9e84f0e16b6dbce41be5410ea393eeec581",
+    "path": "skills/meeting-notes-1.0.0.zip"
+  }
+]

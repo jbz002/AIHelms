@@ -986,6 +986,8 @@ class Skill(Base):
     )
     frontmatter: Mapped[dict] = mapped_column(JSONB, default=dict)
     summary_text: Mapped[str] = mapped_column(Text, default="")
+    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
+    builtin_slug: Mapped[str] = mapped_column(String(64), default="")
     current_version_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("aihelms.skill_versions.id", ondelete="SET NULL"),
