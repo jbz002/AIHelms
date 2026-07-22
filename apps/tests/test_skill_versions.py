@@ -82,7 +82,7 @@ async def test_create_skill_seeds_v1_active():
             assert len(versions) == 1
             assert versions[0].version == "1.0.0"
             assert versions[0].is_active is True
-            assert versions[0].lifecycle_status == "active"
+            assert versions[0].lifecycle_status == "published"
             skill = await s.get(Skill, skill_id)
             assert skill.current_version_id == versions[0].id
     finally:
@@ -104,7 +104,7 @@ async def test_create_version_starts_inactive_and_writes_per_version_zip():
         )
         await session.close()
         assert data["is_active"] is False
-        assert data["lifecycle_status"] == "inactive"
+        assert data["lifecycle_status"] == "draft"
         assert data["security_status"] == "not_scanned"
         # per-version zip 写入 {skills_storage_dir}/{skill_uuid}/{version_id}.zip
         version_dir = os.path.join(settings.skills_storage_dir, skill_uuid)
@@ -251,7 +251,7 @@ async def test_single_active_invariant_enforced_by_index():
                 skill_id=skill_id,
                 version="2.0.0",
                 is_active=True,
-                lifecycle_status="active",
+                lifecycle_status="published",
             )
             s.add(v2)
             with pytest.raises(IntegrityError):
@@ -294,6 +294,6 @@ async def test_deprecate_guard_and_list_filter():
         assert len(default_list) == 2
         assert any(v["lifecycle_status"] == "deprecated" for v in default_list)
         assert len(filtered) == 1
-        assert filtered[0]["lifecycle_status"] == "active"
+        assert filtered[0]["lifecycle_status"] == "published"
     finally:
         await _cleanup([skill_id])

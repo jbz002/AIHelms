@@ -63,7 +63,9 @@ async def _cleanup(skill_ids: list[int]) -> None:
                 version_dir = os.path.join(settings.skills_storage_dir, skill.skill_id)
                 if os.path.isdir(version_dir):
                     shutil.rmtree(version_dir, ignore_errors=True)
-        await s.execute(delete(SkillVersion).where(SkillVersion.skill_id.in_(skill_ids)))
+        await s.execute(
+            delete(SkillVersion).where(SkillVersion.skill_id.in_(skill_ids))
+        )
         await s.execute(delete(Skill).where(Skill.id.in_(skill_ids)))
         await s.commit()
 
@@ -96,8 +98,12 @@ def test_compute_drifted_files_metadata_only_not_drift():
 
 
 def test_compute_drifted_files_empty_manifest():
-    assert skill_drift_service._compute_drifted_files({}, {"a.md": _hash_entry("h1")}) == ["a.md"]
-    assert skill_drift_service._compute_drifted_files({"a.md": _hash_entry("h1")}, {}) == ["a.md"]
+    assert skill_drift_service._compute_drifted_files(
+        {}, {"a.md": _hash_entry("h1")}
+    ) == ["a.md"]
+    assert skill_drift_service._compute_drifted_files(
+        {"a.md": _hash_entry("h1")}, {}
+    ) == ["a.md"]
     assert skill_drift_service._compute_drifted_files(None, None) == []
 
 
@@ -125,7 +131,9 @@ async def test_next_available_version_conflict_then_free():
         await session.close()
         # base 1.0.0 → 1.0.1 已占 → 跳到 1.0.2
         async with _session() as s:
-            cand = await skill_drift_service._next_available_version(s, skill_id, "1.0.0")
+            cand = await skill_drift_service._next_available_version(
+                s, skill_id, "1.0.0"
+            )
             assert cand == "1.0.2"
     finally:
         await _cleanup([skill_id])
@@ -230,7 +238,9 @@ async def test_check_single_drift_detected_with_mock():
 @pytest.mark.asyncio
 async def test_check_single_drift_no_drift_with_mock():
     """mock 拉取返回完全相同的 hash → drift_detected=False。"""
-    skill_id, _ = await _make_skill(suffix="nodrift", source_url="https://github.com/u/r")
+    skill_id, _ = await _make_skill(
+        suffix="nodrift", source_url="https://github.com/u/r"
+    )
     try:
         async with _session() as s:
             v = await skill_version_repo.find_active_for_skill(s, skill_id)
@@ -334,7 +344,7 @@ async def test_resync_creates_inactive_version():
                     s, old_active_id, created_by=None
                 )
             assert new_v["is_active"] is False
-            assert new_v["lifecycle_status"] == "inactive"
+            assert new_v["lifecycle_status"] == "draft"
             assert new_v["security_status"] == "not_scanned"
             assert new_v["source_type"] == "url"
             assert new_v["source_url"] == "https://github.com/u/r"
@@ -351,7 +361,9 @@ async def test_resync_creates_inactive_version():
 @pytest.mark.asyncio
 async def test_resync_bumps_version_on_conflict():
     """显式目标版本号冲突 → ConflictError。"""
-    skill_id, _ = await _make_skill(suffix="rsclash", source_url="https://github.com/u/r")
+    skill_id, _ = await _make_skill(
+        suffix="rsclash", source_url="https://github.com/u/r"
+    )
     try:
         async with _session() as s:
             v = await skill_version_repo.find_active_for_skill(s, skill_id)

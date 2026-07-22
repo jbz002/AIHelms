@@ -6,6 +6,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     Numeric,
     SmallInteger,
@@ -13,6 +14,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -963,6 +965,11 @@ class Skill(Base):
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
     visibility_type: Mapped[str] = mapped_column(String(20), default="all")
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False)
+    hidden_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    hidden_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id"), nullable=True
+    )
     install_count: Mapped[int] = mapped_column(Integer, default=0)
     security_status: Mapped[str] = mapped_column(String(32), default="not_scanned")
     security_decision: Mapped[str] = mapped_column(String(32), default="")
@@ -1011,7 +1018,7 @@ class SkillVersion(Base):
     version: Mapped[str] = mapped_column(String(64), nullable=False)
     version_label: Mapped[str] = mapped_column(String(128), default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
-    lifecycle_status: Mapped[str] = mapped_column(String(20), default="inactive")
+    lifecycle_status: Mapped[str] = mapped_column(String(20), default="draft")
     sunset_date: Mapped[datetime | None] = mapped_column(nullable=True)
     source: Mapped[str] = mapped_column(String(20), default="manual")
     content_sha256: Mapped[str] = mapped_column(String(64), default="")
@@ -1054,6 +1061,45 @@ class SkillVersion(Base):
 
     skill: Mapped["Skill"] = relationship(
         back_populates="versions", foreign_keys=[skill_id]
+    )
+
+
+class SkillReviewTask(Base):
+    """S3 · 版本级审核任务（一版本一活跃 task）。
+
+    与实体级 publish_reviews 正交：本表驱动 SkillVersion 生命周期审核流
+    （pending_review → approved/rejected/withdrawn），用 lock_version 做乐观锁。
+    """
+
+    __tablename__ = "skill_review_tasks"
+    __table_args__ = (
+        Index(
+            "uq_skill_review_tasks_pending",
+            "skill_version_id",
+            unique=True,
+            postgresql_where=text("status = 'pending'"),
+        ),
+        {"schema": "aihelms"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    skill_version_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("aihelms.skill_versions.id", ondelete="CASCADE")
+    )
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    reviewer_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    submitted_by: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL")
+    )
+    decision_notes: Mapped[str] = mapped_column(Text, default="")
+    lock_version: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    resolved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
 

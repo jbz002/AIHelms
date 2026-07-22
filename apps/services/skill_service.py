@@ -7,17 +7,47 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.database import async_session
+from core.distributed_lock import redis_lock
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import Skill, SkillCategory, SkillUsageLog, SkillVersion
 from repositories import (
     ai_policies_repo,
     skill_repo,
+    skill_review_repo,
     skill_version_repo,
     storage_deletion_compensation_repo,
 )
 from services import versioning_service
 from services.skill_content_service import ParsedSkillContent
-from services.skill_serializers import _latest_audit_map, _serialize, _serialize_version
+from services.skill_lifecycle_service import (
+    DRAFT,
+    PENDING_REVIEW,
+    PUBLISHED,
+    REJECTED,
+    YANKED,
+    assert_transition,
+)
+from services.skill_review_service import (
+    approve as review_approve,
+)
+from services.skill_review_service import (
+    reject as review_reject,
+)
+from services.skill_review_service import (
+    require_pending_for_version,
+)
+from services.skill_review_service import (
+    submit as review_submit,
+)
+from services.skill_review_service import (
+    withdraw as review_withdraw,
+)
+from services.skill_serializers import (
+    _latest_audit_map,
+    _serialize,
+    _serialize_review_task,
+    _serialize_version,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -207,7 +237,7 @@ async def create_skill(
         skill_id=skill.id,
         version=version,
         is_active=True,
-        lifecycle_status="active",
+        lifecycle_status="published",
         source="manual",
         source_type="url" if source_url else "zip",
         source_url=source_url or "",
@@ -529,7 +559,7 @@ async def create_version(
         version=version,
         version_label=version_label,
         is_active=False,
-        lifecycle_status="inactive",
+        lifecycle_status="draft",
         source=source,
         source_type="url" if source_url else "zip",
         source_url=source_url or "",
@@ -583,12 +613,21 @@ async def activate_version(
         latest_audit_map = await _latest_audit_map(session, [skill])
         return _serialize(skill, latest_audit_map)
 
-    # 硬门控：未通过安全审查的新版本不可激活
-    if not (
+    # 状态守卫：只有 draft / pending_review 可激活（deprecated/yanked/rejected/scanning 不可）
+    if version.lifecycle_status not in (DRAFT, PENDING_REVIEW):
+        raise ValidationError(
+            f"版本当前状态为 {version.lifecycle_status}，不可激活"
+        )
+
+    # 硬门控：通过安全审查（passed / attention_required）或存在 approved 审核任务
+    security_ok = (
         version.security_status == "completed"
         and version.security_decision in _ACTIVATE_ALLOWED_DECISIONS
-    ):
-        raise ValidationError("新版本未通过安全审查，不可激活")
+    )
+    review_task = await skill_review_repo.find_latest_for_version(session, version.id)
+    review_approved = review_task is not None and review_task.status == "approved"
+    if not (security_ok or review_approved):
+        raise ValidationError("新版本未通过安全审查或审核，不可激活")
 
     # 协议门控：SKILL.md 协议校验未通过不可激活（草稿容错，仅在激活时阻断）
     if not version.protocol_valid:
@@ -633,6 +672,144 @@ async def deprecate_version(
     )
     version = await skill_version_repo.find_by_id(session, version_id)
     return _serialize_version(version)
+
+
+# ─── S3 · 生命周期状态机精细化 ────────────────────────────────────────────────
+
+
+async def yank_version(
+    session: AsyncSession, skill_id: int, version_id: int
+) -> dict:
+    """撤回已发布版本：published → yanked，命中 current_version_id 则重算次新 published。"""
+    skill = await skill_repo.find_by_id(session, skill_id)
+    if not skill:
+        raise NotFoundError("skill", skill_id)
+    version = await skill_version_repo.find_by_id(session, version_id)
+    if not version or version.skill_id != skill_id:
+        raise NotFoundError("skill_version", version_id)
+
+    async with redis_lock(f"aihelms:lock:skill_yank:{skill_id}"):
+        version = await skill_version_repo.find_by_id(session, version_id)
+        if version.lifecycle_status != PUBLISHED:
+            raise ValidationError(
+                f"版本当前状态为 {version.lifecycle_status}，仅 published 可撤回"
+            )
+        version.lifecycle_status = YANKED
+        version.is_active = False
+        # 先落 yanked 翻转，避免重算时与 single-active 部分唯一索引冲突
+        await session.flush()
+
+        # 命中当前 published 指针 → 重算次新 published，回滚主表快照
+        if skill.current_version_id == version_id:
+            new_latest = await skill_version_repo.find_latest_published(
+                session, skill_id, exclude_version_id=version_id
+            )
+            if new_latest:
+                new_latest.is_active = True
+                skill.current_version_id = new_latest.id
+                await _apply_version_snapshot_to_skill(skill, new_latest)
+            else:
+                skill.current_version_id = None
+        await session.commit()
+    await session.refresh(skill)
+    latest_audit_map = await _latest_audit_map(session, [skill])
+    return _serialize(skill, latest_audit_map)
+
+
+async def set_hidden(
+    session: AsyncSession,
+    skill_id: int,
+    hidden: bool,
+    actor_id: int | None = None,
+) -> dict:
+    """治理下架 overlay 开关（独立于 lifecycle_status 与 visibility_type）。"""
+    skill = await skill_repo.find_by_id(session, skill_id)
+    if not skill:
+        raise NotFoundError("skill", skill_id)
+    skill.hidden = hidden
+    skill.hidden_at = datetime.now(timezone.utc) if hidden else None
+    skill.hidden_by = actor_id if hidden else None
+    await session.commit()
+    await session.refresh(skill)
+    latest_audit_map = await _latest_audit_map(session, [skill])
+    return _serialize(skill, latest_audit_map)
+
+
+async def _load_version_for_review(
+    session: AsyncSession, skill_id: int, version_id: int
+) -> tuple[Skill, SkillVersion]:
+    skill = await skill_repo.find_by_id(session, skill_id)
+    if not skill:
+        raise NotFoundError("skill", skill_id)
+    version = await skill_version_repo.find_by_id(session, version_id)
+    if not version or version.skill_id != skill_id:
+        raise NotFoundError("skill_version", version_id)
+    return skill, version
+
+
+async def submit_version_review(
+    session: AsyncSession, skill_id: int, version_id: int, submitted_by: int
+) -> dict:
+    """提交版本审核：draft/scanning → pending_review（auto-withdraw 旧 task）。
+
+    已在 pending_review 时允许重提（auto-withdraw 旧 task 并新建），lifecycle 不变。
+    """
+    _, version = await _load_version_for_review(session, skill_id, version_id)
+    if version.lifecycle_status != PENDING_REVIEW:
+        assert_transition(version.lifecycle_status, PENDING_REVIEW)
+        version.lifecycle_status = PENDING_REVIEW
+    task = await review_submit(session, version_id, submitted_by)
+    await session.commit()
+    await session.refresh(version)
+    return {"version": _serialize_version(version), "review_task": _serialize_review_task(task)}
+
+
+async def approve_version_review(
+    session: AsyncSession,
+    skill_id: int,
+    version_id: int,
+    reviewer_id: int,
+    decision_notes: str = "",
+) -> dict:
+    """通过版本审核（防自审 + 乐观锁）。版本激活随后由 activate_version 门控放行。"""
+    _, version = await _load_version_for_review(session, skill_id, version_id)
+    task = await require_pending_for_version(session, version_id)
+    task = await review_approve(session, task, reviewer_id, decision_notes)
+    await session.commit()
+    await session.refresh(version)
+    return {"version": _serialize_version(version), "review_task": _serialize_review_task(task)}
+
+
+async def reject_version_review(
+    session: AsyncSession,
+    skill_id: int,
+    version_id: int,
+    reviewer_id: int,
+    decision_notes: str = "",
+) -> dict:
+    """拒绝版本审核：pending_review → rejected。"""
+    _, version = await _load_version_for_review(session, skill_id, version_id)
+    task = await require_pending_for_version(session, version_id)
+    task = await review_reject(session, task, reviewer_id, decision_notes)
+    assert_transition(version.lifecycle_status, REJECTED)
+    version.lifecycle_status = REJECTED
+    await session.commit()
+    await session.refresh(version)
+    return {"version": _serialize_version(version), "review_task": _serialize_review_task(task)}
+
+
+async def withdraw_version_review(
+    session: AsyncSession, skill_id: int, version_id: int, actor_id: int
+) -> dict:
+    """撤回版本审核（仅提交人）：pending_review → draft。"""
+    _, version = await _load_version_for_review(session, skill_id, version_id)
+    task = await require_pending_for_version(session, version_id)
+    task = await review_withdraw(session, task, actor_id)
+    assert_transition(version.lifecycle_status, DRAFT)
+    version.lifecycle_status = DRAFT
+    await session.commit()
+    await session.refresh(version)
+    return {"version": _serialize_version(version), "review_task": _serialize_review_task(task)}
 
 
 async def _noop_sync(skill: Skill, version: SkillVersion) -> None:

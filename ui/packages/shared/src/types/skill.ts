@@ -48,12 +48,22 @@ export interface Skill {
   source_url?: string | null
   current_version_id?: number | null
   active_version?: SkillVersion | null
+  hidden?: boolean
+  hidden_at?: string | null
+  lifecycle_projection?: SkillLifecycleProjection
   created_by: number | null
   created_at: string | null
   updated_at: string | null
 }
 
-export type SkillVersionLifecycle = 'inactive' | 'active' | 'deprecated'
+export type SkillVersionLifecycle =
+  | 'draft'
+  | 'scanning'
+  | 'pending_review'
+  | 'published'
+  | 'yanked'
+  | 'rejected'
+  | 'deprecated'
 
 export interface ManifestFile {
   sha256: string
@@ -108,6 +118,31 @@ export interface CreateSkillVersionParams {
 
 export interface DeprecateSkillVersionParams {
   sunset_date?: string | null
+}
+
+export type SkillReviewTaskStatus =
+  | 'pending'
+  | 'approved'
+  | 'rejected'
+  | 'withdrawn'
+
+export interface SkillReviewTask {
+  id: number
+  skill_version_id: number
+  status: SkillReviewTaskStatus
+  reviewer_id: number | null
+  submitted_by: number | null
+  decision_notes: string
+  created_at: string | null
+  resolved_at: string | null
+}
+
+export interface SkillLifecycleProjection {
+  headline_version: SkillVersion | null
+  published_version: SkillVersion | null
+  owner_preview_version: SkillVersion | null
+  resolution_mode: 'none' | 'pending_review' | 'scan_failed' | 'yanked'
+  is_hidden: boolean
 }
 
 export interface SkillListResult {

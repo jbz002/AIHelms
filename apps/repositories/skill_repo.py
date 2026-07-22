@@ -50,6 +50,9 @@ async def find_all(
     vis_clause = list_visibility_clause(Skill, viewer_id, is_admin)
     if vis_clause is not None:
         stmt = stmt.where(vis_clause)
+    # S3 · 治理下架 overlay：非 admin（含匿名）不见 hidden Skill
+    if not is_admin:
+        stmt = stmt.where(Skill.hidden == False)  # noqa: E712
     offset = (page - 1) * page_size
     stmt = stmt.limit(page_size).offset(offset)
     result = await session.execute(stmt)
@@ -74,6 +77,9 @@ async def count_all(
     vis_clause = list_visibility_clause(Skill, viewer_id, is_admin)
     if vis_clause is not None:
         stmt = stmt.where(vis_clause)
+    # S3 · 治理下架 overlay：非 admin（含匿名）不见 hidden Skill
+    if not is_admin:
+        stmt = stmt.where(Skill.hidden == False)  # noqa: E712
     result = await session.execute(stmt)
     return result.scalar_one()
 

@@ -674,6 +674,9 @@ CREATE TABLE IF NOT EXISTS aihelms.skills (
     is_published BOOLEAN DEFAULT false,
     requires_approval BOOLEAN DEFAULT false,
     visibility_type VARCHAR(20) DEFAULT 'all',
+    hidden BOOLEAN DEFAULT false,                        -- 治理下架 overlay（独立于 lifecycle/visibility）
+    hidden_at TIMESTAMPTZ,
+    hidden_by BIGINT REFERENCES aihelms.users(id),
     install_count INTEGER DEFAULT 0,
     frontmatter JSONB DEFAULT '{}',
     summary_text TEXT DEFAULT '',
@@ -687,6 +690,7 @@ CREATE INDEX IF NOT EXISTS idx_skills_name ON aihelms.skills(name);
 CREATE INDEX IF NOT EXISTS idx_skills_published ON aihelms.skills(is_published);
 CREATE INDEX IF NOT EXISTS idx_skills_business_scenario ON aihelms.skills(business_scenario_id);
 CREATE INDEX IF NOT EXISTS idx_skills_visibility ON aihelms.skills(visibility_type);
+CREATE INDEX IF NOT EXISTS idx_skills_hidden ON aihelms.skills(hidden) WHERE hidden = true;
 
 
 -- AI Policies 审查基线
@@ -786,7 +790,7 @@ CREATE TABLE IF NOT EXISTS aihelms.skill_versions (
     version VARCHAR(64) NOT NULL,
     version_label VARCHAR(128) NOT NULL DEFAULT '',
     is_active BOOLEAN NOT NULL DEFAULT false,
-    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'inactive',
+    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'draft',  -- draft/scanning/pending_review/published/yanked/rejected/deprecated
     sunset_date TIMESTAMPTZ,
     source VARCHAR(20) NOT NULL DEFAULT 'manual',
     content_sha256 VARCHAR(64) NOT NULL DEFAULT '',
@@ -828,7 +832,7 @@ CREATE INDEX IF NOT EXISTS idx_skill_versions_protocol_valid
     ON aihelms.skill_versions(protocol_valid) WHERE protocol_valid = false;
 CREATE INDEX IF NOT EXISTS idx_skill_versions_drift_scan
     ON aihelms.skill_versions(source_type, lifecycle_status)
-    WHERE source_type = 'url' AND lifecycle_status = 'active';
+    WHERE source_type = 'url' AND lifecycle_status = 'published';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_skill_versions_active
     ON aihelms.skill_versions(skill_id) WHERE is_active = true;
 
@@ -836,6 +840,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_skill_versions_active
 ALTER TABLE aihelms.skills
     ADD COLUMN IF NOT EXISTS current_version_id BIGINT
     REFERENCES aihelms.skill_versions(id) ON DELETE SET NULL;
+
+-- S3 · 版本级审核任务表（保留历史；部分唯一索引保证一版本仅一个 pending；与实体级 publish_reviews 正交）
+CREATE TABLE IF NOT EXISTS aihelms.skill_review_tasks (
+    id BIGSERIAL PRIMARY KEY,
+    skill_version_id BIGINT NOT NULL REFERENCES aihelms.skill_versions(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',   -- pending / approved / rejected / withdrawn
+    reviewer_id BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    submitted_by BIGINT NOT NULL REFERENCES aihelms.users(id) ON DELETE SET NULL,
+    decision_notes TEXT NOT NULL DEFAULT '',
+    lock_version INTEGER NOT NULL DEFAULT 0,          -- 乐观锁（复用 S6 CAS 模式）
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    resolved_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_skill_review_tasks_pending
+    ON aihelms.skill_review_tasks(skill_version_id) WHERE status = 'pending';
+
+CREATE INDEX IF NOT EXISTS idx_skill_review_tasks_status
+    ON aihelms.skill_review_tasks(status);
 
 -- ai_policies_audits.skill_version_id：版本绑定安全审查指针
 ALTER TABLE aihelms.ai_policies_audits

@@ -8,6 +8,11 @@ import {
   createSkillVersionSecurityAudit,
   checkSkillVersionDrift,
   resyncSkillVersion,
+  yankSkillVersion,
+  submitSkillVersionReview,
+  approveSkillVersionReview,
+  rejectSkillVersionReview,
+  withdrawSkillVersionReview,
   toast,
   usePermission,
   type Skill,
@@ -34,6 +39,7 @@ const loading = ref(false)
 const actingId = ref<number | null>(null)
 const showCreate = ref(false)
 const deprecateTarget = ref<SkillVersion | null>(null)
+const yankTarget = ref<SkillVersion | null>(null)
 const checkingDriftId = ref<number | null>(null)
 const resyncTarget = ref<SkillVersion | null>(null)
 const resyncVersion = ref('')
@@ -64,12 +70,12 @@ async function loadVersions(): Promise<void> {
 watch(() => props.skillId, loadVersions, { immediate: true })
 
 function canActivate(v: SkillVersion): boolean {
-  return (
-    !v.is_active &&
-    v.protocol_valid &&
+  if (v.is_active || !v.protocol_valid) return false
+  const securityOk =
     v.security_status === 'completed' &&
     (v.security_decision === 'passed' || v.security_decision === 'attention_required')
-  )
+  // pending_review：已提交审核，若已通过则可激活（最终由后端门控判定）
+  return securityOk || v.lifecycle_status === 'pending_review'
 }
 
 function protocolBadge(v: SkillVersion): { cls: string; label: string; tip: string } {
@@ -92,9 +98,23 @@ function protocolBadge(v: SkillVersion): { cls: string; label: string; tip: stri
 }
 
 function lifecycleBadge(s: string): { cls: string; label: string } {
-  if (s === 'active') return { cls: 'bg-green-50 text-green-600', label: '生效中' }
-  if (s === 'deprecated') return { cls: 'bg-slate-100 text-slate-400 line-through', label: '已弃用' }
-  return { cls: 'bg-amber-50 text-amber-600', label: '灰度' }
+  switch (s) {
+    case 'published':
+      return { cls: 'bg-green-50 text-green-600', label: '已发布' }
+    case 'pending_review':
+      return { cls: 'bg-amber-50 text-amber-600', label: '待审核' }
+    case 'scanning':
+      return { cls: 'bg-indigo-50 text-indigo-600', label: '扫描中' }
+    case 'yanked':
+      return { cls: 'bg-red-50 text-red-600', label: '已撤回' }
+    case 'rejected':
+      return { cls: 'bg-red-50 text-red-600', label: '已拒绝' }
+    case 'deprecated':
+      return { cls: 'bg-slate-100 text-slate-400 line-through', label: '已弃用' }
+    case 'draft':
+    default:
+      return { cls: 'bg-slate-100 text-slate-500', label: '草稿' }
+  }
 }
 
 function securityBadge(v: SkillVersion): { cls: string; label: string } {
@@ -194,6 +214,75 @@ async function confirmResync(): Promise<void> {
     await loadVersions()
   } catch (e) {
     toast.error((e as { message?: string }).message || '重新同步失败')
+  } finally {
+    actingId.value = null
+  }
+}
+
+async function confirmYank(): Promise<void> {
+  if (!yankTarget.value) return
+  const target = yankTarget.value
+  actingId.value = target.id
+  try {
+    const skill = await yankSkillVersion(props.skillId, target.id)
+    toast.success(`已撤回版本 ${target.version}`)
+    emit('activated', skill)
+    yankTarget.value = null
+    await loadVersions()
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '撤回失败')
+  } finally {
+    actingId.value = null
+  }
+}
+
+async function handleSubmitReview(v: SkillVersion): Promise<void> {
+  actingId.value = v.id
+  try {
+    await submitSkillVersionReview(props.skillId, v.id)
+    toast.success('已提交审核')
+    await loadVersions()
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '提交审核失败')
+  } finally {
+    actingId.value = null
+  }
+}
+
+async function handleApproveReview(v: SkillVersion): Promise<void> {
+  actingId.value = v.id
+  try {
+    await approveSkillVersionReview(props.skillId, v.id)
+    toast.success('审核已通过，可激活上线')
+    await loadVersions()
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '通过失败')
+  } finally {
+    actingId.value = null
+  }
+}
+
+async function handleRejectReview(v: SkillVersion): Promise<void> {
+  actingId.value = v.id
+  try {
+    await rejectSkillVersionReview(props.skillId, v.id)
+    toast.success('已拒绝审核')
+    await loadVersions()
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '拒绝失败')
+  } finally {
+    actingId.value = null
+  }
+}
+
+async function handleWithdrawReview(v: SkillVersion): Promise<void> {
+  actingId.value = v.id
+  try {
+    await withdrawSkillVersionReview(props.skillId, v.id)
+    toast.success('已撤回审核')
+    await loadVersions()
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '撤回失败')
   } finally {
     actingId.value = null
   }
@@ -341,6 +430,46 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             {{ actingId === v.id ? '...' : '激活' }}
           </button>
           <button
+            v-if="canManage && (v.lifecycle_status === 'draft' || v.lifecycle_status === 'scanning')"
+            class="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600 hover:bg-amber-100 disabled:opacity-50"
+            :disabled="actingId === v.id"
+            @click="handleSubmitReview(v)"
+          >
+            {{ actingId === v.id ? '...' : '提交审核' }}
+          </button>
+          <button
+            v-if="canManage && v.lifecycle_status === 'pending_review'"
+            class="rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-600 hover:bg-green-100 disabled:opacity-50"
+            :disabled="actingId === v.id"
+            @click="handleApproveReview(v)"
+          >
+            {{ actingId === v.id ? '...' : '通过' }}
+          </button>
+          <button
+            v-if="canManage && v.lifecycle_status === 'pending_review'"
+            class="rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600 hover:bg-red-100 disabled:opacity-50"
+            :disabled="actingId === v.id"
+            @click="handleRejectReview(v)"
+          >
+            {{ actingId === v.id ? '...' : '拒绝' }}
+          </button>
+          <button
+            v-if="canManage && v.lifecycle_status === 'pending_review'"
+            class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-200 disabled:opacity-50"
+            :disabled="actingId === v.id"
+            @click="handleWithdrawReview(v)"
+          >
+            {{ actingId === v.id ? '...' : '撤回审核' }}
+          </button>
+          <button
+            v-if="canManage && v.lifecycle_status === 'published'"
+            class="rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600 hover:bg-red-100 disabled:opacity-50"
+            :disabled="actingId === v.id"
+            @click="yankTarget = v"
+          >
+            撤回
+          </button>
+          <button
             v-if="canManage && !v.is_active && v.lifecycle_status !== 'deprecated'"
             class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-200"
             @click="deprecateTarget = v"
@@ -372,6 +501,14 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
       :message="`确认弃用版本 ${deprecateTarget?.version}？弃用版本永不可被激活。`"
       @confirm="confirmDeprecate"
       @cancel="deprecateTarget = null"
+    />
+
+    <ConfirmDialog
+      :visible="!!yankTarget"
+      title="撤回已发布版本"
+      :message="`确认撤回版本 ${yankTarget?.version}？撤回后该版本不再可用；若其为当前发布版本，将自动重算到次新已发布版本。`"
+      @confirm="confirmYank"
+      @cancel="yankTarget = null"
     />
 
     <div

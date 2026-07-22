@@ -8,6 +8,7 @@ import {
   getSkillById,
   getSkillCategories,
   getSkillDownloadUrl,
+  setSkillHidden,
   toast,
   updateSkill,
   type Skill,
@@ -223,6 +224,18 @@ function handleZipChange(event: Event): void {
 
 function handleVersionActivated(updated: Skill): void {
   skill.value = updated
+}
+
+async function handleToggleHidden(): Promise<void> {
+  if (!skill.value) return
+  const next = !skill.value.hidden
+  try {
+    const updated = await setSkillHidden(skill.value.id, next)
+    skill.value = updated
+    toast.success(next ? '已治理下架' : '已恢复上架')
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '操作失败')
+  }
 }
 
 async function handleSave(): Promise<void> {
@@ -612,6 +625,25 @@ onMounted(loadData)
               />
               领用前需要审批
             </label>
+          </div>
+          <div v-if="skill" class="col-span-2 flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
+            <div>
+              <p class="text-sm font-medium text-slate-700">治理下架（hidden）</p>
+              <p class="text-xs text-slate-400">独立的治理下架 overlay，与发布开关、可见性正交。下架后非管理员不可见。</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <span
+                v-if="skill.hidden"
+                class="rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600"
+              >已下架</span>
+              <button
+                class="rounded-md px-3 py-1 text-xs font-medium transition-colors disabled:opacity-50"
+                :class="skill.hidden ? 'bg-slate-200 text-slate-600 hover:bg-slate-300' : 'bg-red-50 text-red-600 hover:bg-red-100'"
+                @click="handleToggleHidden"
+              >
+                {{ skill.hidden ? '恢复上架' : '下架' }}
+              </button>
+            </div>
           </div>
         </div>
 

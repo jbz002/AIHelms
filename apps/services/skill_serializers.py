@@ -5,8 +5,9 @@ Extracted from skill_service.py to keep it under the 500-line limit.
 
 from __future__ import annotations
 
-from models.db import Skill, SkillVersion
+from models.db import Skill, SkillReviewTask, SkillVersion
 from repositories import ai_policies_repo
+from services.skill_lifecycle_projection import build_projection
 
 
 async def _latest_audit_map(session, skills: list[Skill]) -> dict[int, str]:
@@ -56,6 +57,19 @@ def _serialize_version(v: SkillVersion) -> dict:
     }
 
 
+def _serialize_review_task(t: SkillReviewTask) -> dict:
+    return {
+        "id": t.id,
+        "skill_version_id": t.skill_version_id,
+        "status": t.status,
+        "reviewer_id": t.reviewer_id,
+        "submitted_by": t.submitted_by,
+        "decision_notes": t.decision_notes,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "resolved_at": t.resolved_at.isoformat() if t.resolved_at else None,
+    }
+
+
 def _serialize(skill: Skill, latest_audit_map: dict[int, str] | None = None) -> dict:
     latest_audit_map = latest_audit_map or {}
     latest_audit_code = (
@@ -64,6 +78,11 @@ def _serialize(skill: Skill, latest_audit_map: dict[int, str] | None = None) -> 
         else None
     )
     active = next((v for v in (skill.versions or []) if v.is_active), None)
+    versions_sorted = sorted((skill.versions or []), key=lambda v: v.id, reverse=True)
+    serialized_versions = [_serialize_version(v) for v in versions_sorted]
+    projection = build_projection(
+        serialized_versions, skill.current_version_id, skill.hidden
+    )
     return {
         "id": skill.id,
         "skill_id": skill.skill_id,
@@ -84,6 +103,9 @@ def _serialize(skill: Skill, latest_audit_map: dict[int, str] | None = None) -> 
         "is_published": skill.is_published,
         "requires_approval": skill.requires_approval,
         "visibility_type": skill.visibility_type,
+        "hidden": skill.hidden,
+        "hidden_at": skill.hidden_at.isoformat() if skill.hidden_at else None,
+        "lifecycle_projection": projection,
         "install_count": skill.install_count,
         "frontmatter": skill.frontmatter,
         "summary_text": skill.summary_text,

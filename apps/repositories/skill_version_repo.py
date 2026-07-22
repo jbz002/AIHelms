@@ -33,6 +33,21 @@ async def find_active_for_skill(
     return result.scalar_one_or_none()
 
 
+async def find_latest_published(
+    session: AsyncSession, skill_id: int, exclude_version_id: int | None = None
+) -> SkillVersion | None:
+    """S3 · Yank 指针重算：查次新 published 版本（排除指定版本，按 id 倒序）。"""
+    stmt = select(SkillVersion).where(
+        SkillVersion.skill_id == skill_id,
+        SkillVersion.lifecycle_status == "published",
+    )
+    if exclude_version_id is not None:
+        stmt = stmt.where(SkillVersion.id != exclude_version_id)
+    stmt = stmt.order_by(SkillVersion.id.desc()).limit(1)
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def find_by_skill_and_version(
     session: AsyncSession, skill_id: int, version: str
 ) -> SkillVersion | None:
@@ -61,20 +76,21 @@ async def list_versions(
 async def deactivate_others(
     session: AsyncSession, skill_id: int, keep_version_id: int
 ) -> None:
-    """将同一 Skill 中其它处于 active 生命周期的版本降级为 inactive。
+    """将同一 Skill 中其它 is_active 版本降为非 active（保留 lifecycle_status）。
 
-    只降级 lifecycle_status='active' 的行，不触碰 deprecated 行。
-    必须在 set_active 之前调用，以维持部分唯一索引 uq_skill_versions_active
-    的单 active 不变式。
+    published 是生命周期阶段，可多版本共存（历史发布）；is_active 是单指针（当前生效）。
+    只翻 is_active=False，不降级 lifecycle_status，以维持部分唯一索引
+    uq_skill_versions_active 的单 active 不变式，且让 Yank 能重算到次新 published。
+    必须在 set_active 之前调用。
     """
     await session.execute(
         update(SkillVersion)
         .where(
             SkillVersion.skill_id == skill_id,
             SkillVersion.id != keep_version_id,
-            SkillVersion.lifecycle_status == "active",
+            SkillVersion.is_active == True,  # noqa: E712
         )
-        .values(is_active=False, lifecycle_status="inactive")
+        .values(is_active=False)
     )
 
 
@@ -82,7 +98,7 @@ async def set_active(session: AsyncSession, version_id: int) -> None:
     await session.execute(
         update(SkillVersion)
         .where(SkillVersion.id == version_id)
-        .values(is_active=True, lifecycle_status="active")
+        .values(is_active=True, lifecycle_status="published")
     )
 
 
@@ -98,7 +114,7 @@ async def set_active_with_lock(
         )
         .values(
             is_active=True,
-            lifecycle_status="active",
+            lifecycle_status="published",
             lock_version=expected_lock_version + 1,
         )
     )
@@ -169,7 +185,7 @@ async def update_security_status(
 async def list_url_active(
     session: AsyncSession, limit: int = 100
 ) -> list[SkillVersion]:
-    """所有 source_type='url' 且 lifecycle_status='active' 的版本。
+    """所有 source_type='url' 且 lifecycle_status='published' 的版本。
 
     从未检测的（last_drift_check_at IS NULL）优先，其次按最早检测时间，
     确保长期未检查的版本先被扫描。limit 控制单批扫描量。
@@ -178,7 +194,7 @@ async def list_url_active(
         select(SkillVersion)
         .where(
             SkillVersion.source_type == "url",
-            SkillVersion.lifecycle_status == "active",
+            SkillVersion.lifecycle_status == "published",
         )
         .order_by(SkillVersion.last_drift_check_at.asc().nullsfirst())
         .limit(limit)

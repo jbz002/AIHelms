@@ -35,6 +35,7 @@ export { search } from './api/search'
 export type {
   Skill, SkillCategory, SkillListResult, CreateSkillCategoryParams,
   SkillVersion, SkillVersionLifecycle, CreateSkillVersionParams, DeprecateSkillVersionParams,
+  SkillReviewTask, SkillReviewTaskStatus, SkillLifecycleProjection,
   SkillSummaryView, SkillFullView, SkillIntegrityView,
   ManifestFile, ProtocolIssue,
 } from './types/skill'
@@ -45,8 +46,11 @@ export {
   getSkillVersions, createSkillVersion, activateSkillVersion,
   deprecateSkillVersion, createSkillVersionSecurityAudit,
   checkSkillVersionDrift, resyncSkillVersion,
+  yankSkillVersion, submitSkillVersionReview, approveSkillVersionReview,
+  rejectSkillVersionReview, withdrawSkillVersionReview, setSkillHidden,
   getSkillSummary, getSkillFull, getSkillIntegrity,
 } from './api/skill'
+export type { SkillVersionReviewResult } from './api/skill'
 export type { AiPolicyAudit, AiPolicyAuditSummary, AiPolicyAuditListResult, AiPolicyAuditQuery, AiPolicyFinding, AiPolicyAuditFileSummary, AiPolicyRiskCatalogItem, AiPolicySettings, AiPolicyVerdict, AiPolicyName, AiPolicyPreset, AiPolicySignatureRule, AiPolicySignatureRules, AiPolicyAuditHistoryItem } from './types/aiPolicies'
 export { getAiPolicyAudits, getAiPolicyAudit, getAiPolicyReportDownloadUrl, getAiPolicyRiskCatalog, getAiPolicySettings, updateAiPolicySettings, getAiPolicyPolicies, getAiPolicySignatures, replaceAiPolicySignatures, getVersionAuditHistory } from './api/aiPolicies'
 export type { Agent, AgentCategory, AgentPlatform, AgentListResult, CreateAgentParams, UpdateAgentParams, CreateAgentCategoryParams, CreateAgentPlatformParams, AgentUsageLog, AgentUsageLogListResult } from './types/agent'
