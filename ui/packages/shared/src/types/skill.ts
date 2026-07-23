@@ -27,8 +27,6 @@ export interface Skill {
   requires_approval: boolean
   visibility_type: string
   install_count: number
-  avg_score?: number
-  rating_count?: number
   frontmatter: Record<string, unknown>
   summary_text: string
   is_builtin?: boolean

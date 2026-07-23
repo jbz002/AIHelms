@@ -16,7 +16,6 @@ import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import McpServerForm from './McpServerForm.vue'
 import McpToolPanel from './McpToolPanel.vue'
 import McpVersionPanel from './McpVersionPanel.vue'
-import RatingOverviewPanel from '../../components/RatingOverviewPanel.vue'
 import UsageStatsPanel from '../../components/UsageStatsPanel.vue'
 
 const { hasPermission } = usePermission()
@@ -418,12 +417,6 @@ onMounted(loadData)
               :server-id="selectedServer.id"
               :server-billing-type="selectedServer.billing_type"
             />
-
-            <!-- 评分概览 -->
-            <div class="mt-4">
-              <h3 class="mb-3 text-sm font-semibold text-slate-900">评分概览</h3>
-              <RatingOverviewPanel entity-type="mcp_server" :entity-id="selectedServer.id" />
-            </div>
 
             <!-- 使用统计 -->
             <div class="mt-4">

@@ -128,9 +128,6 @@ async def list_skills(
     serialized = [
         _serialize(s, latest_audit_map, labels=label_map.get(s.id)) for s in items
     ]
-    from services import rating_service
-
-    await rating_service.enrich_items_with_ratings(session, "skill", serialized)
     return {
         "items": serialized,
         "total": total,

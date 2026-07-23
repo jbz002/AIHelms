@@ -2,7 +2,7 @@
 
 走真实 DB + Redis（依赖 dev 中间件运行），覆盖：
 - 幂等 repo：upsert 命中既有 key 不覆盖；save_response + find_by_key 回放
-- 乐观锁：skill_version / resource_application / rating 的 lock_version CAS
+- 乐观锁：skill_version / resource_application 的 lock_version CAS
 - 分布式锁：同 key 第二次抢锁抛 LockBusyError
 - 存储删除补偿：inc_retry 达上限标 failed；_purge_files_after_commit 删失败落补偿表
 - 审计：AdminAuditLog 的 request_id / detail 字段持久化
@@ -21,8 +21,6 @@ from core.distributed_lock import redis_lock
 from exceptions import ConflictError, LockBusyError
 from models.db import (
     AdminAuditLog,
-    EntityRating,
-    EntityRatingStats,
     IdempotencyRecord,
     ResourceApplication,
     Skill,
@@ -32,7 +30,6 @@ from models.db import (
 )
 from repositories import (
     idempotency_repo,
-    rating_repo,
     resource_application_repo,
     skill_version_repo,
     storage_deletion_compensation_repo,
@@ -70,10 +67,6 @@ async def _make_skill() -> int:
 
 async def _cleanup_skill(skill_id: int) -> None:
     async with _session() as s:
-        await s.execute(delete(EntityRating).where(EntityRating.entity_id == skill_id))
-        await s.execute(
-            delete(EntityRatingStats).where(EntityRatingStats.entity_id == skill_id)
-        )
         await s.execute(delete(SkillVersion).where(SkillVersion.skill_id == skill_id))
         await s.execute(delete(Skill).where(Skill.id == skill_id))
         await s.commit()
@@ -191,25 +184,6 @@ async def test_optimistic_lock_resource_application_conflict():
                 delete(ResourceApplication).where(ResourceApplication.id == app_id)
             )
             await s.commit()
-
-
-@pytest.mark.asyncio
-async def test_optimistic_lock_rating_upsert_increments():
-    skill_id = await _make_skill()
-    user_id = await _real_user_id()
-    try:
-        async with _session() as s:
-            r = await rating_repo.upsert_rating(s, "skill", skill_id, user_id, 4)
-            assert r.lock_version == 0
-            await s.commit()
-
-        # existing 分支：带锁 update，lock_version 递增
-        async with _session() as s:
-            r = await rating_repo.upsert_rating(s, "skill", skill_id, user_id, 5)
-            assert r.lock_version == 1
-            await s.commit()
-    finally:
-        await _cleanup_skill(skill_id)
 
 
 @pytest.mark.asyncio

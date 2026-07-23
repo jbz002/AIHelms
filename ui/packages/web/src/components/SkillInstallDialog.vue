@@ -5,7 +5,6 @@ import { request } from '@aihelms/shared/src/api/request'
 import { getSkillSummary, getSkillFull, toast } from '@aihelms/shared'
 import type { Skill, SkillSummaryView, SkillFullView } from '@aihelms/shared'
 import MarkdownRenderer from '@aihelms/shared/src/components/MarkdownRenderer.vue'
-import RatingWidget from './RatingWidget.vue'
 import { X, ChevronDown, Flame, CheckCircle2, Download } from 'lucide-vue-next'
 
 interface SkillInstallInfo {
@@ -218,11 +217,6 @@ watch(
               </template>
             </div>
 
-            <!-- Rating -->
-            <div class="mt-4 border-t border-slate-100 pt-4">
-              <h4 class="mb-3 text-xs font-semibold text-slate-700">{{ t('market.rating.title') }}</h4>
-              <RatingWidget entity-type="skill" :entity-id="skill.id" />
-            </div>
           </template>
         </div>
 

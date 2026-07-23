@@ -1459,47 +1459,6 @@ CREATE INDEX IF NOT EXISTS idx_documents_ingest_status ON aihelms.documents(inge
 CREATE INDEX IF NOT EXISTS idx_documents_created_by ON aihelms.documents(created_by);
 CREATE INDEX IF NOT EXISTS idx_documents_library ON aihelms.documents(library);
 
--- ─── 跨实体评分 + 反馈 + 聚合缓存（模块 06）──────────────────────────────
-
-CREATE TABLE IF NOT EXISTS aihelms.entity_ratings (
-    id BIGSERIAL PRIMARY KEY,
-    entity_type VARCHAR(32) NOT NULL,
-    entity_id BIGINT NOT NULL,
-    user_id BIGINT NOT NULL REFERENCES aihelms.users(id) ON DELETE CASCADE,
-    score SMALLINT NOT NULL CHECK (score BETWEEN 1 AND 5),
-    feedback_type VARCHAR(20) NOT NULL DEFAULT '',
-    comment TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    lock_version INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(entity_type, entity_id, user_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_entity_ratings_entity
-    ON aihelms.entity_ratings(entity_type, entity_id);
-CREATE INDEX IF NOT EXISTS idx_entity_ratings_user
-    ON aihelms.entity_ratings(user_id);
-CREATE INDEX IF NOT EXISTS idx_entity_ratings_entity_score
-    ON aihelms.entity_ratings(entity_type, entity_id, score);
-
-CREATE TRIGGER trg_entity_ratings_updated_at
-    BEFORE UPDATE ON aihelms.entity_ratings
-    FOR EACH ROW EXECUTE FUNCTION aihelms.update_updated_at_column();
-
-CREATE TABLE IF NOT EXISTS aihelms.entity_rating_stats (
-    entity_type VARCHAR(32) NOT NULL,
-    entity_id BIGINT NOT NULL,
-    avg_score NUMERIC(3,2) NOT NULL DEFAULT 0,
-    rating_count INTEGER NOT NULL DEFAULT 0,
-    last_rated_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (entity_type, entity_id)
-);
-
-CREATE TRIGGER trg_entity_rating_stats_updated_at
-    BEFORE UPDATE ON aihelms.entity_rating_stats
-    FOR EACH ROW EXECUTE FUNCTION aihelms.update_updated_at_column();
-
 -- ─── 可见性增强 + 发布门控（模块 07）──────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS aihelms.publish_reviews (

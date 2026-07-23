@@ -43,8 +43,6 @@ export interface McpServer {
   requires_approval: boolean
   status: string
   call_count: number
-  avg_score?: number
-  rating_count?: number
   last_health_check: string | null
   health_check_error: string | null
   litellm_synced: boolean

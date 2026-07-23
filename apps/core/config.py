@@ -71,7 +71,7 @@ class Settings(BaseSettings):
     # 一致性保障（S6）
     idempotency_ttl_hours: int = 24  # 幂等键保留时长（小时）
     idempotency_path_prefixes: str = (
-        "/api/v1/ratings,/api/v1/resource-applications"  # 启用幂等的路径前缀（逗号分隔，仅 JSON 写接口）
+        "/api/v1/resource-applications"  # 启用幂等的路径前缀（逗号分隔，仅 JSON 写接口）
     )
     storage_compensation_max_retries: int = 5  # 孤儿文件删除补偿最大重试次数
     distributed_lock_default_ttl: int = 30  # 分布式锁默认 TTL（秒）

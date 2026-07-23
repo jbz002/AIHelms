@@ -47,9 +47,6 @@ async def list_servers(
         is_admin,
     )
     serialized = [_serialize_server(s) for s in items]
-    from services import rating_service
-
-    await rating_service.enrich_items_with_ratings(session, "mcp_server", serialized)
     return {
         "items": serialized,
         "total": total,

@@ -26,7 +26,7 @@ const loading = ref(false)
 const selectedCategory = ref<string | null>(null)
 const skillQuery = ref('')
 const publishStatus = ref<PublishStatusFilter>('all')
-const sortOrder = ref<'default' | 'rating' | 'usage'>('default')
+const sortOrder = ref<'default' | 'usage'>('default')
 const showCategoryForm = ref(false)
 const categoryFormName = ref('')
 const categoryFormDescription = ref('')
@@ -49,13 +49,6 @@ const filteredSkills = computed(() => {
       (publishStatus.value === 'unpublished' && !skill.is_published)
     return matchesCategory && matchesName && matchesPublishStatus
   })
-  if (sortOrder.value === 'rating') {
-    return [...list].sort((a, b) => {
-      const qa = (a.rating_count ?? 0) >= 3 ? (a.avg_score ?? 0) : 0
-      const qb = (b.rating_count ?? 0) >= 3 ? (b.avg_score ?? 0) : 0
-      return qb - qa
-    })
-  }
   if (sortOrder.value === 'usage') {
     return [...list].sort((a, b) => (b.install_count ?? 0) - (a.install_count ?? 0))
   }

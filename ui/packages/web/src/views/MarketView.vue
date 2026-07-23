@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getMyKeys, search, request, createResourceApplication, StarRating, LabelBadge } from '@aihelms/shared'
+import { getMyKeys, search, request, createResourceApplication, LabelBadge } from '@aihelms/shared'
 import type { AiKey, Skill, McpServer, SearchResultItem, SkillLabelGrant } from '@aihelms/shared'
 import { Server, Sparkles, CheckCircle2, Search, X, ExternalLink, Flame } from 'lucide-vue-next'
 import * as lucideIcons from 'lucide-vue-next'
 import SkillInstallDialog from '../components/SkillInstallDialog.vue'
-import RatingWidget from '../components/RatingWidget.vue'
 
 type MarketItem = (Skill & { _type: 'skill' }) | (McpServer & { _type: 'mcp' })
 
@@ -18,7 +17,7 @@ const searchQuery = ref('')
 const searchResults = ref<SearchResultItem[]>([])
 const isSearching = ref(false)
 const typeFilter = ref<'all' | 'skill' | 'mcp' | 'tool'>('all')
-const sortMode = ref<'latest' | 'rating' | 'usage'>('rating')
+const sortMode = ref<'latest' | 'usage'>('latest')
 const { t } = useI18n()
 const categoryFilter = ref('')
 const showApplyDialog = ref(false)
@@ -76,18 +75,9 @@ const backendResults = computed<MarketItem[]>(() => {
   })
 })
 
-// Q5: rating_count >= 3 threshold prevents low-sample score from dominating
-function qualityScore(item: MarketItem): number {
-  const cnt = item.rating_count ?? 0
-  const avg = item.avg_score ?? 0
-  return cnt >= 3 ? avg : 0
-}
-
 function sortItems(list: MarketItem[]): MarketItem[] {
   const copy = [...list]
-  if (sortMode.value === 'rating') {
-    copy.sort((a, b) => qualityScore(b) - qualityScore(a) || getUsageCount(b) - getUsageCount(a))
-  } else if (sortMode.value === 'usage') {
+  if (sortMode.value === 'usage') {
     copy.sort((a, b) => getUsageCount(b) - getUsageCount(a))
   } else {
     copy.sort((a, b) => b.id - a.id)
@@ -373,13 +363,13 @@ onMounted(loadData)
         </div>
         <div class="flex items-center gap-1 rounded-xl bg-white p-1 border border-slate-200/60">
           <button
-            v-for="opt in [{ key: 'latest', label: t('market.sort.latest') }, { key: 'rating', label: t('market.sort.rating') }, { key: 'usage', label: t('market.sort.usage') }]"
+            v-for="opt in [{ key: 'latest', label: t('market.sort.latest') }, { key: 'usage', label: t('market.sort.usage') }]"
             :key="opt.key"
             class="rounded-lg px-3 py-1.5 text-xs font-medium transition-all"
             :class="sortMode === opt.key
               ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-sm'
               : 'text-slate-600 hover:text-slate-900'"
-            @click="sortMode = opt.key as 'latest' | 'rating' | 'usage'"
+            @click="sortMode = opt.key as 'latest' | 'usage'"
           >
             {{ opt.label }}
           </button>
@@ -527,10 +517,6 @@ onMounted(loadData)
               {{ formatUsageCount(getUsageCount(item)) }}
             </span>
           </div>
-        <!-- Rating -->
-        <div v-if="(item.rating_count ?? 0) > 0" class="mb-2">
-          <StarRating :readonly-value="item.avg_score ?? 0" :count="item.rating_count ?? 0" readonly size="sm" />
-        </div>
         <!-- Description -->
         <p class="flex-1 text-xs leading-relaxed text-slate-500 line-clamp-3">{{ item.description }}</p>
         <!-- Hover actions -->
@@ -659,11 +645,6 @@ onMounted(loadData)
                 <div class="rounded-lg bg-slate-50 px-4 py-3 text-sm leading-relaxed text-slate-700 whitespace-pre-wrap">{{ mcpConnectConfig.instructions }}</div>
               </div>
 
-              <!-- Rating -->
-              <div class="mt-4 border-t border-slate-100 pt-4">
-                <h4 class="mb-3 text-xs font-semibold text-slate-700">{{ t('market.rating.title') }}</h4>
-                <RatingWidget entity-type="mcp_server" :entity-id="mcpTarget.id" />
-              </div>
             </template>
           </div>
 
