@@ -29,12 +29,12 @@ async def search(
     session: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_user),
 ):
-    """Unified search across MCP Server, MCP Tool, and Skill.
+    """Unified search across MCP Server and Skill.
 
     Users see published assets only.
     """
     # Default to all entity types
-    entity_types = req.entity_types or ["mcp_server", "mcp_tool", "skill"]
+    entity_types = req.entity_types or ["mcp_server", "skill"]
 
     data = await search_service.unified_search(
         session=session,

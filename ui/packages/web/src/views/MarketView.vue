@@ -170,7 +170,6 @@ async function performSearch(keyword: string): Promise<void> {
     if (typeFilter.value === 'all' || typeFilter.value === 'skill') etypes.push('skill')
     if (typeFilter.value === 'all' || typeFilter.value === 'mcp') {
       etypes.push('mcp_server')
-      etypes.push('mcp_tool')
     }
     const res = await search(
       { q: keyword.trim(), entity_types: etypes, category: categoryFilter.value || undefined },
@@ -368,7 +367,7 @@ onMounted(loadData)
             v-model="searchQuery"
             @input="handleSearchInput(($event.target as HTMLInputElement).value)"
             type="text"
-            placeholder="搜索 Skill / MCP / Tool ..."
+            placeholder="搜索 Skill / MCP ..."
             class="w-full rounded-xl border border-slate-200/60 bg-white py-2 pl-9 pr-4 text-sm placeholder:text-slate-400 focus:border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
           />
         </div>

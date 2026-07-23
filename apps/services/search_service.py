@@ -93,7 +93,7 @@ async def unified_search(
     3. Soft-cap distribution
     4. Pagination + assemble results
     """
-    etypes = entity_types or ["mcp_server", "mcp_tool", "skill"]
+    etypes = entity_types or ["mcp_server", "skill"]
 
     # Phase 1: independent searches per entity type
     candidates: dict[str, list[search_repo.SearchResult]] = {}

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import Integer, Text, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import McpServer, McpTool, Skill
@@ -37,6 +37,14 @@ async def search_mcp_servers(
     """
     kw = f"%{keyword}%"
 
+    score = func.coalesce(
+        McpServer.name.ilike(kw).cast(Integer) * 3.0
+        + McpServer.description.ilike(kw).cast(Integer) * 2.0
+        + McpServer.tags.cast(Text).ilike(kw).cast(Integer) * 1.5
+        + McpServer.author.ilike(kw).cast(Integer) * 1.0,
+        0.0,
+    ).label("_score")
+
     stmt = select(
         McpServer.id,
         McpServer.call_count,
@@ -44,14 +52,7 @@ async def search_mcp_servers(
         McpServer.description.label("_desc"),
         McpServer.tags.label("_tags"),
         McpServer.author.label("_author"),
-        func.coalesce(
-            McpServer.name.ilike(kw).cast(int) * 3.0
-            + McpServer.server_name.ilike(kw).cast(int) * 3.0
-            + McpServer.description.ilike(kw).cast(int) * 2.0
-            + McpServer.tags.astext.ilike(kw).cast(int) * 1.5
-            + McpServer.author.ilike(kw).cast(int) * 1.0,
-            0.0,
-        ).label("_score"),
+        score,
     ).where(McpServer.is_active)
 
     if category:
@@ -62,14 +63,13 @@ async def search_mcp_servers(
     stmt = stmt.where(
         or_(
             McpServer.name.ilike(kw),
-            McpServer.server_name.ilike(kw),
             McpServer.description.ilike(kw),
             McpServer.author.ilike(kw),
-            McpServer.tags.astext.ilike(kw),
+            McpServer.tags.cast(Text).ilike(kw),
         )
     )
 
-    stmt = stmt.order_by(func["_score"].desc()).limit(limit)
+    stmt = stmt.order_by(score.desc()).limit(limit)
     result = await session.execute(stmt)
     rows = result.all()
 
@@ -106,6 +106,14 @@ async def search_mcp_tools(
     kw = f"%{keyword}%"
     kw_lower = keyword.lower()
 
+    score = func.coalesce(
+        McpTool.tool_name.ilike(kw).cast(Integer) * 3.0
+        + McpTool.display_name.ilike(kw).cast(Integer) * 3.0
+        + McpTool.namespaced_name.ilike(kw).cast(Integer) * 3.0
+        + McpTool.description.ilike(kw).cast(Integer) * 2.0,
+        0.0,
+    ).label("_score")
+
     stmt = select(
         McpTool.id,
         McpTool.tool_name,
@@ -113,13 +121,7 @@ async def search_mcp_tools(
         McpTool.namespaced_name,
         McpTool.description,
         McpTool.server_id,
-        func.coalesce(
-            McpTool.tool_name.ilike(kw).cast(int) * 3.0
-            + McpTool.display_name.ilike(kw).cast(int) * 3.0
-            + McpTool.namespaced_name.ilike(kw).cast(int) * 3.0
-            + McpTool.description.ilike(kw).cast(int) * 2.0,
-            0.0,
-        ).label("_score"),
+        score,
     ).where(McpTool.is_active)
 
     stmt = stmt.where(
@@ -131,7 +133,7 @@ async def search_mcp_tools(
         )
     )
 
-    stmt = stmt.order_by(func["_score"].desc()).limit(limit)
+    stmt = stmt.order_by(score.desc()).limit(limit)
     result = await session.execute(stmt)
     rows = result.all()
 
@@ -171,6 +173,14 @@ async def search_skills(
     kw = f"%{keyword}%"
     kw_lower = keyword.lower()
 
+    score = func.coalesce(
+        Skill.name.ilike(kw).cast(Integer) * 3.0
+        + Skill.description.ilike(kw).cast(Integer) * 2.0
+        + Skill.tags.cast(Text).ilike(kw).cast(Integer) * 1.5
+        + Skill.author.ilike(kw).cast(Integer) * 1.0,
+        0.0,
+    ).label("_score")
+
     stmt = select(
         Skill.id,
         Skill.name,
@@ -178,13 +188,7 @@ async def search_skills(
         Skill.tags,
         Skill.author,
         Skill.install_count,
-        func.coalesce(
-            Skill.name.ilike(kw).cast(int) * 3.0
-            + Skill.description.ilike(kw).cast(int) * 2.0
-            + Skill.tags.astext.ilike(kw).cast(int) * 1.5
-            + Skill.author.ilike(kw).cast(int) * 1.0,
-            0.0,
-        ).label("_score"),
+        score,
     ).where(Skill.is_active)
 
     if category:
@@ -197,11 +201,11 @@ async def search_skills(
             Skill.name.ilike(kw),
             Skill.description.ilike(kw),
             Skill.author.ilike(kw),
-            Skill.tags.astext.ilike(kw),
+            Skill.tags.cast(Text).ilike(kw),
         )
     )
 
-    stmt = stmt.order_by(func["_score"].desc()).limit(limit)
+    stmt = stmt.order_by(score.desc()).limit(limit)
     result = await session.execute(stmt)
     rows = result.all()
 
