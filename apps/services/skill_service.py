@@ -244,8 +244,8 @@ async def create_skill(
     if submit_review_flag and created_by:
         await _prs.submit_review(session, _prs.ENTITY_SKILL, skill.id, created_by)
 
-    # 发布且不需要审批时，自动同步到所有主 Key
-    if skill.is_published and not skill.requires_approval:
+    # 满足公开列表可见条件时，自动广播同步到所有主 Key
+    if _is_list_visible_to_public(skill):
         from services import ai_key_service
 
         await ai_key_service.sync_public_resource_to_all_keys(
@@ -288,6 +288,23 @@ async def create_skill(
     return _serialize(skill)
 
 
+def _is_list_visible_to_public(skill: Skill) -> bool:
+    """Skill 是否进入全体用户的 published 列表，从而广播同步到所有主 Key。
+
+    与 skill_repo.find_all 对非 admin 的过滤保持一致：
+    is_published 且无需审批 且未治理下架 且可见性为 all/selected。
+    private/unlisted 不进列表，不广播到主 Key（避免用户端展示成 #id 孤儿）。
+    """
+    from services import visibility_service
+
+    return (
+        skill.is_published
+        and not skill.requires_approval
+        and not skill.hidden
+        and skill.visibility_type in visibility_service.LIST_VISIBLE_TYPES
+    )
+
+
 async def update_skill(
     session: AsyncSession,
     skill_id: int,
@@ -320,16 +337,14 @@ async def update_skill(
                 session, publish_review_service.ENTITY_SKILL, skill_id, actor_id
             )
 
-    # 发布且不需要审批时同步到所有主 Key，否则从主 Key 中移除
-    if skill.is_published and not skill.requires_approval:
-        from services import ai_key_service
+    # 满足公开列表可见条件才广播同步到所有主 Key，否则移除（覆盖下架/隐藏/可见性变更）
+    from services import ai_key_service
 
+    if _is_list_visible_to_public(skill):
         await ai_key_service.sync_public_resource_to_all_keys(
             session, "skills", skill.id
         )
     else:
-        from services import ai_key_service
-
         await ai_key_service.remove_public_resource_from_all_keys(
             session, "skills", skill.id
         )
@@ -347,7 +362,7 @@ async def set_published(session: AsyncSession, skill_id: int, value: bool) -> No
     skill.is_published = value
     from services import ai_key_service
 
-    if value and not skill.requires_approval:
+    if _is_list_visible_to_public(skill):
         await ai_key_service.sync_public_resource_to_all_keys(
             session, "skills", skill.id
         )
@@ -554,11 +569,15 @@ async def list_versions(
     versions = await skill_version_repo.list_versions(
         session, skill_id, include_deprecated
     )
-    audit_ids = [v.latest_ai_policies_audit_id for v in versions if v.latest_ai_policies_audit_id]
+    audit_ids = [
+        v.latest_ai_policies_audit_id for v in versions if v.latest_ai_policies_audit_id
+    ]
     audits = await ai_policies_repo.find_by_ids(session, audit_ids)
     audit_code_map = {a.id: a.audit_id for a in audits}
     return [
-        _serialize_version(v, audit_code=audit_code_map.get(v.latest_ai_policies_audit_id))
+        _serialize_version(
+            v, audit_code=audit_code_map.get(v.latest_ai_policies_audit_id)
+        )
         for v in versions
     ]
 
@@ -789,6 +808,18 @@ async def set_hidden(
     skill.hidden = hidden
     skill.hidden_at = datetime.now(timezone.utc) if hidden else None
     skill.hidden_by = actor_id if hidden else None
+    # 治理下架/恢复需同步主 Key：下架后不进 published 列表，从所有主 Key 移除；
+    # 恢复且满足公开可见条件时重新广播同步
+    from services import ai_key_service
+
+    if _is_list_visible_to_public(skill):
+        await ai_key_service.sync_public_resource_to_all_keys(
+            session, "skills", skill.id
+        )
+    else:
+        await ai_key_service.remove_public_resource_from_all_keys(
+            session, "skills", skill.id
+        )
     await session.commit()
     await session.refresh(skill)
     latest_audit_map = await _latest_audit_map(session, [skill])

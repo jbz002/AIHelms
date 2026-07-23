@@ -198,16 +198,16 @@ function primaryActions(v: SkillVersion): RowAction[] {
   }
   if (v.lifecycle_status === 'pending_review') {
     return [
-      { key: 'approve', label: busy ? '...' : '通过审核', variant: 'primary', disabled: busy, title: '批准版本审核(非安全审查)，通过后可激活上线', run: () => handleApproveReview(v) },
+      { key: 'approve', label: busy ? '...' : '通过审核', variant: 'primary', disabled: busy, title: '批准版本审核(非安全审查)，通过后可激活', run: () => handleApproveReview(v) },
       { key: 'reject', label: busy ? '...' : '驳回审核', variant: 'danger', disabled: busy, title: '驳回此版本审核', run: () => handleRejectReview(v) },
     ]
   }
   if (v.lifecycle_status === 'published') {
     if (v.is_active) {
-      return [{ key: 'yank', label: busy ? '...' : '下线', variant: 'danger', disabled: busy, title: '下线此已发布版本(撤回上线)', run: () => { yankTarget.value = v } }]
+      return [{ key: 'yank', label: busy ? '...' : '撤回', variant: 'danger', disabled: busy, title: '撤回此已激活版本', run: () => { yankTarget.value = v } }]
     }
     if (canActivate(v)) {
-      return [{ key: 'activate', label: busy ? '...' : '激活上线', variant: 'primary', disabled: busy, title: '设为当前上线版本(需安全审查或审核通过 + 协议校验)', run: () => handleActivate(v) }]
+      return [{ key: 'activate', label: busy ? '...' : '设为激活', variant: 'primary', disabled: busy, title: '设为当前激活版本(需安全审查或审核通过 + 协议校验)', run: () => handleActivate(v) }]
     }
   }
   return []
@@ -235,7 +235,7 @@ function overflowActions(v: SkillVersion): RowAction[] {
     actions.push({ key: 'withdraw', label: '撤回审核', variant: 'ghost', disabled: busy, run: () => handleWithdrawReview(v) })
   }
   if (canManage && v.lifecycle_status === 'published' && !v.is_active) {
-    actions.push({ key: 'yank', label: '下线', variant: 'ghost', disabled: busy, run: () => { yankTarget.value = v } })
+    actions.push({ key: 'yank', label: '撤回', variant: 'ghost', disabled: busy, run: () => { yankTarget.value = v } })
   }
   if (canManage && v.source_type === 'url') {
     actions.push({
@@ -277,7 +277,7 @@ function protocolBadge(v: SkillVersion): { cls: string; label: string; tip: stri
 function lifecycleBadge(s: string): { cls: string; label: string } {
   switch (s) {
     case 'published':
-      return { cls: 'bg-green-50 text-green-600', label: '已发布' }
+      return { cls: 'bg-green-50 text-green-600', label: '可激活' }
     case 'pending_review':
       return { cls: 'bg-amber-50 text-amber-600', label: '待审核' }
     case 'scanning':
@@ -295,7 +295,7 @@ function lifecycleBadge(s: string): { cls: string; label: string } {
 }
 
 function securityBadge(v: SkillVersion): { cls: string; label: string } {
-  if (v.is_active) return { cls: 'bg-emerald-50 text-emerald-600', label: '已上线' }
+  if (v.is_active) return { cls: 'bg-emerald-50 text-emerald-600', label: '当前激活' }
   if (v.security_status === 'queued' || v.security_status === 'running') {
     return { cls: 'bg-indigo-50 text-indigo-600', label: '审查中' }
   }
@@ -438,7 +438,7 @@ async function handleApproveReview(v: SkillVersion): Promise<void> {
   actingId.value = v.id
   try {
     await approveSkillVersionReview(props.skillId, v.id)
-    toast.success('审核已通过，可激活上线')
+    toast.success('审核已通过，可激活')
     await loadVersions()
   } catch (e) {
     toast.error((e as { message?: string }).message || '通过失败')
@@ -703,8 +703,8 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
 
     <ConfirmDialog
       :visible="!!yankTarget"
-      title="撤回已发布版本"
-      :message="`确认撤回版本 ${yankTarget?.version}？撤回后该版本不再可用；若其为当前发布版本，将自动重算到次新已发布版本。`"
+      title="撤回已激活版本"
+      :message="`确认撤回版本 ${yankTarget?.version}？撤回后该版本不再可用；若其为当前激活版本，将自动重算到次新可激活版本。`"
       @confirm="confirmYank"
       @cancel="yankTarget = null"
     />

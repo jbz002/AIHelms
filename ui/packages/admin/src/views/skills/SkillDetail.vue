@@ -84,7 +84,7 @@ const protocolBanner = computed<{
   if (errs.length) {
     return {
       cls: 'border-red-200 bg-red-50 text-red-700',
-      title: 'SKILL.md 协议校验未通过：该版本不可激活/发布，请修正后重传 zip',
+      title: 'SKILL.md 协议校验未通过：该版本不可激活，请修正后重传 zip',
       issues: errs,
     }
   }
