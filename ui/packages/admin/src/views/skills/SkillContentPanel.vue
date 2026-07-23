@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed } from 'vue'
+import { ref, watch, computed, onMounted } from 'vue'
 import {
   getSkillSummary,
   getSkillFull,
@@ -82,9 +82,13 @@ async function handleCheckDrift(): Promise<void> {
 
 async function switchLayer(layer: DisclosureLayer): Promise<void> {
   activeLayer.value = layer
-  if (layer === 'summary') await loadSummary()
+  if (layer === 'overview' || layer === 'summary') await loadSummary()
   if (layer === 'full') await loadFull()
 }
+
+onMounted(() => {
+  if (props.skillId) loadSummary()
+})
 
 function toggleIntegrity(): void {
   showIntegrity.value = !showIntegrity.value

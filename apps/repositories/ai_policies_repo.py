@@ -211,14 +211,19 @@ async def next_scan_round(
 
 
 async def mark_audits_deleted_for_skill(session: AsyncSession, skill_id: int) -> None:
-    """Skill 物理删除时，关联审计行 soft-delete（deleted_at 标记，不删行）。"""
+    """Skill 物理删除时，关联审计行 soft-delete（deleted_at 标记，不删行）。
+
+    同时把将悬空的 skill_id / skill_version_id 置 NULL：Skill 物理删除后这两个外键
+    必然失效，预先在此 UPDATE 里清空，避免「先 UPDATE 审计行 → 再级联删版本」时
+    PG 对刚被改动的行复检外键、发现版本已删而抛 ForeignKeyViolationError。
+    """
     await session.execute(
         update(AiPoliciesAudit)
         .where(
             AiPoliciesAudit.skill_id == skill_id,
             AiPoliciesAudit.deleted_at.is_(None),
         )
-        .values(deleted_at=func.now())
+        .values(deleted_at=func.now(), skill_id=None, skill_version_id=None)
     )
 
 

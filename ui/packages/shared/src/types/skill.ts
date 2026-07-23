@@ -108,6 +108,7 @@ export interface SkillVersion {
   security_status?: 'not_scanned' | 'queued' | 'running' | 'completed' | 'failed'
   security_decision?: '' | 'passed' | 'attention_required' | 'high_risk' | 'failed'
   latest_ai_policies_audit_id?: number | null
+  latest_ai_policies_audit_code?: string | null
   created_by: number | null
   created_at: string | null
   tags?: string[]

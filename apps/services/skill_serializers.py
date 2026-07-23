@@ -20,7 +20,11 @@ async def _latest_audit_map(session, skills: list[Skill]) -> dict[int, str]:
     return {audit.id: audit.audit_id for audit in audits}
 
 
-def _serialize_version(v: SkillVersion, tags: list[str] | None = None) -> dict:
+def _serialize_version(
+    v: SkillVersion,
+    tags: list[str] | None = None,
+    audit_code: str | None = None,
+) -> dict:
     return {
         "id": v.id,
         "skill_id": v.skill_id,
@@ -53,6 +57,7 @@ def _serialize_version(v: SkillVersion, tags: list[str] | None = None) -> dict:
         "security_status": v.security_status,
         "security_decision": v.security_decision,
         "latest_ai_policies_audit_id": v.latest_ai_policies_audit_id,
+        "latest_ai_policies_audit_code": audit_code,
         "created_by": v.created_by,
         "created_at": v.created_at.isoformat() if v.created_at else None,
     }

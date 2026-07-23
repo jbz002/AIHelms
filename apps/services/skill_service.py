@@ -255,12 +255,12 @@ async def create_skill(
     await session.commit()
     await session.refresh(skill)
 
-    # 为新 Skill 种入 v1 active 版本（与存量回填一致）
+    # 为新 Skill 种入 v1 草稿版本
     v1 = SkillVersion(
         skill_id=skill.id,
         version=version,
-        is_active=True,
-        lifecycle_status="published",
+        is_active=False,
+        lifecycle_status="draft",
         source="manual",
         source_type="url" if source_url else "zip",
         source_url=source_url or "",
@@ -554,7 +554,13 @@ async def list_versions(
     versions = await skill_version_repo.list_versions(
         session, skill_id, include_deprecated
     )
-    return [_serialize_version(v) for v in versions]
+    audit_ids = [v.latest_ai_policies_audit_id for v in versions if v.latest_ai_policies_audit_id]
+    audits = await ai_policies_repo.find_by_ids(session, audit_ids)
+    audit_code_map = {a.id: a.audit_id for a in audits}
+    return [
+        _serialize_version(v, audit_code=audit_code_map.get(v.latest_ai_policies_audit_id))
+        for v in versions
+    ]
 
 
 async def create_version(

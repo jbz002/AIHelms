@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import {
   getSkillVersions,
   createSkillVersion,
@@ -22,7 +23,7 @@ import {
   type SkillVersion,
   type SkillTag,
 } from '@aihelms/shared'
-import { Plus, GitBranch, CheckCircle2, AlertTriangle, Archive, ShieldCheck, Tag } from 'lucide-vue-next'
+import { Plus, GitBranch, MoreVertical, ChevronRight, FileText } from 'lucide-vue-next'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 
 interface Props {
@@ -47,6 +48,13 @@ const yankTarget = ref<SkillVersion | null>(null)
 const checkingDriftId = ref<number | null>(null)
 const resyncTarget = ref<SkillVersion | null>(null)
 const resyncVersion = ref('')
+const auditTarget = ref<SkillVersion | null>(null)
+const auditPolicy = ref<'balanced' | 'strict' | 'permissive'>('balanced')
+const auditPolicyOptions: { v: 'balanced' | 'strict' | 'permissive'; name: string; desc: string }[] = [
+  { v: 'balanced', name: '均衡策略', desc: '默认，兼顾覆盖与误报' },
+  { v: 'strict', name: '严格策略', desc: '更多检查项，高风险零容忍' },
+  { v: 'permissive', name: '宽松策略', desc: '仅高优先级风险检查' },
+]
 
 const tags = ref<SkillTag[]>([])
 const tagTarget = ref<SkillVersion | null>(null)
@@ -68,6 +76,7 @@ async function loadVersions(): Promise<void> {
   loading.value = true
   try {
     versions.value = await getSkillVersions(props.skillId, true)
+    seedExpanded()
     await loadTags()
   } catch (e) {
     toast.error((e as { message?: string }).message || '加载版本失败')
@@ -129,6 +138,121 @@ function canActivate(v: SkillVersion): boolean {
     (v.security_decision === 'passed' || v.security_decision === 'attention_required')
   // pending_review：已提交审核，若已通过则可激活（最终由后端门控判定）
   return securityOk || v.lifecycle_status === 'pending_review'
+}
+
+const openMenuId = ref<number | null>(null)
+
+const router = useRouter()
+const expandedIds = ref<Set<number>>(new Set())
+
+function seedExpanded(): void {
+  const next = new Set<number>()
+  for (const v of versions.value) {
+    if (v.is_active || v.lifecycle_status === 'pending_review') next.add(v.id)
+  }
+  expandedIds.value = next
+}
+
+function isExpanded(v: SkillVersion): boolean {
+  return expandedIds.value.has(v.id)
+}
+
+function toggleExpand(v: SkillVersion): void {
+  const next = new Set(expandedIds.value)
+  if (next.has(v.id)) next.delete(v.id)
+  else next.add(v.id)
+  expandedIds.value = next
+}
+
+function openAuditReport(v: SkillVersion): void {
+  if (!v.latest_ai_policies_audit_code) return
+  router.push(`/ai-policies/audits/${v.latest_ai_policies_audit_code}`)
+}
+
+type RowAction = {
+  key: string
+  label: string
+  variant: 'primary' | 'danger' | 'warn' | 'ghost'
+  disabled?: boolean
+  title?: string
+  run: () => void | Promise<void>
+}
+
+function variantClass(variant: RowAction['variant']): string {
+  switch (variant) {
+    case 'primary':
+      return 'bg-green-50 text-green-600 hover:bg-green-100'
+    case 'danger':
+      return 'bg-red-50 text-red-600 hover:bg-red-100'
+    case 'warn':
+      return 'bg-amber-50 text-amber-600 hover:bg-amber-100'
+    default:
+      return 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+  }
+}
+
+function primaryActions(v: SkillVersion): RowAction[] {
+  const busy = actingId.value === v.id
+  if (v.lifecycle_status === 'draft' || v.lifecycle_status === 'scanning') {
+    return [{ key: 'submit', label: busy ? '...' : '提交审核', variant: 'warn', disabled: busy, title: '提交此版本进入版本审核', run: () => handleSubmitReview(v) }]
+  }
+  if (v.lifecycle_status === 'pending_review') {
+    return [
+      { key: 'approve', label: busy ? '...' : '通过审核', variant: 'primary', disabled: busy, title: '批准版本审核(非安全审查)，通过后可激活上线', run: () => handleApproveReview(v) },
+      { key: 'reject', label: busy ? '...' : '驳回审核', variant: 'danger', disabled: busy, title: '驳回此版本审核', run: () => handleRejectReview(v) },
+    ]
+  }
+  if (v.lifecycle_status === 'published') {
+    if (v.is_active) {
+      return [{ key: 'yank', label: busy ? '...' : '下线', variant: 'danger', disabled: busy, title: '下线此已发布版本(撤回上线)', run: () => { yankTarget.value = v } }]
+    }
+    if (canActivate(v)) {
+      return [{ key: 'activate', label: busy ? '...' : '激活上线', variant: 'primary', disabled: busy, title: '设为当前上线版本(需安全审查或审核通过 + 协议校验)', run: () => handleActivate(v) }]
+    }
+  }
+  return []
+}
+
+function overflowActions(v: SkillVersion): RowAction[] {
+  const actions: RowAction[] = []
+  const busy = actingId.value === v.id
+  if (canManage) {
+    actions.push({ key: 'tag', label: '版本别名', variant: 'ghost', run: () => openTagDialog(v) })
+  }
+  if (canScan && v.security_status !== 'queued' && v.security_status !== 'running') {
+    actions.push({
+      key: 'audit',
+      label: v.security_status === 'not_scanned' ? '安全审查' : '重审',
+      variant: 'ghost',
+      disabled: busy,
+      run: () => openAuditDialog(v),
+    })
+  }
+  if (canManage && v.lifecycle_status === 'pending_review' && canActivate(v) && !v.is_active) {
+    actions.push({ key: 'activate', label: '激活', variant: 'ghost', disabled: busy, run: () => handleActivate(v) })
+  }
+  if (canManage && v.lifecycle_status === 'pending_review') {
+    actions.push({ key: 'withdraw', label: '撤回审核', variant: 'ghost', disabled: busy, run: () => handleWithdrawReview(v) })
+  }
+  if (canManage && v.lifecycle_status === 'published' && !v.is_active) {
+    actions.push({ key: 'yank', label: '下线', variant: 'ghost', disabled: busy, run: () => { yankTarget.value = v } })
+  }
+  if (canManage && v.source_type === 'url') {
+    actions.push({
+      key: 'drift',
+      label: checkingDriftId.value === v.id ? '...' : '检测漂移',
+      variant: 'ghost',
+      disabled: checkingDriftId.value === v.id,
+      run: () => handleCheckDrift(v),
+    })
+  }
+  if (canManage && v.source_type === 'url' && v.drift_detected) {
+    actions.push({ key: 'resync', label: '重新同步', variant: 'ghost', run: () => openResync(v) })
+  }
+  if (canManage && !v.is_active && v.lifecycle_status !== 'deprecated') {
+    actions.push({ key: 'deprecate', label: '弃用', variant: 'ghost', run: () => { deprecateTarget.value = v } })
+  }
+  return actions
 }
 
 function protocolBadge(v: SkillVersion): { cls: string; label: string; tip: string } {
@@ -198,11 +322,19 @@ async function handleActivate(v: SkillVersion): Promise<void> {
   }
 }
 
-async function handleAudit(v: SkillVersion): Promise<void> {
-  actingId.value = v.id
+function openAuditDialog(v: SkillVersion): void {
+  auditTarget.value = v
+  auditPolicy.value = 'balanced'
+}
+
+async function confirmAudit(): Promise<void> {
+  if (!auditTarget.value) return
+  const target = auditTarget.value
+  actingId.value = target.id
   try {
-    await createSkillVersionSecurityAudit(props.skillId, v.id)
+    await createSkillVersionSecurityAudit(props.skillId, target.id, auditPolicy.value)
     toast.success('已提交版本安全审查，完成后可激活')
+    auditTarget.value = null
     await loadVersions()
   } catch (e) {
     toast.error((e as { message?: string }).message || '审查任务创建失败')
@@ -432,136 +564,131 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
       <div
         v-for="v in versions"
         :key="v.id"
-        class="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-xs"
+        class="rounded-lg border border-slate-100 px-2.5 py-2 text-xs"
+        :class="isExpanded(v) ? 'bg-white' : 'bg-slate-50/40'"
       >
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-1.5">
+        <div class="flex items-center gap-2">
+          <button
+            type="button"
+            class="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+            @click="toggleExpand(v)"
+          >
+            <ChevronRight
+              class="h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform"
+              :class="isExpanded(v) ? 'rotate-90' : ''"
+            />
             <span class="font-mono font-medium text-slate-800">v{{ v.version }}</span>
             <span v-if="v.version_label" class="truncate text-slate-400">{{ v.version_label }}</span>
+            <span
+              v-if="v.is_active"
+              class="rounded bg-emerald-50 px-1 py-0.5 text-[10px] font-medium text-emerald-600"
+            >当前激活</span>
+            <span
+              class="rounded px-1.5 py-0.5 text-[10px]"
+              :class="lifecycleBadge(v.lifecycle_status).cls"
+            >{{ lifecycleBadge(v.lifecycle_status).label }}</span>
+            <span
+              v-if="!isExpanded(v)"
+              class="rounded px-1 py-0.5 text-[10px]"
+              :class="securityBadge(v).cls"
+            >{{ securityBadge(v).label }}</span>
+          </button>
+
+          <div v-if="canManage || canScan" class="relative flex shrink-0 items-center gap-1">
+            <button
+              v-for="a in primaryActions(v)"
+              :key="a.key"
+              class="rounded px-1.5 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-50"
+              :class="variantClass(a.variant)"
+              :disabled="a.disabled"
+              :title="a.title"
+              @click="a.run"
+            >
+              {{ a.label }}
+            </button>
+            <template v-if="overflowActions(v).length">
+              <button
+                class="rounded px-1 py-0.5 text-slate-500 hover:bg-slate-200"
+                @click.stop="openMenuId = openMenuId === v.id ? null : v.id"
+              >
+                <MoreVertical class="h-3.5 w-3.5" />
+              </button>
+              <div
+                v-if="openMenuId === v.id"
+                class="absolute right-0 top-full z-20 mt-1 min-w-[8rem] rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+              >
+                <button
+                  v-for="a in overflowActions(v)"
+                  :key="a.key"
+                  class="block w-full px-3 py-1.5 text-left text-xs text-slate-600 hover:bg-slate-50 disabled:opacity-40"
+                  :disabled="a.disabled"
+                  @click="openMenuId = null; a.run()"
+                >
+                  {{ a.label }}
+                </button>
+              </div>
+              <div v-if="openMenuId === v.id" class="fixed inset-0 z-10" @click="openMenuId = null" />
+            </template>
           </div>
-          <div class="mt-0.5 flex items-center gap-1.5 text-slate-400">
+        </div>
+
+        <div v-if="isExpanded(v)" class="mt-2 border-t border-slate-100 pt-2">
+          <div class="flex items-center gap-1.5">
+            <span class="w-16 shrink-0 text-[10px] text-slate-400">阶段</span>
+            <span
+              class="rounded px-2 py-0.5 text-[11px] font-medium"
+              :class="lifecycleBadge(v.lifecycle_status).cls"
+            >{{ lifecycleBadge(v.lifecycle_status).label }}</span>
+          </div>
+
+          <div class="mt-1.5 space-y-1">
+            <div class="flex flex-wrap items-center gap-1.5">
+              <span class="w-16 shrink-0 text-[10px] text-slate-400">安全审查</span>
+              <span class="rounded px-1.5 py-0.5 text-[10px]" :class="securityBadge(v).cls">{{ securityBadge(v).label }}</span>
+              <button
+                v-if="v.latest_ai_policies_audit_code"
+                type="button"
+                class="inline-flex items-center gap-0.5 text-[10px] text-purple-600 hover:underline"
+                @click="openAuditReport(v)"
+              >
+                <FileText class="h-3 w-3" /> 报告
+              </button>
+              <span
+                v-if="v.security_status === 'running' || v.security_status === 'queued'"
+                class="text-[10px] text-slate-400"
+              >审查中…</span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <span class="w-16 shrink-0 text-[10px] text-slate-400">协议校验</span>
+              <span
+                class="cursor-help rounded px-1.5 py-0.5 text-[10px]"
+                :class="protocolBadge(v).cls"
+                :title="protocolBadge(v).tip"
+              >{{ protocolBadge(v).label }}</span>
+            </div>
+          </div>
+
+          <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400">
             <span v-if="v.zip_filename" class="truncate">{{ v.zip_filename }}</span>
             <span v-else class="italic">无独立 zip</span>
-            <span v-if="v.change_log" class="truncate">· {{ v.change_log }}</span>
+            <span v-if="v.composite_hash" class="truncate font-mono text-slate-300">{{ v.composite_hash.slice(0, 8) }}</span>
             <span
-              class="cursor-help rounded px-1 py-0.5 text-[10px]"
-              :class="protocolBadge(v).cls"
-              :title="protocolBadge(v).tip"
-            >{{ protocolBadge(v).label }}</span>
-            <span v-if="v.composite_hash" class="truncate text-slate-300 font-mono text-[10px]">{{ v.composite_hash.slice(0, 8) }}</span>
+              v-for="t in tagsForVersion(v)"
+              :key="t.id"
+              class="rounded px-1.5 py-0.5"
+              :class="t.is_system ? 'bg-slate-200 text-slate-500' : 'bg-purple-50 text-purple-600'"
+              :title="t.is_system ? '系统保留标签（只读，由最新已发布版本推导）' : `版本别名 → v${v.version}`"
+            >{{ t.tag_name }}</span>
+            <span
+              v-if="driftBadge(v)"
+              class="cursor-help rounded px-1.5 py-0.5"
+              :class="driftBadge(v)!.cls"
+              :title="driftBadge(v)!.tip"
+            >{{ driftBadge(v)!.label }}</span>
           </div>
-          <div v-if="v.summary_text" class="mt-0.5 truncate text-slate-400 italic">{{ v.summary_text.slice(0, 80) }}{{ v.summary_text.length > 80 ? '...' : '' }}</div>
-        </div>
-        <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px]" :class="lifecycleBadge(v.lifecycle_status).cls">
-          {{ lifecycleBadge(v.lifecycle_status).label }}
-        </span>
-        <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px]" :class="securityBadge(v).cls">
-          {{ securityBadge(v).label }}
-        </span>
-        <div v-if="tagsForVersion(v).length" class="flex shrink-0 gap-1">
-          <span
-            v-for="t in tagsForVersion(v)"
-            :key="t.id"
-            class="rounded px-1.5 py-0.5 text-[10px]"
-            :class="t.is_system ? 'bg-slate-200 text-slate-500' : 'bg-purple-50 text-purple-600'"
-            :title="t.is_system ? '系统保留标签（只读，由最新已发布版本推导）' : `版本别名 → v${v.version}`"
-          >
-            {{ t.tag_name }}
-          </span>
-        </div>
-        <span
-          v-if="driftBadge(v)"
-          class="shrink-0 cursor-help rounded px-1.5 py-0.5 text-[10px]"
-          :class="driftBadge(v)!.cls"
-          :title="driftBadge(v)!.tip"
-        >{{ driftBadge(v)!.label }}</span>
-        <div v-if="canManage || canScan" class="flex shrink-0 gap-1">
-          <button
-            v-if="canManage"
-            class="rounded bg-purple-50 px-1.5 py-0.5 text-[10px] text-purple-600 hover:bg-purple-100"
-            @click="openTagDialog(v)"
-          >
-            <Tag class="mr-0.5 inline h-3 w-3" />标签
-          </button>
-          <button
-            v-if="canScan && !v.is_active && v.security_status !== 'queued' && v.security_status !== 'running'"
-            class="rounded bg-indigo-50 px-1.5 py-0.5 text-[10px] text-indigo-600 hover:bg-indigo-100 disabled:opacity-50"
-            :disabled="actingId === v.id"
-            @click="handleAudit(v)"
-          >
-            <ShieldCheck class="mr-0.5 inline h-3 w-3" />{{ actingId === v.id ? '...' : v.security_status === 'not_scanned' ? '审查' : '重审' }}
-          </button>
-          <button
-            v-if="canManage && !v.is_active"
-            class="rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-600 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
-            :disabled="actingId === v.id || !canActivate(v)"
-            :title="!canActivate(v) ? '需先通过协议校验 + 安全审查（通过/建议修改）才能激活' : ''"
-            @click="handleActivate(v)"
-          >
-            {{ actingId === v.id ? '...' : '激活' }}
-          </button>
-          <button
-            v-if="canManage && (v.lifecycle_status === 'draft' || v.lifecycle_status === 'scanning')"
-            class="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600 hover:bg-amber-100 disabled:opacity-50"
-            :disabled="actingId === v.id"
-            @click="handleSubmitReview(v)"
-          >
-            {{ actingId === v.id ? '...' : '提交审核' }}
-          </button>
-          <button
-            v-if="canManage && v.lifecycle_status === 'pending_review'"
-            class="rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-600 hover:bg-green-100 disabled:opacity-50"
-            :disabled="actingId === v.id"
-            @click="handleApproveReview(v)"
-          >
-            {{ actingId === v.id ? '...' : '通过' }}
-          </button>
-          <button
-            v-if="canManage && v.lifecycle_status === 'pending_review'"
-            class="rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600 hover:bg-red-100 disabled:opacity-50"
-            :disabled="actingId === v.id"
-            @click="handleRejectReview(v)"
-          >
-            {{ actingId === v.id ? '...' : '拒绝' }}
-          </button>
-          <button
-            v-if="canManage && v.lifecycle_status === 'pending_review'"
-            class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-200 disabled:opacity-50"
-            :disabled="actingId === v.id"
-            @click="handleWithdrawReview(v)"
-          >
-            {{ actingId === v.id ? '...' : '撤回审核' }}
-          </button>
-          <button
-            v-if="canManage && v.lifecycle_status === 'published'"
-            class="rounded bg-red-50 px-1.5 py-0.5 text-[10px] text-red-600 hover:bg-red-100 disabled:opacity-50"
-            :disabled="actingId === v.id"
-            @click="yankTarget = v"
-          >
-            撤回
-          </button>
-          <button
-            v-if="canManage && !v.is_active && v.lifecycle_status !== 'deprecated'"
-            class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-200"
-            @click="deprecateTarget = v"
-          >
-            弃用
-          </button>
-          <button
-            v-if="canManage && v.source_type === 'url'"
-            class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-200 disabled:opacity-50"
-            :disabled="checkingDriftId === v.id"
-            @click="handleCheckDrift(v)"
-          >
-            {{ checkingDriftId === v.id ? '...' : '检测漂移' }}
-          </button>
-          <button
-            v-if="canManage && v.source_type === 'url' && v.drift_detected"
-            class="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600 hover:bg-amber-100"
-            @click="openResync(v)"
-          >
-            重新同步
-          </button>
+
+          <div v-if="v.change_log" class="mt-1 truncate text-slate-400">变更：{{ v.change_log }}</div>
+          <div v-if="v.summary_text" class="mt-0.5 truncate italic text-slate-400">{{ v.summary_text.slice(0, 80) }}{{ v.summary_text.length > 80 ? '...' : '' }}</div>
         </div>
       </div>
     </div>
@@ -594,7 +721,7 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             <input v-model="form.version" placeholder="如 2.0.0" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-purple-500 focus:outline-none" />
           </div>
           <div>
-            <label class="mb-1 block text-xs font-medium text-slate-600">标签（可选）</label>
+            <label class="mb-1 block text-xs font-medium text-slate-600">版本副标题（可选）</label>
             <input v-model="form.version_label" placeholder="如 2026-07 灰度" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-800 focus:border-purple-500 focus:outline-none" />
           </div>
         </div>
@@ -645,6 +772,44 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             @click="confirmResync"
           >
             {{ actingId === resyncTarget.id ? '同步中…' : '确认重新同步' }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="auditTarget"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
+    >
+      <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
+        <h3 class="mb-2 text-lg font-semibold text-slate-900">
+          AI Policies 安全审查 · v{{ auditTarget.version }}
+        </h3>
+        <p class="mb-3 text-xs text-slate-500">
+          选择审查策略，对版本 <span class="font-mono">v{{ auditTarget.version }}</span> 的 zip 内容执行 AI Policies 检查，通过后方可激活。
+        </p>
+        <div class="mb-4 space-y-2">
+          <label
+            v-for="opt in auditPolicyOptions"
+            :key="opt.v"
+            class="flex cursor-pointer items-start gap-2 rounded-lg border px-3 py-2 text-sm"
+            :class="auditPolicy === opt.v ? 'border-purple-400 bg-purple-50' : 'border-slate-200 hover:bg-slate-50'"
+          >
+            <input v-model="auditPolicy" type="radio" :value="opt.v" class="mt-0.5" />
+            <span>
+              <span class="font-medium text-slate-900">{{ opt.name }}</span>
+              <span class="block text-xs text-slate-500">{{ opt.desc }}</span>
+            </span>
+          </label>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button class="rounded-lg bg-slate-100 px-4 py-2 text-sm text-slate-700 hover:bg-slate-200" @click="auditTarget = null">取消</button>
+          <button
+            class="rounded-lg bg-purple-600 px-4 py-2 text-sm text-white hover:bg-purple-500 disabled:opacity-50"
+            :disabled="actingId === auditTarget.id"
+            @click="confirmAudit()"
+          >
+            {{ actingId === auditTarget.id ? '提交中…' : '开始审查' }}
           </button>
         </div>
       </div>
