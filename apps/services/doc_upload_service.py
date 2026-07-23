@@ -130,41 +130,20 @@ def _serialize_record(record: DocUploadRecord) -> dict:
     }
 
 
-async def upload_document(
+async def _run_extraction_and_ingest(
     session: AsyncSession,
+    record: DocUploadRecord,
     file_bytes: bytes,
-    file_name: str,
-    library: str,
-    version: str | None,
-    created_by: int | None,
-    auto_ingest: bool = False,
+    auto_ingest: bool,
 ) -> dict:
-    """上传文档：提取文本内容 → 存入平台 DB。
+    """对已创建的 DocUploadRecord 执行提取 → 存内容 → 可选入库。
 
-    若 auto_ingest=True，提取后自动调用 ingest_upload 入库。
-    若 auto_ingest=False，仅提取并保存，返回 status=extracted 供后续手动入库。
+    单文件同步路径（upload_document）与批量异步路径（process_upload）共用。
+    任何异常捕获后置 status=failed 并返回序列化记录（不向上抛）。
     """
-    content_type = _detect_content_type(file_name)
-
-    record = DocUploadRecord(
-        library=library,
-        version=version or "",
-        file_name=file_name,
-        file_size=len(file_bytes),
-        content_type=content_type,
-        status="pending",
-        created_by=created_by,
-    )
-    record = await doc_upload_repo.create(session, record)
-
-    # 同步知识库到平台 DB
-    await document_library_service.ensure_library_exists(
-        session=session, name=library, created_by=created_by
-    )
-
     try:
         await doc_upload_repo.update_status(session, record.id, "extracting")
-        content = await _extract_text(file_bytes, file_name)
+        content = await _extract_text(file_bytes, record.file_name)
 
         await doc_upload_repo.update_extracted_content(session, record.id, content)
         await doc_upload_repo.update_status(session, record.id, "extracted")
@@ -225,6 +204,142 @@ async def upload_document(
         )
         await session.refresh(record)
         return _serialize_record(record)
+
+
+def _stashed_record_dir(record_id: int) -> str:
+    """批量上传原始文件的暂存目录：{uploads_storage_dir}/doc-upload-batch/{record_id}。"""
+    import os
+
+    from core.config import settings
+
+    return os.path.join(
+        settings.uploads_storage_dir, "doc-upload-batch", str(record_id)
+    )
+
+
+async def upload_document(
+    session: AsyncSession,
+    file_bytes: bytes,
+    file_name: str,
+    library: str,
+    version: str | None,
+    created_by: int | None,
+    auto_ingest: bool = False,
+) -> dict:
+    """上传文档：提取文本内容 → 存入平台 DB。
+
+    若 auto_ingest=True，提取后自动调用 ingest_upload 入库。
+    若 auto_ingest=False，仅提取并保存，返回 status=extracted 供后续手动入库。
+    """
+    content_type = _detect_content_type(file_name)
+
+    record = DocUploadRecord(
+        library=library,
+        version=version or "",
+        file_name=file_name,
+        file_size=len(file_bytes),
+        content_type=content_type,
+        status="pending",
+        created_by=created_by,
+    )
+    record = await doc_upload_repo.create(session, record)
+
+    # 同步知识库到平台 DB
+    await document_library_service.ensure_library_exists(
+        session=session, name=library, created_by=created_by
+    )
+
+    return await _run_extraction_and_ingest(session, record, file_bytes, auto_ingest)
+
+
+async def create_batch_records(
+    session: AsyncSession,
+    files: list[tuple[bytes, str]],
+    library: str,
+    version: str | None,
+    created_by: int | None,
+) -> list[dict]:
+    """批量创建 pending 上传记录并把原始文件暂存到磁盘，供 Celery 后台处理。
+
+    files: [(file_bytes, file_name), ...]，调用方已完成扩展名/空字节校验。
+    仅建记录 + 落盘，不做提取（快路径）；提取由 process_upload 在后台完成。
+    返回序列化记录列表（含 id 供调用方派发 Celery）。
+    """
+    import os
+
+    import aiofiles
+
+    await document_library_service.ensure_library_exists(
+        session=session, name=library, created_by=created_by
+    )
+
+    records: list[DocUploadRecord] = []
+    for file_bytes, file_name in files:
+        content_type = _detect_content_type(file_name)
+        record = DocUploadRecord(
+            library=library,
+            version=version or "",
+            file_name=file_name,
+            file_size=len(file_bytes),
+            content_type=content_type,
+            status="pending",
+            created_by=created_by,
+        )
+        record = await doc_upload_repo.create(session, record)
+
+        safe_name = os.path.basename(file_name) or f"upload-{record.id}"
+        record_dir = _stashed_record_dir(record.id)
+        os.makedirs(record_dir, exist_ok=True)
+        tmp_path = os.path.join(record_dir, safe_name)
+        async with aiofiles.open(tmp_path, "wb") as fp:
+            await fp.write(file_bytes)
+
+        records.append(record)
+
+    return [_serialize_record(r) for r in records]
+
+
+async def process_upload(
+    session: AsyncSession,
+    record_id: int,
+    auto_ingest: bool,
+) -> dict:
+    """Celery 慢路径：读回暂存的原始文件，执行提取 + 可选入库。
+
+    处理完成（成功或失败）后删除该记录的暂存目录。原始文件丢失则置 failed。
+    """
+    import os
+    import shutil
+
+    import aiofiles
+
+    record = await doc_upload_repo.find_by_id(session, record_id)
+    if record is None:
+        raise ValueError(f"upload record {record_id} not found")
+    if record.status != "pending":
+        raise ValueError(f"upload record status is {record.status}, expected pending")
+
+    record_dir = _stashed_record_dir(record.id)
+    try:
+        safe_name = os.path.basename(record.file_name) or f"upload-{record.id}"
+        tmp_path = os.path.join(record_dir, safe_name)
+        if not os.path.exists(tmp_path):
+            await doc_upload_repo.update_status(
+                session,
+                record.id,
+                "failed",
+                error_message="原始文件暂存丢失，请重新上传",
+            )
+            await session.refresh(record)
+            return _serialize_record(record)
+
+        async with aiofiles.open(tmp_path, "rb") as fp:
+            file_bytes = await fp.read()
+        return await _run_extraction_and_ingest(
+            session, record, file_bytes, auto_ingest
+        )
+    finally:
+        shutil.rmtree(record_dir, ignore_errors=True)
 
 
 async def ingest_upload(session: AsyncSession, record_id: int) -> dict:

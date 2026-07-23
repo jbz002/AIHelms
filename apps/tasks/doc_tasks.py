@@ -62,6 +62,27 @@ def ingest_upload_task(record_id: int) -> None:
         raise
 
 
+@celery_app.task(name="doc.process_upload")
+def process_upload_task(record_id: int, auto_ingest: bool = True) -> None:
+    """批量上传文档后台处理：docling 提取 + 可选入库。"""
+    from services import doc_upload_service
+
+    async def _run() -> None:
+        async with get_worker_session_factory()() as session:
+            try:
+                await doc_upload_service.process_upload(session, record_id, auto_ingest)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    try:
+        _run_async(_run())
+    except Exception:
+        logger.exception("celery process_upload_task failed: record_id=%s", record_id)
+        raise
+
+
 @celery_app.task(name="doc.ingest_document")
 def ingest_document_task(document_id: int) -> dict:
     """单文档入库到 docs-mcp。"""

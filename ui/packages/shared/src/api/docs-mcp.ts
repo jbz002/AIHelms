@@ -139,6 +139,23 @@ export function uploadDocument(library: string, file: File, version?: string, au
   })
 }
 
+export function uploadDocumentsBatch(
+  library: string,
+  files: File[],
+  version?: string,
+  autoIngest?: boolean,
+) {
+  const formData = new FormData()
+  formData.append('library', library)
+  for (const f of files) formData.append('files', f)
+  if (version) formData.append('version', version)
+  if (autoIngest !== undefined) formData.append('auto_ingest', String(autoIngest))
+  return request<{ items: DocUploadRecord[]; total: number }>('/api/v1/docs-mcp/upload-batch', {
+    method: 'POST',
+    body: formData,
+  })
+}
+
 export function ingestUploadRecord(recordId: number) {
   return request<DocUploadRecord>(`/api/v1/docs-mcp/uploads/${recordId}/ingest`, {
     method: 'POST',

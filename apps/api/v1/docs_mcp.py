@@ -18,6 +18,11 @@ from repositories import (
 )
 from services import doc_upload_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
+from services.docs_version import (
+    DOCS_VERSION_ERROR_MSG,
+    is_valid_docs_version,
+    normalize_docs_version,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -81,12 +86,14 @@ async def create_job(body: dict, _: dict = Depends(get_current_user)):
 
         url = body.get("url", "").strip()
         library = body.get("library", "").strip()
-        version = body.get("version", "").strip() or None
+        version = normalize_docs_version(body.get("version", ""))
 
         if not url:
             return {"code": 400, "message": "url 不能为空", "data": None}
         if not library:
             return {"code": 400, "message": "library 不能为空", "data": None}
+        if not is_valid_docs_version(version):
+            return {"code": 400, "message": DOCS_VERSION_ERROR_MSG, "data": None}
 
         additional_options = body.get("options") or {}
         if not isinstance(additional_options, dict):
@@ -358,6 +365,9 @@ async def upload_document(
     """上传本地文档，提取内容。auto_ingest=true 时自动入库，false 时仅提取。"""
     if not library.strip():
         return {"code": 400, "message": "library 不能为空", "data": None}
+    version = normalize_docs_version(version)
+    if not is_valid_docs_version(version):
+        return {"code": 400, "message": DOCS_VERSION_ERROR_MSG, "data": None}
     if not file.filename:
         return {"code": 400, "message": "文件名不能为空", "data": None}
 
@@ -384,7 +394,7 @@ async def upload_document(
             file_bytes=file_bytes,
             file_name=file.filename,
             library=library.strip(),
-            version=version.strip() or None,
+            version=version,
             created_by=created_by,
             auto_ingest=auto_ingest,
         )
@@ -399,6 +409,85 @@ async def upload_document(
 
     msg = "文档入库成功" if auto_ingest else "文档提取成功"
     return {"code": 200, "message": msg, "data": record}
+
+
+@router.post("/upload-batch", summary="批量上传文档")
+async def upload_documents_batch(
+    library: str = Form(...),
+    version: str = Form(""),
+    auto_ingest: bool = Form(True),
+    files: list[UploadFile] = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """批量上传多个文档到同一文档库。
+
+    原始文件暂存到磁盘后立即返回；docling 提取 + 可选入库交 Celery 后台处理，
+    状态流转在「文档任务」列表查看。任一文件不合法则拒绝整批。
+    """
+    if not library.strip():
+        return {"code": 400, "message": "library 不能为空", "data": None}
+    version = normalize_docs_version(version)
+    if not is_valid_docs_version(version):
+        return {"code": 400, "message": DOCS_VERSION_ERROR_MSG, "data": None}
+    if not files:
+        return {"code": 400, "message": "请至少选择一个文件", "data": None}
+
+    import os
+
+    from services.doc_upload_service import ALL_SUPPORTED_EXTENSIONS
+
+    items: list[tuple[bytes, str]] = []
+    invalid: list[str] = []
+    for f in files:
+        name = f.filename or ""
+        if not name:
+            invalid.append("<空文件名>")
+            continue
+        _, ext = os.path.splitext(name.lower())
+        if ext not in ALL_SUPPORTED_EXTENSIONS:
+            invalid.append(name)
+            continue
+        try:
+            file_bytes = await f.read()
+        except Exception as e:
+            invalid.append(f"{name}(读取失败: {e})")
+            continue
+        if len(file_bytes) == 0:
+            invalid.append(f"{name}(内容为空)")
+            continue
+        items.append((file_bytes, name))
+
+    if invalid:
+        return {
+            "code": 400,
+            "message": f"以下文件不合法，已拒绝整批上传: {', '.join(invalid)}",
+            "data": None,
+        }
+    if not items:
+        return {"code": 400, "message": "没有可上传的有效文件", "data": None}
+
+    created_by = current_user.get("id") if isinstance(current_user, dict) else None
+    async with async_session() as session:
+        records = await doc_upload_service.create_batch_records(
+            session=session,
+            files=items,
+            library=library.strip(),
+            version=version,
+            created_by=created_by,
+        )
+        await session.commit()
+
+    # commit 后再派发，确保 Celery 取任务时记录已落库
+    from tasks.doc_tasks import process_upload_task
+
+    for record in records:
+        process_upload_task.delay(record["id"], auto_ingest)
+
+    return {
+        "code": 200,
+        "message": f"已提交 {len(records)} 个文件到后台处理",
+        "data": {"items": records, "total": len(records)},
+    }
 
 
 @router.post("/uploads/{record_id}/ingest", summary="上传文档入库")
@@ -493,12 +582,14 @@ async def create_crawl_task(
     """创建 crawl-only 任务：只爬取不入库，页面数据通过 SSE 实时推送并持久化。"""
     url = body.get("url", "").strip()
     library = body.get("library", "").strip()
-    version = body.get("version", "").strip()
+    version = normalize_docs_version(body.get("version", ""))
 
     if not url:
         return {"code": 400, "message": "url 不能为空", "data": None}
     if not library:
         return {"code": 400, "message": "library 不能为空", "data": None}
+    if not is_valid_docs_version(version):
+        return {"code": 400, "message": DOCS_VERSION_ERROR_MSG, "data": None}
 
     additional_options = body.get("options") or {}
     if not isinstance(additional_options, dict):

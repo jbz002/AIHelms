@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { DocsMcpScrapeOptions } from '@aihelms/shared'
-import { checkDocsMcpLibraryExists, findDocsMcpVersionsByUrl } from '@aihelms/shared'
+import { checkDocsMcpLibraryExists, findDocsMcpVersionsByUrl, toast } from '@aihelms/shared'
 import { X, ChevronDown, ChevronUp, Plus, Trash2, AlertTriangle } from 'lucide-vue-next'
+
+const DOCS_VERSION_RE = /^v?\d+\.\d+\.\d+$/
 
 type IngestMode = 'direct' | 'crawl-only'
 
@@ -152,6 +154,11 @@ function onExcludePatternsInput(e: Event): void {
 
 function handleSubmit(): void {
   if (!url.value || !library.value) return
+  const versionInput = version.value.trim()
+  if (versionInput && !DOCS_VERSION_RE.test(versionInput)) {
+    toast.error('版本号格式无效，请留空或填写完整版本号（如 1.0.0）')
+    return
+  }
   submitting.value = true
   const options: DocsMcpScrapeOptions = {}
   if (maxPages.value) options.maxPages = maxPages.value
@@ -223,7 +230,7 @@ function handleSubmit(): void {
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">版本</label>
-              <input v-model="version" type="text" placeholder="v1.0 (可选)" :class="inputCls" />
+              <input v-model="version" type="text" placeholder="留空或完整版本号，如 1.0.0" :class="inputCls" />
             </div>
           </div>
           <div class="rounded-md border border-gray-200">
