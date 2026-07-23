@@ -15,9 +15,6 @@ import {
   Wallet,
   FileText,
   Shield,
-  Search,
-  Database,
-  File,
   Key,
   Fingerprint,
   Bot,
@@ -84,9 +81,8 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
     icon: Store,
     items: [
       { label: 'Skill管理', icon: Zap, path: '/skills', permission: 'skill:read' },
-      { label: '治理标签', icon: Award, path: '/skills/label-definitions', permission: 'skill:label:manage' },
-      { label: '内置Skills', icon: Package, path: '/skills/builtin', permission: 'skill:label:manage' },
       { label: 'MCP管理', icon: Plug, path: '/mcp', permission: 'mcp:read' },
+      { label: '治理标签', icon: Award, path: '/skills/label-definitions', permission: 'skill:label:manage' },
     ],
   },
   {
@@ -122,14 +118,10 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
     title: 'AI实验室',
     icon: FlaskConical,
     items: [
+      { label: 'API文档管理', icon: BookOpen, path: '/lab/docs', permission: 'efficiency:read' },
       { label: '报告', icon: FileText, path: '/efficiency/reports', permission: 'efficiency:read' },
       { label: 'AI健康', icon: HeartPulse, path: '/ai-health', permission: 'efficiency:read' },
-      { label: '敏感信息识别', icon: Search, path: '/sensitive', disabled: true },
-      { label: 'A2A', icon: GitBranch, path: '/a2a', disabled: true },
-      { label: '上下文缓存', icon: Database, path: '/caching', disabled: true },
       { label: 'AI Policies', icon: ShieldCheck, path: '/lab/ai-policies', permission: 'ai_policies:read' },
-      { label: 'API文档管理', icon: BookOpen, path: '/lab/docs', permission: 'efficiency:read' },
-      { label: '文件处理', icon: File, path: '/files', disabled: true },
     ],
   },
 ])

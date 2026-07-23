@@ -123,14 +123,24 @@ onMounted(loadData)
         <h1 class="text-2xl font-bold text-slate-900">Skill 管理</h1>
         <p class="mt-1 text-sm text-slate-500">管理 Skill zip 包与发布状态。</p>
       </div>
-      <button
-        v-if="hasPermission('skill:create')"
-        class="flex items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-500"
-        @click="openCreate"
-      >
-        <Plus class="h-4 w-4" />
-        新建 Skill
-      </button>
+      <div class="flex items-center gap-2">
+        <button
+          v-if="hasPermission('skill:label:manage')"
+          class="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+          @click="router.push('/skills/builtin')"
+        >
+          <Package class="h-4 w-4" />
+          内置 Skills
+        </button>
+        <button
+          v-if="hasPermission('skill:create')"
+          class="flex items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-500"
+          @click="openCreate"
+        >
+          <Plus class="h-4 w-4" />
+          新建 Skill
+        </button>
+      </div>
     </div>
 
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
