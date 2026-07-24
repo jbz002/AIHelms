@@ -8,6 +8,7 @@ from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import McpServer, McpServerVersion, McpTool
 from repositories import mcp_repo, mcp_version_repo
 from services import litellm_client, versioning_service
+from services.icon_url import normalize_hosted_icon_path, resolve_icon_url
 from services.litellm_client import LiteLLMError
 
 logger = logging.getLogger(__name__)
@@ -146,7 +147,7 @@ async def create_server(
         category=category,
         tags=tags or [],
         author=author,
-        icon_url=icon_url,
+        icon_url=normalize_hosted_icon_path(icon_url) or "",
         documentation_url=documentation_url,
         source_url=source_url,
         billing_type=billing_type,
@@ -252,6 +253,8 @@ async def update_server(
             )
 
     was_published = server.is_published
+    if "icon_url" in kwargs:
+        kwargs["icon_url"] = normalize_hosted_icon_path(kwargs["icon_url"]) or ""
     for key, value in kwargs.items():
         if hasattr(server, key) and value is not None:
             setattr(server, key, value)
@@ -763,7 +766,7 @@ def _serialize_server(server: McpServer) -> dict:
         "category": server.category,
         "tags": server.tags,
         "author": server.author,
-        "icon_url": server.icon_url,
+        "icon_url": resolve_icon_url(server.icon_url),
         "documentation_url": server.documentation_url,
         "source_url": server.source_url,
         "billing_type": server.billing_type,

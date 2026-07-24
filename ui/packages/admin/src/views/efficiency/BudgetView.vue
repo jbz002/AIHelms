@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { AlertTriangle, Download, RefreshCw } from 'lucide-vue-next'
+import { computed, onMounted, ref, watch } from 'vue'
+import { AlertTriangle, ChevronDown, Download, RefreshCw } from 'lucide-vue-next'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
@@ -9,9 +9,13 @@ import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/compon
 import { createExportTask, getEfficiencyBudget, getEfficiencyBudgetAlerts, toast } from '@aihelms/shared'
 import TooltipIcon from '../../components/TooltipIcon.vue'
 import ExportTaskNotice from '../../components/ExportTaskNotice.vue'
+import ScopePickerDialog from '../../components/ScopePickerDialog.vue'
 import GlassCard from './components/GlassCard.vue'
 import BudgetProgress from './components/BudgetProgress.vue'
+import Pagination from '../../components/Pagination.vue'
 import { formatCost, formatCostShort, submitEfficiencyRefresh, keepRefreshIndicator } from './utils'
+import { useScopeFilter } from './useScopeFilter'
+import type { UserKeyBudgetRow } from './costTypes'
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])
 
@@ -48,16 +52,6 @@ interface ScopeBudgetRow {
   trend?: number[]
 }
 
-interface KeyBudgetRow {
-  key_name: string
-  owner: string
-  owner_type: string
-  key_type: string
-  budget: number
-  used: number
-  execution_rate: number
-}
-
 interface BudgetAlert {
   target: string
   type: string
@@ -65,12 +59,19 @@ interface BudgetAlert {
   predicted_overspend: number
 }
 
-type DetailTab = 'department' | 'project' | 'key'
+interface UserBudgetTop10Row {
+  rank: number
+  user_name: string
+  department: string
+  used: number
+}
+
+type DetailTab = 'department' | 'project' | 'user'
 
 const DETAIL_TABS = [
   { key: 'department' as const, label: '部门预算' },
   { key: 'project' as const, label: '项目预算' },
-  { key: 'key' as const, label: 'Key预算' },
+  { key: 'user' as const, label: '人预算' },
 ]
 
 function getCurrentMonth(): string {
@@ -97,6 +98,17 @@ function selectedMonthLabel(): string {
 
 const activeDetailTab = ref<DetailTab>('department')
 const selectedMonth = ref(getCurrentMonth())
+const dimension = ref<'department' | 'project'>('department')
+const {
+  departmentTree,
+  handleScopeConfirm,
+  isScopePickerOpen,
+  loadScopeOptions,
+  projectOptions,
+  resetScopeSelection,
+  selectedScopeIds,
+  selectedScopeLabel,
+} = useScopeFilter(dimension, loadData)
 const isLoading = ref(true)
 const isRefreshing = ref(false)
 const exporting = ref(false)
@@ -104,14 +116,29 @@ const exportNotice = ref('')
 const lastUpdatedAt = ref<Date | null>(null)
 const lastUpdatedLabel = ref('--')
 const detailPage = ref(1)
-const pageSize = 20
+const pageSize = ref(20)
+watch(pageSize, () => { detailPage.value = 1 })
 
 const globalBudget = ref<BudgetGlobal>({ used: 0, budget: 0, remaining: 0, predicted: 0, risk: 'safe', execution_rate: 0 })
 const trendData = ref<BudgetTrendItem[]>([])
 const deptRows = ref<ScopeBudgetRow[]>([])
 const projectRows = ref<ScopeBudgetRow[]>([])
-const keyRows = ref<KeyBudgetRow[]>([])
+const userKeyRows = ref<UserKeyBudgetRow[]>([])
+const userBudgetTop10 = ref<UserBudgetTop10Row[]>([])
 const alerts = ref<BudgetAlert[]>([])
+
+function getBaseParams(): Record<string, string> {
+  const params: Record<string, string> = { month: selectedMonth.value, dimension: dimension.value }
+  if (selectedScopeIds.value.length) params.scope_ids = selectedScopeIds.value.join(',')
+  return params
+}
+
+function changeDimension(value: 'department' | 'project') {
+  dimension.value = value
+  resetScopeSelection()
+  activeDetailTab.value = value
+  loadData()
+}
 
 async function refreshData() {
   isRefreshing.value = true
@@ -133,14 +160,15 @@ async function loadData() {
   detailPage.value = 1
   try {
     const [budgetRes, alertRes] = await Promise.all([
-      getEfficiencyBudget<{ global: BudgetGlobal; trend: BudgetTrendItem[]; departments: ScopeBudgetRow[]; projects: ScopeBudgetRow[]; keys: KeyBudgetRow[]; freshness?: { last_updated_at: string | null; last_updated_label: string } }>({ month: selectedMonth.value }),
-      getEfficiencyBudgetAlerts<BudgetAlert[]>({ month: selectedMonth.value }),
+      getEfficiencyBudget<{ global: BudgetGlobal; trend: BudgetTrendItem[]; departments: ScopeBudgetRow[]; projects: ScopeBudgetRow[]; user_keys: UserKeyBudgetRow[]; user_budget_top10: UserBudgetTop10Row[]; freshness?: { last_updated_at: string | null; last_updated_label: string } }>(getBaseParams()),
+      getEfficiencyBudgetAlerts<BudgetAlert[]>(getBaseParams()),
     ])
     globalBudget.value = budgetRes.global
     trendData.value = budgetRes.trend
     deptRows.value = budgetRes.departments
     projectRows.value = budgetRes.projects
-    keyRows.value = budgetRes.keys
+    userKeyRows.value = budgetRes.user_keys
+    userBudgetTop10.value = budgetRes.user_budget_top10
     alerts.value = alertRes
     lastUpdatedAt.value = budgetRes.freshness?.last_updated_at ? new Date(budgetRes.freshness.last_updated_at) : new Date()
     lastUpdatedLabel.value = budgetRes.freshness?.last_updated_label || formatLastUpdated()
@@ -167,13 +195,6 @@ function executionColor(rate: number): string {
   return 'text-slate-700'
 }
 
-function ownerTypeLabel(type: string): string {
-  if (type === 'user') return '用户'
-  if (type === 'department') return '部门'
-  if (type === 'project') return '项目'
-  return type || '--'
-}
-
 function formatLastUpdated(): string {
   if (!lastUpdatedAt.value) return '--'
   const diffMinutes = Math.floor((Date.now() - lastUpdatedAt.value.getTime()) / 60000)
@@ -186,13 +207,12 @@ function formatLastUpdated(): string {
 
 const activeRows = computed(() => {
   if (activeDetailTab.value === 'project') return projectRows.value
-  if (activeDetailTab.value === 'key') return keyRows.value
+  if (activeDetailTab.value === 'user') return userKeyRows.value
   return deptRows.value
 })
-const totalPages = computed(() => Math.max(1, Math.ceil(activeRows.value.length / pageSize)))
-const pagedDeptRows = computed(() => deptRows.value.slice((detailPage.value - 1) * pageSize, detailPage.value * pageSize))
-const pagedProjectRows = computed(() => projectRows.value.slice((detailPage.value - 1) * pageSize, detailPage.value * pageSize))
-const pagedKeyRows = computed(() => keyRows.value.slice((detailPage.value - 1) * pageSize, detailPage.value * pageSize))
+const pagedDeptRows = computed(() => deptRows.value.slice((detailPage.value - 1) * pageSize.value, detailPage.value * pageSize.value))
+const pagedProjectRows = computed(() => projectRows.value.slice((detailPage.value - 1) * pageSize.value, detailPage.value * pageSize.value))
+const pagedUserRows = computed(() => userKeyRows.value.slice((detailPage.value - 1) * pageSize.value, detailPage.value * pageSize.value))
 
 function switchTab(tab: DetailTab) {
   activeDetailTab.value = tab
@@ -206,7 +226,7 @@ async function exportDetail() {
       source: 'efficiency',
       export_type: `budget_${activeDetailTab.value}`,
       task_name: `预算管控-${DETAIL_TABS.find((tab) => tab.key === activeDetailTab.value)?.label || '明细'}`,
-      params: { month: selectedMonth.value },
+      params: getBaseParams(),
     })
     exportNotice.value = '导出任务已创建，请到资源审计 > 导出任务下载表格'
   } catch (e) {
@@ -215,7 +235,6 @@ async function exportDetail() {
     exporting.value = false
   }
 }
-
 
 const trendChartOption = computed(() => ({
   tooltip: { trigger: 'axis' },
@@ -236,7 +255,10 @@ const globalRiskClass = computed(() => {
   return 'border-slate-200 bg-white'
 })
 
-onMounted(loadData)
+onMounted(() => {
+  loadScopeOptions()
+  loadData()
+})
 </script>
 
 <template>
@@ -255,6 +277,15 @@ onMounted(loadData)
           <button type="button" class="rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-white" @click="changeMonth(getCurrentMonth())">本月</button>
           <button type="button" class="rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-white" @click="changeMonth(getLastMonth())">上月</button>
         </div>
+        <span class="text-xs text-slate-500">维度</span>
+        <div class="inline-flex rounded-lg bg-slate-100 p-1">
+          <button type="button" class="rounded-md px-3 py-1 text-xs transition-colors" :class="dimension === 'department' ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'" @click="changeDimension('department')">按部门</button>
+          <button type="button" class="rounded-md px-3 py-1 text-xs transition-colors" :class="dimension === 'project' ? 'bg-white font-medium text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'" @click="changeDimension('project')">按项目</button>
+        </div>
+        <button type="button" class="inline-flex min-w-[152px] items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-50" @click="isScopePickerOpen = true">
+          <span class="truncate">{{ selectedScopeLabel }}</span>
+          <ChevronDown class="h-3.5 w-3.5 text-slate-400" />
+        </button>
         <div class="ml-auto flex items-center gap-2 text-xs text-slate-500">
           <span>最后更新时间：{{ lastUpdatedLabel }}</span>
           <button type="button" class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60" :disabled="isRefreshing" @click.prevent="refreshData">
@@ -304,6 +335,30 @@ onMounted(loadData)
           <TooltipIcon text="实际累计为所选月份内部成本累计；预算上限为总预算按自然日均摊后的累计线。" />
         </div>
         <VChart :option="trendChartOption" style="height: 280px; width: 100%" autoresize />
+      </GlassCard>
+
+      <GlassCard title="人预算 Top10" tooltip="按所选月份个人 Key 已用内部成本汇总，取前 10 名。">
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-slate-200 text-left text-xs text-slate-400">
+                <th class="py-2.5 font-medium">序号</th>
+                <th class="py-2.5 font-medium">姓名</th>
+                <th class="py-2.5 font-medium">部门</th>
+                <th class="py-2.5 text-right font-medium">已用金额</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in userBudgetTop10" :key="row.rank" class="border-b border-slate-50 last:border-0 hover:bg-slate-50/40">
+                <td class="py-3 text-slate-400">{{ row.rank }}</td>
+                <td class="py-3 font-medium text-slate-800">{{ row.user_name }}</td>
+                <td class="py-3 text-slate-500">{{ row.department || '-' }}</td>
+                <td class="py-3 text-right font-semibold text-slate-900">{{ formatCost(row.used) }}</td>
+              </tr>
+              <tr v-if="userBudgetTop10.length === 0"><td colspan="4" class="py-12 text-center text-sm text-slate-400">暂无数据</td></tr>
+            </tbody>
+          </table>
+        </div>
       </GlassCard>
 
       <GlassCard>
@@ -385,41 +440,39 @@ onMounted(loadData)
             </tbody>
           </table>
 
-          <table v-else class="min-w-[900px] w-full text-sm">
+          <table v-else-if="activeDetailTab === 'user'" class="min-w-[760px] w-full text-sm">
             <thead class="sticky top-0 z-10 bg-white">
               <tr class="border-b border-slate-200 text-left text-xs text-slate-400">
-                <th class="py-2.5 font-medium">Key名</th>
-                <th class="py-2.5 font-medium">归属对象</th>
-                <th class="py-2.5 font-medium">归属类型</th>
-                <th class="py-2.5 font-medium">Key类型</th>
+                <th class="py-2.5 font-medium">姓名</th>
+                <th class="py-2.5 font-medium">Key</th>
                 <th class="py-2.5 text-right font-medium">预算</th>
                 <th class="py-2.5 text-right font-medium">已用</th>
                 <th class="py-2.5 w-36 font-medium">执行率</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in pagedKeyRows" :key="row.key_name" class="border-b border-slate-50 last:border-0 hover:bg-slate-50/40">
-                <td class="py-3 font-medium text-slate-800">{{ row.key_name }}</td>
-                <td class="py-3 text-slate-600">{{ row.owner }}</td>
-                <td class="py-3 text-slate-600">{{ ownerTypeLabel(row.owner_type) }}</td>
-                <td class="py-3 text-slate-600">{{ row.key_type }}</td>
+              <tr v-for="row in pagedUserRows" :key="`${row.user_name}-${row.key_name}`" class="border-b border-slate-50 last:border-0 hover:bg-slate-50/40">
+                <td class="py-3 font-medium text-slate-800">{{ row.user_name }}</td>
+                <td class="py-3 text-slate-600">
+                  <span>{{ row.key_name }}</span>
+                  <span class="ml-1 text-xs text-slate-400">{{ row.is_main ? '主' : '场景' }}</span>
+                </td>
                 <td class="py-3 text-right text-slate-700">{{ formatCost(row.budget) }}</td>
                 <td class="py-3 text-right font-semibold text-slate-900">{{ formatCost(row.used) }}</td>
                 <td class="py-3"><BudgetProgress :value="row.execution_rate" :show-label="true" /></td>
               </tr>
-              <tr v-if="keyRows.length === 0"><td colspan="7" class="py-12 text-center text-sm text-slate-400">暂无数据</td></tr>
+              <tr v-if="userKeyRows.length === 0"><td colspan="5" class="py-12 text-center text-sm text-slate-400">暂无数据</td></tr>
             </tbody>
           </table>
         </div>
 
-        <div v-if="activeRows.length > pageSize" class="mt-3 flex items-center justify-between text-xs text-slate-500">
-          <span>共 {{ activeRows.length }} 条，每页 {{ pageSize }} 条</span>
-          <div class="flex items-center gap-2">
-            <button class="rounded border border-slate-200 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50" :disabled="detailPage <= 1" @click="detailPage--">上一页</button>
-            <span>{{ detailPage }} / {{ totalPages }}</span>
-            <button class="rounded border border-slate-200 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50" :disabled="detailPage >= totalPages" @click="detailPage++">下一页</button>
-          </div>
-        </div>
+        <Pagination
+          v-if="activeRows.length > 0"
+          :page="detailPage"
+          v-model:page-size="pageSize"
+          :total="activeRows.length"
+          @change="detailPage = $event"
+        />
       </GlassCard>
 
       <div v-if="alerts.length > 0" class="space-y-3">
@@ -442,5 +495,6 @@ onMounted(loadData)
         </div>
       </div>
     </template>
+    <ScopePickerDialog v-model:open="isScopePickerOpen" v-model="selectedScopeIds" :dimension="dimension" :department-tree="departmentTree" :project-options="projectOptions" @confirm="handleScopeConfirm" />
   </div>
 </template>

@@ -1,18 +1,23 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { AlertTriangle, Download, RefreshCw } from 'lucide-vue-next'
+import { ref, computed, onMounted, watch } from 'vue'
+import { AlertTriangle, ChevronDown, Download, RefreshCw } from 'lucide-vue-next'
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
-import { createExportTask, getEfficiencyOverview, toast } from '@aihelms/shared'
+import { createExportTask, getEfficiencyOverview, getEfficiencyTopUsers, toast } from '@aihelms/shared'
 import TooltipIcon from '../../components/TooltipIcon.vue'
 import ExportTaskNotice from '../../components/ExportTaskNotice.vue'
+import ScopePickerDialog from '../../components/ScopePickerDialog.vue'
 import GlassCard from './components/GlassCard.vue'
 import KpiCard from './components/KpiCard.vue'
+import UserTop10Panel from './components/UserTop10Panel.vue'
 import PresetTabs from './components/PresetTabs.vue'
-import { submitEfficiencyRefresh, keepRefreshIndicator } from './utils'
+import Pagination from '../../components/Pagination.vue'
+import { formatBigToken, submitEfficiencyRefresh, keepRefreshIndicator } from './utils'
+import { useScopeFilter } from './useScopeFilter'
+import type { UserTop10Row } from './costTypes'
 
 use([CanvasRenderer, BarChart, LineChart, GridComponent, TooltipComponent, LegendComponent])
 
@@ -24,6 +29,11 @@ interface OverviewKpi {
   per_capita_cost: number
   active_per_capita_cost?: number
   per_capita_change: number | null
+  total_tokens: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_creation_tokens: number
 }
 
 interface TrendData {
@@ -83,6 +93,8 @@ type SortKey = keyof Pick<
 >
 
 const TIME_PRESETS = [
+  { key: 'today', label: '今天' },
+  { key: 'yesterday', label: '昨天' },
   { key: 'month', label: '本月' },
   { key: '7d', label: '近7天' },
   { key: '30d', label: '近30天' },
@@ -99,13 +111,27 @@ const isRefreshing = ref(false)
 const exporting = ref(false)
 const exportNotice = ref('')
 const dimension = ref<Dimension>('department')
+const {
+  departmentTree,
+  handleScopeConfirm,
+  isScopePickerOpen,
+  loadScopeOptions,
+  projectOptions,
+  resetScopeSelection,
+  selectedScopeIds,
+  selectedScopeLabel,
+} = useScopeFilter(dimension, loadData)
 const sortKey = ref<SortKey>('coverage_rate')
 const sortAsc = ref(false)
 const timePreset = ref('month')
 const customStart = ref('')
 const customEnd = ref('')
 const page = ref(1)
-const pageSize = 20
+const pageSize = ref(20)
+const topMetric = ref<'cost' | 'tokens' | 'requests'>('cost')
+const topRows = ref<UserTop10Row[]>([])
+const topLoading = ref(false)
+watch(pageSize, () => { page.value = 1 })
 
 const dimensionText = computed(() => (dimension.value === 'project' ? '项目' : '部门'))
 
@@ -116,14 +142,38 @@ function getDateParams(): Record<string, string> {
   return { period: timePreset.value }
 }
 
+function getBaseParams(): Record<string, string> {
+  const params: Record<string, string> = { ...getDateParams(), dimension: dimension.value }
+  if (selectedScopeIds.value.length) params.scope_ids = selectedScopeIds.value.join(',')
+  return params
+}
+
 async function loadData() {
   isLoading.value = true
   try {
-    data.value = await getEfficiencyOverview<OverviewData>({ ...getDateParams(), dimension: dimension.value })
+    data.value = await getEfficiencyOverview<OverviewData>(getBaseParams())
     page.value = 1
+    await loadTopUsers()
   } finally {
     isLoading.value = false
   }
+}
+
+async function loadTopUsers() {
+  topLoading.value = true
+  try {
+    topRows.value = await getEfficiencyTopUsers<UserTop10Row[]>({
+      ...getBaseParams(),
+      metric: topMetric.value,
+    })
+  } finally {
+    topLoading.value = false
+  }
+}
+
+function handleTopMetricChange(metric: 'cost' | 'tokens' | 'requests') {
+  topMetric.value = metric
+  loadTopUsers()
 }
 
 function changePreset(val: string) {
@@ -140,6 +190,7 @@ function applyCustomRange() {
 
 function changeDimension(value: Dimension) {
   dimension.value = value
+  resetScopeSelection()
   loadData()
 }
 
@@ -199,8 +250,7 @@ const sortedTable = computed(() => {
   return rows
 })
 
-const totalPages = computed(() => Math.max(1, Math.ceil(sortedTable.value.length / pageSize)))
-const visibleRows = computed(() => sortedTable.value.slice((page.value - 1) * pageSize, page.value * pageSize))
+const visibleRows = computed(() => sortedTable.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
 const trendChartOption = computed(() => {
   if (!data.value) return {}
@@ -252,7 +302,7 @@ async function exportRows() {
       source: 'efficiency',
       export_type: 'overview_scope',
       task_name: `AI效能总览-${dimensionText.value}明细`,
-      params: { ...getDateParams(), dimension: dimension.value },
+      params: getBaseParams(),
     })
     exportNotice.value = '导出任务已创建，请到资源审计 > 导出任务下载表格'
   } catch (e) {
@@ -263,7 +313,10 @@ async function exportRows() {
 }
 
 
-onMounted(loadData)
+onMounted(() => {
+  loadScopeOptions()
+  loadData()
+})
 </script>
 
 <template>
@@ -291,6 +344,10 @@ onMounted(loadData)
             {{ item.label }}
           </button>
         </div>
+        <button type="button" class="inline-flex min-w-[152px] items-center justify-between gap-2 rounded-md border border-slate-200 bg-white px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-50" @click="isScopePickerOpen = true">
+          <span class="truncate">{{ selectedScopeLabel }}</span>
+          <ChevronDown class="h-3.5 w-3.5 text-slate-400" />
+        </button>
         <div class="ml-auto flex items-center gap-2 text-xs text-slate-500">
           <span>最后更新时间：{{ lastUpdatedLabel }}</span>
           <button type="button" class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60" :disabled="isRefreshing" @click.prevent="refreshData">
@@ -314,7 +371,7 @@ onMounted(loadData)
         </div>
       </GlassCard>
 
-      <div class="grid grid-cols-3 gap-4">
+      <div class="grid grid-cols-4 gap-4">
         <KpiCard
           label="AI 覆盖率"
           :value="`${data.kpi.coverage_rate}%`"
@@ -336,6 +393,14 @@ onMounted(loadData)
           change-kind="up-bad"
           tooltip="活跃人均成本 = 平台投入 ÷ 所选时间内活跃用户数。"
         />
+        <KpiCard
+          label="Token 用量"
+          :value="formatBigToken(data.kpi.total_tokens)"
+          change-kind="neutral"
+          change-text=""
+          :sub-detail="`输入 ${formatBigToken(data.kpi.input_tokens)} / 输出 ${formatBigToken(data.kpi.output_tokens)} / 缓存命中 ${formatBigToken(data.kpi.cache_read_tokens)} / 缓存创建 ${formatBigToken(data.kpi.cache_creation_tokens)}`"
+          tooltip="所选时间范围内的 token 消耗合计（含输入/输出/缓存）。"
+        />
       </div>
 
       <GlassCard title="活跃用户与平台成本趋势" tooltip="X 轴为顶部筛选时间内的统计粒度；左侧 Y 轴为活跃人数，右侧 Y 轴为平台成本，单位为元。">
@@ -350,6 +415,13 @@ onMounted(loadData)
           <VChart :option="perCapitaChartOption" class="h-56 w-full" autoresize />
         </GlassCard>
       </div>
+
+      <UserTop10Panel
+        :metric="topMetric"
+        :rows="topRows"
+        :loading="topLoading"
+        @metric-change="handleTopMetricChange"
+      />
 
       <GlassCard :title="`${dimensionText}明细`" padding="p-0" tooltip="明细受顶部时间和视角联动；趋势图按所选时间范围自动选择统计粒度。环比均与上一等长周期比较。">
         <template #action>
@@ -400,17 +472,13 @@ onMounted(loadData)
           </table>
           <div v-if="sortedTable.length === 0" class="py-10 text-center text-sm text-slate-400">暂无数据</div>
         </div>
-        <div v-if="sortedTable.length > pageSize" class="flex items-center justify-between border-t border-slate-100 px-5 py-3 text-xs text-slate-500">
-          <span>共 {{ sortedTable.length }} 条，每页 {{ pageSize }} 条</span>
-          <div class="flex items-center gap-2">
-            <button class="rounded border border-slate-200 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50" :disabled="page <= 1" @click="page -= 1">上一页</button>
-            <span>{{ page }} / {{ totalPages }}</span>
-            <button class="rounded border border-slate-200 px-2 py-1 disabled:cursor-not-allowed disabled:opacity-50" :disabled="page >= totalPages" @click="page += 1">下一页</button>
-          </div>
+        <div v-if="sortedTable.length > 0" class="border-t border-slate-100 px-5 pb-3">
+          <Pagination :page="page" v-model:page-size="pageSize" :total="sortedTable.length" @change="page = $event" />
         </div>
       </GlassCard>
     </template>
 
     <div v-else class="py-20 text-center text-sm text-slate-400">加载失败，请刷新重试</div>
+    <ScopePickerDialog v-model:open="isScopePickerOpen" v-model="selectedScopeIds" :dimension="dimension" :department-tree="departmentTree" :project-options="projectOptions" @confirm="handleScopeConfirm" />
   </div>
 </template>

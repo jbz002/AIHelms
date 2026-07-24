@@ -13,6 +13,7 @@ from core.config import settings
 from exceptions import NotFoundError
 from models.db import Agent, AgentUsageLog, LlmCallLog, McpCallLog, SkillUsageLog
 from repositories import usage_log_repo
+from services.icon_url import resolve_icon_url
 
 # ────────────── LLM ──────────────
 
@@ -100,6 +101,10 @@ async def llm_filters(session: AsyncSession) -> dict:
         "ai_keys": [keys[k] for k in raw["ai_key_ids"] if k in keys],
         "models": raw["models"],
         "providers": raw["providers"],
+        "user_key_pairs": [
+            {"user_id": user_id, "ai_key_id": ai_key_id}
+            for user_id, ai_key_id in raw["user_key_pairs"]
+        ],
     }
 
 
@@ -273,6 +278,10 @@ async def mcp_filters(session: AsyncSession) -> dict:
         "servers": [servers[s] for s in raw["server_ids"] if s in servers],
         "ai_keys": [keys[k] for k in raw["ai_key_ids"] if k in keys],
         "tool_names": raw["tool_names"],
+        "user_key_pairs": [
+            {"user_id": user_id, "ai_key_id": ai_key_id}
+            for user_id, ai_key_id in raw["user_key_pairs"]
+        ],
     }
 
 
@@ -318,6 +327,7 @@ async def list_skill_logs(
     )
     users = await usage_log_repo.load_users(session, [log.user_id for log in logs])
     skills = await usage_log_repo.load_skills(session, [log.skill_id for log in logs])
+    _resolve_skill_icon_urls(skills)
     return {
         "items": [_serialize_skill(log, users, skills) for log in logs],
         "total": total,
@@ -330,6 +340,7 @@ async def skill_filters(session: AsyncSession) -> dict:
     raw = await usage_log_repo.skill_log_filters(session)
     users = await usage_log_repo.load_users(session, raw["user_ids"])
     skills = await usage_log_repo.load_skills(session, raw["skill_ids"])
+    _resolve_skill_icon_urls(skills)
     return {
         "users": [users[u] for u in raw["user_ids"] if u in users],
         "skills": [skills[s] for s in raw["skill_ids"] if s in skills],
@@ -345,6 +356,11 @@ def _serialize_skill(log: SkillUsageLog, users: dict, skills: dict) -> dict:
         "action": log.action,
         "created_at": _fmt_time(log.created_at),
     }
+
+
+def _resolve_skill_icon_urls(skills: dict[int, dict]) -> None:
+    for skill in skills.values():
+        skill["icon_url"] = resolve_icon_url(skill.get("icon_url") or skill.get("icon"))
 
 
 # ────────────── Agent ──────────────
@@ -391,7 +407,13 @@ async def agent_filters(session: AsyncSession) -> dict:
     return {
         "users": [users[u] for u in raw["user_ids"] if u in users],
         "agents": [
-            {"id": a.id, "name": a.name, "icon": a.icon, "platform": a.platform}
+            {
+                "id": a.id,
+                "name": a.name,
+                "icon": a.icon,
+                "icon_url": resolve_icon_url(a.icon_url or a.icon),
+                "platform": a.platform,
+            }
             for a in agents
         ],
         "platforms": raw["platforms"],
@@ -407,6 +429,7 @@ def _serialize_agent(log: AgentUsageLog, agent: Agent | None, users: dict) -> di
                 "id": agent.id,
                 "name": agent.name,
                 "icon": agent.icon,
+                "icon_url": resolve_icon_url(agent.icon_url or agent.icon),
                 "platform": agent.platform,
             }
             if agent

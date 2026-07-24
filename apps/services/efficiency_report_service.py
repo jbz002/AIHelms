@@ -3,7 +3,7 @@ from datetime import date
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import EfficiencyReport
-from repositories import efficiency_repo
+from repositories import efficiency_report_repo as efficiency_repo
 
 
 async def list_reports(

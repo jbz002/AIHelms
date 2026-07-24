@@ -637,3 +637,154 @@ async def get_cost_attribution_detail(
         }
         for r in result.fetchall()
     ]
+
+
+async def get_cost_detail_scope_users(
+    session: AsyncSession,
+    start_date: date,
+    end_date: date,
+    dimension: str,
+    scope_id: int,
+    cost_type: str | None = None,
+) -> list[dict]:
+    filters, params = _build_cost_filters(start_date, end_date, cost_type, None, "c")
+    params["scope_id"] = scope_id
+    if dimension == "project":
+        member_filter = (
+            " AND c.user_id IN (SELECT up.user_id FROM aihelms.user_projects up"
+            " WHERE up.project_id = :scope_id)"
+        )
+    else:
+        member_filter = (
+            " AND c.user_id IN (SELECT ud.user_id FROM aihelms.user_departments ud"
+            " WHERE ud.department_id IN (SELECT id FROM subtree))"
+        )
+    sql = text(
+        "WITH RECURSIVE all_paths AS ("
+        " SELECT id, name, parent_id, name::text AS path"
+        " FROM aihelms.departments WHERE parent_id IS NULL"
+        " UNION ALL"
+        " SELECT d.id, d.name, d.parent_id, (ap.path || ' / ' || d.name)::text"
+        " FROM aihelms.departments d JOIN all_paths ap ON ap.id = d.parent_id"
+        " ), subtree AS ("
+        " SELECT id FROM aihelms.departments WHERE id = :scope_id"
+        " UNION ALL"
+        " SELECT d.id FROM aihelms.departments d JOIN subtree s ON d.parent_id = s.id"
+        " ), user_dept AS ("
+        " SELECT DISTINCT ON (ud.user_id) ud.user_id, ap.path"
+        " FROM aihelms.user_departments ud"
+        " JOIN all_paths ap ON ap.id = ud.department_id"
+        " ORDER BY ud.user_id, length(ap.path) DESC"
+        " )"
+        " SELECT c.user_id, u.username, u.display_name,"
+        " COALESCE(udp.path, '') AS dept_path,"
+        " COALESCE(SUM(c.internal_cost), 0) AS internal_cost,"
+        " COALESCE(SUM(c.external_cost), 0) AS external_cost,"
+        " COALESCE(SUM(c.total_requests), 0) AS requests,"
+        " COALESCE(SUM(c.input_tokens), 0) AS input_tokens,"
+        " COALESCE(SUM(c.output_tokens), 0) AS output_tokens,"
+        " COALESCE(SUM(c.cache_read_tokens), 0) AS cache_read_tokens,"
+        " COALESCE(SUM(c.cache_creation_tokens), 0) AS cache_creation_tokens"
+        " FROM aihelms.cost_summary_daily c"
+        " JOIN aihelms.users u ON u.id = c.user_id"
+        " LEFT JOIN user_dept udp ON udp.user_id = c.user_id"
+        f" {filters}{member_filter}"
+        " GROUP BY c.user_id, u.username, u.display_name, udp.path"
+        " ORDER BY internal_cost DESC"
+    )
+    result = await session.execute(sql, params)
+    return [
+        {
+            "user_id": int(r[0]),
+            "user_name": r[2] or r[1],
+            "department": r[3] or "",
+            "internal_cost": float(r[4]),
+            "external_cost": float(r[5]),
+            "cost_diff": round(float(r[4]) - float(r[5]), 4),
+            "requests": int(r[6]),
+            "input_tokens": int(r[7]),
+            "output_tokens": int(r[8]),
+            "cache_read_tokens": int(r[9]),
+            "cache_creation_tokens": int(r[10]),
+        }
+        for r in result.fetchall()
+    ]
+
+
+async def get_user_top10(
+    session: AsyncSession,
+    start_date: date,
+    end_date: date,
+    cost_type: str | None = None,
+    department_id=None,
+    project_id=None,
+    metric: str = "cost",
+) -> list[dict]:
+    filters, params = _build_cost_filters(
+        start_date, end_date, cost_type, department_id, "c", project_id
+    )
+    order_columns = {
+        "cost": "SUM(c.internal_cost)",
+        "tokens": (
+            "SUM(c.input_tokens + c.output_tokens + c.cache_read_tokens"
+            " + c.cache_creation_tokens)"
+        ),
+        "requests": "SUM(c.total_requests)",
+    }
+    order_column = order_columns.get(metric, order_columns["cost"])
+    sql_template = (
+        "WITH RECURSIVE all_paths AS ("
+        " SELECT id, name, parent_id, name::text AS path"
+        " FROM aihelms.departments WHERE parent_id IS NULL"
+        " UNION ALL"
+        " SELECT d.id, d.name, d.parent_id, (ap.path || ' / ' || d.name)::text"
+        " FROM aihelms.departments d JOIN all_paths ap ON ap.id = d.parent_id"
+        " ), user_dept AS ("
+        " SELECT DISTINCT ON (ud.user_id) ud.user_id, ap.path"
+        " FROM aihelms.user_departments ud"
+        " JOIN all_paths ap ON ap.id = ud.department_id"
+        " ORDER BY ud.user_id, length(ap.path) DESC"
+        " )"
+        " SELECT c.user_id,"
+        " COALESCE(NULLIF(u.display_name, ''), u.username, '') AS user_name,"
+        " COALESCE(udp.path, '') AS department,"
+        " COALESCE(SUM(c.internal_cost), 0) AS internal_cost,"
+        " COALESCE(SUM(c.input_tokens), 0) AS input_tokens,"
+        " COALESCE(SUM(c.output_tokens), 0) AS output_tokens,"
+        " COALESCE(SUM(c.cache_read_tokens), 0) AS cache_read_tokens,"
+        " COALESCE(SUM(c.cache_creation_tokens), 0) AS cache_creation_tokens,"
+        " COALESCE(SUM(c.total_requests), 0) AS requests"
+        " FROM aihelms.cost_summary_daily c"
+        " JOIN aihelms.users u ON u.id = c.user_id AND u.is_active = true"
+        " LEFT JOIN user_dept udp ON udp.user_id = c.user_id"
+        f" {filters} AND c.user_id IS NOT NULL"
+        " GROUP BY c.user_id, u.display_name, u.username, udp.path"
+        " ORDER BY {order_col} DESC LIMIT 10"
+    )
+    result = await session.execute(
+        text(sql_template.format(order_col=order_column)), params
+    )
+    rows = []
+    for row in result.fetchall():
+        input_tokens = int(row[4])
+        output_tokens = int(row[5])
+        cache_read_tokens = int(row[6])
+        cache_creation_tokens = int(row[7])
+        rows.append(
+            {
+                "user_id": int(row[0]),
+                "user_name": row[1],
+                "department": row[2],
+                "internal_cost": float(row[3]),
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "cache_read_tokens": cache_read_tokens,
+                "cache_creation_tokens": cache_creation_tokens,
+                "total_tokens": input_tokens
+                + output_tokens
+                + cache_read_tokens
+                + cache_creation_tokens,
+                "requests": int(row[8]),
+            }
+        )
+    return rows

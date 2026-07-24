@@ -11,6 +11,7 @@ from models.db import (
     CostSummaryDaily,
     User,
 )
+from repositories.efficiency_scope_filter import build_scope_filter
 
 logger = logging.getLogger(__name__)
 
@@ -506,3 +507,34 @@ async def get_unused_users(
     ]
 
 
+async def get_period_token_stats(
+    session: AsyncSession,
+    start_date: date,
+    end_date: date,
+    department_ids: list[int] | None = None,
+    project_ids: list[int] | None = None,
+) -> dict:
+    params: dict = {"start": start_date, "end": end_date}
+    scope_filter = build_scope_filter(
+        "c.user_id", department_ids, project_ids, params, "token_stats"
+    )
+    sql = text(
+        "SELECT COALESCE(SUM(c.input_tokens),0), COALESCE(SUM(c.output_tokens),0),"
+        " COALESCE(SUM(c.cache_read_tokens),0),"
+        " COALESCE(SUM(c.cache_creation_tokens),0)"
+        " FROM aihelms.cost_summary_daily c"
+        " WHERE c.summary_date >= :start AND c.summary_date <= :end"
+        f"{scope_filter}"
+    )
+    row = (await session.execute(sql, params)).one()
+    input_tokens, output_tokens = int(row[0]), int(row[1])
+    cache_read_tokens, cache_creation_tokens = int(row[2]), int(row[3])
+    return {
+        "total": (
+            input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens
+        ),
+        "input": input_tokens,
+        "output": output_tokens,
+        "cache_read": cache_read_tokens,
+        "cache_creation": cache_creation_tokens,
+    }

@@ -516,9 +516,7 @@ async def yank_skill_version(
     return {"code": 200, "message": "Skill 版本已撤回", "data": data}
 
 
-@router.post(
-    "/{skill_id}/versions/{version_id}/review", summary="提交版本审核"
-)
+@router.post("/{skill_id}/versions/{version_id}/review", summary="提交版本审核")
 async def submit_version_review(
     skill_id: int,
     version_id: int,
@@ -536,9 +534,7 @@ async def submit_version_review(
     return {"code": 200, "message": "已提交审核", "data": data}
 
 
-@router.post(
-    "/{skill_id}/versions/{version_id}/review/approve", summary="通过版本审核"
-)
+@router.post("/{skill_id}/versions/{version_id}/review/approve", summary="通过版本审核")
 async def approve_version_review(
     skill_id: int,
     version_id: int,
@@ -561,9 +557,7 @@ async def approve_version_review(
     return {"code": 200, "message": "审核已通过", "data": data}
 
 
-@router.post(
-    "/{skill_id}/versions/{version_id}/review/reject", summary="拒绝版本审核"
-)
+@router.post("/{skill_id}/versions/{version_id}/review/reject", summary="拒绝版本审核")
 async def reject_version_review(
     skill_id: int,
     version_id: int,
@@ -631,6 +625,7 @@ async def set_skill_hidden(
 async def create_skill(
     name: str = Form(...),
     icon: str = Form("📦"),
+    icon_url: str | None = Form(None, max_length=500),
     description: str = Form(""),
     category: str = Form("general"),
     version: str = Form("1.0.0"),
@@ -660,6 +655,7 @@ async def create_skill(
         session,
         name=name,
         icon=icon,
+        icon_url=icon_url,
         description=description,
         category=category,
         version=version,
@@ -683,6 +679,7 @@ async def update_skill(
     skill_id: int,
     name: str | None = Form(None),
     icon: str | None = Form(None),
+    icon_url: str | None = Form(None, max_length=500),
     description: str | None = Form(None),
     category: str | None = Form(None),
     version: str | None = Form(None),
@@ -703,6 +700,8 @@ async def update_skill(
         kwargs["name"] = name
     if icon is not None:
         kwargs["icon"] = icon
+    if icon_url is not None:
+        kwargs["icon_url"] = icon_url
     if description is not None:
         kwargs["description"] = description
     if category is not None:

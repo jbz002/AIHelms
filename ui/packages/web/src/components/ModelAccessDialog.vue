@@ -29,6 +29,9 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n()
 
+const openAiClients = ['Workbuddy', 'Qcoder', 'Openclaw', 'Dify', 'FastGPT', 'LobeChat', 'Cherry Studio']
+const anthropicClients = ['Claude Code', 'Claude Desktop']
+
 const copied = ref<string | null>(null)
 const showKeyFull = ref(false)
 const isTesting = ref(false)
@@ -168,7 +171,15 @@ async function runChatStream(modelId: string): Promise<void> {
             <span class="text-xs text-slate-400">{{ model.category }}</span>
           </div>
           <div class="mb-3 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5">
-            <code class="text-sm font-medium text-slate-800">{{ model.model_id }}</code>
+            <div>
+              <code class="text-sm font-medium text-slate-800">{{ model.model_id }}</code>
+              <p v-if="isChat" class="mt-0.5 text-xs text-slate-400">
+                {{ t('modelSquare.access.openaiClientsPrefix') }}
+                <template v-for="(client, index) in openAiClients" :key="client">
+                  <span v-if="index > 0">, </span><strong class="font-bold text-slate-500">{{ client }}</strong>
+                </template>{{ t('modelSquare.access.openaiClientsSuffix') }}
+              </p>
+            </div>
             <button class="shrink-0 text-xs text-purple-600 hover:text-purple-700" @click="copyText(model.model_id, 'mid')">
               {{ copied === 'mid' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
             </button>
@@ -188,7 +199,15 @@ async function runChatStream(modelId: string): Promise<void> {
             <span class="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">{{ t('modelSquare.access.anthropicProtocol') }}</span>
           </div>
           <div class="mb-3 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5">
-            <code class="text-sm font-medium text-slate-800">{{ model.model_id }}(Anthropic)</code>
+            <div>
+              <code class="text-sm font-medium text-slate-800">{{ model.model_id }}(Anthropic)</code>
+              <p class="mt-0.5 text-xs text-slate-400">
+                {{ t('modelSquare.access.anthropicClientsPrefix') }}
+                <template v-for="(client, index) in anthropicClients" :key="client">
+                  <span v-if="index > 0">, </span><strong class="font-bold text-slate-500">{{ client }}</strong>
+                </template>{{ t('modelSquare.access.anthropicClientsSuffix') }}
+              </p>
+            </div>
             <button class="shrink-0 text-xs text-purple-600 hover:text-purple-700" @click="copyText(model.model_id + '(Anthropic)', 'mid-cc')">
               {{ copied === 'mid-cc' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
             </button>

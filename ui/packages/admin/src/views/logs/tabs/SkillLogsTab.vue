@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { Download } from 'lucide-vue-next'
-import * as icons from 'lucide-vue-next'
+import HostedIcon from '@aihelms/shared/src/components/HostedIcon.vue'
 import { useRoute } from 'vue-router'
 import {
   getSkillLogs,
@@ -12,6 +12,7 @@ import {
   type SkillLogFilters,
 } from '@aihelms/shared'
 import Pagination from '../../../components/Pagination.vue'
+import SearchableSelect from '../../../components/SearchableSelect.vue'
 
 const logs = ref<SkillLog[]>([])
 const total = ref(0)
@@ -22,17 +23,24 @@ const loading = ref(false)
 const exporting = ref(false)
 const exportNotice = ref('')
 
-function getIconComponent(name: string | undefined) {
-  if (!name) return null
-  return (icons as Record<string, unknown>)[name] || null
-}
-
 const filters = ref<SkillLogFilters>({ users: [], skills: [], actions: [] })
 const filterStartTime = ref('')
 const filterEndTime = ref('')
 const filterUserId = ref<number | ''>('')
 const filterSkillId = ref<number | ''>('')
 const filterAction = ref('')
+
+const userOptions = computed(() => filters.value.users.map((user) => ({
+  value: user.id,
+  label: user.display_name || user.username,
+  searchText: `${user.username} ${user.department_name || ''}`,
+})))
+
+const skillOptions = computed(() => filters.value.skills.map((skill) => ({
+  value: skill.id,
+  label: skill.name,
+  searchText: skill.version,
+})))
 
 async function loadLogs(): Promise<void> {
   loading.value = true
@@ -138,14 +146,20 @@ onMounted(() => {
       <input v-model="filterStartTime" type="datetime-local" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none" />
       <span class="text-sm text-slate-400">至</span>
       <input v-model="filterEndTime" type="datetime-local" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none" />
-      <select v-model="filterUserId" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none">
-        <option value="">全部用户</option>
-        <option v-for="u in filters.users" :key="u.id" :value="u.id">{{ u.display_name || u.username }}</option>
-      </select>
-      <select v-model="filterSkillId" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none">
-        <option value="">全部 Skill</option>
-        <option v-for="s in filters.skills" :key="s.id" :value="s.id">{{ s.name }}</option>
-      </select>
+      <SearchableSelect
+        v-model="filterUserId"
+        :options="userOptions"
+        placeholder="全部人员"
+        search-placeholder="搜索姓名、账号或部门"
+        class="w-44"
+      />
+      <SearchableSelect
+        v-model="filterSkillId"
+        :options="skillOptions"
+        placeholder="全部 Skill"
+        search-placeholder="搜索 Skill"
+        class="w-52"
+      />
       <select v-model="filterAction" class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none">
         <option value="">全部动作</option>
         <option v-for="a in filters.actions" :key="a" :value="a">{{ actionLabel(a) }}</option>
@@ -185,10 +199,12 @@ onMounted(() => {
             <td class="px-4 py-2.5 text-slate-900">{{ log.user?.display_name || log.user?.username || '—' }}</td>
             <td class="px-4 py-2.5 text-slate-700">{{ log.user?.department_name || '—' }}</td>
             <td class="px-4 py-2.5 text-slate-700">
-              <component
-                :is="getIconComponent(log.skill?.icon)"
-                v-if="log.skill?.icon && getIconComponent(log.skill.icon)"
-                class="mr-1 inline h-4 w-4 align-[-2px] text-slate-500"
+              <HostedIcon
+                v-if="log.skill"
+                :src="log.skill.icon_url"
+                :size="16"
+                :alt="log.skill.name"
+                class="mr-1 inline align-[-2px]"
               />
               {{ log.skill?.name || '—' }}
             </td>
@@ -200,6 +216,6 @@ onMounted(() => {
       </table>
     </div>
 
-    <Pagination v-if="total > 0" :page="page" :page-size="pageSize" :total="total" @change="handlePageChange" />
+    <Pagination v-if="total > 0" :page="page" v-model:page-size="pageSize" :total="total" @change="handlePageChange" />
   </div>
 </template>

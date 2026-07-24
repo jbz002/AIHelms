@@ -102,7 +102,7 @@ onMounted(load)
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="space-y-3">
     <div class="flex items-center gap-1 rounded-lg bg-slate-100 p-1 w-fit">
       <button
         v-for="r in RANGE_OPTIONS"
@@ -120,23 +120,24 @@ onMounted(load)
     </div>
 
     <template v-else>
-      <div class="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <div v-for="kpi in kpis" :key="kpi.label" class="rounded-lg border border-slate-200 bg-white p-3">
+      <div class="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <div v-for="kpi in kpis" :key="kpi.label" class="rounded-lg border border-slate-200 bg-white px-3 py-2">
           <div class="text-xs text-slate-400">{{ kpi.label }}</div>
-          <div class="mt-1 text-lg font-semibold text-slate-900">{{ kpi.value }}</div>
+          <div class="text-base font-semibold text-slate-900">{{ kpi.value }}</div>
         </div>
       </div>
 
-      <div>
-        <div class="mb-1 text-xs font-medium text-slate-600">调用趋势</div>
-        <VChart :option="trendOption" style="height: 220px; width: 100%" autoresize />
-      </div>
-
-      <div>
-        <div class="mb-1 text-xs font-medium text-slate-600">
-          {{ isMcp ? '工具调用分布' : '下载方式分布' }}
+      <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+        <div>
+          <div class="mb-1 text-xs font-medium text-slate-600">调用趋势</div>
+          <VChart :option="trendOption" style="height: 180px; width: 100%" autoresize />
         </div>
-        <VChart :option="distOption" style="height: 240px; width: 100%" autoresize />
+        <div>
+          <div class="mb-1 text-xs font-medium text-slate-600">
+            {{ isMcp ? '工具调用分布' : '下载方式分布' }}
+          </div>
+          <VChart :option="distOption" style="height: 180px; width: 100%" autoresize />
+        </div>
       </div>
     </template>
   </div>

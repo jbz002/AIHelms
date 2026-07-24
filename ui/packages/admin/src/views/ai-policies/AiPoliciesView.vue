@@ -23,6 +23,7 @@ import {
   SlidersHorizontal,
   X,
 } from 'lucide-vue-next'
+import SearchableSelect from '../../components/SearchableSelect.vue'
 
 type StatusFilter = 'all' | 'running' | 'high_risk' | 'attention_required' | 'passed' | 'failed'
 type EndTimeFilter = 'all' | 'today' | 'yesterday' | 'last7' | 'unfinished'
@@ -95,6 +96,12 @@ const endTimeFilters: { key: EndTimeFilter; label: string }[] = [
 const selectedReviewModel = computed(() =>
   reviewModelOptions.value.find((item) => item.id === selectedModelId.value) || null,
 )
+
+const reviewModelSelectOptions = computed(() => reviewModelOptions.value.map((model) => ({
+  value: model.id,
+  label: model.name,
+  searchText: `${model.model_id} ${model.deployments.join(' ')}`,
+})))
 
 const modelPlaceholder = computed(() => (llmEnabled.value ? '请选择审查模型' : '启用后选择审查模型'))
 
@@ -295,7 +302,7 @@ watch(llmEnabled, (enabled) => {
   if (enabled) {
     void loadReviewModelOptions()
   } else {
-    selectedModelId.value = null
+    selectedModelId.value = ''
     reviewModelLoadError.value = ''
   }
 })

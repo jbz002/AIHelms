@@ -212,6 +212,16 @@ async def llm_log_filters(session: AsyncSession) -> dict:
         .scalars()
         .all()
     )
+    user_key_pairs = (
+        await session.execute(
+            select(LlmCallLog.user_id, LlmCallLog.ai_key_id)
+            .where(
+                LlmCallLog.user_id.isnot(None),
+                LlmCallLog.ai_key_id.isnot(None),
+            )
+            .distinct()
+        )
+    ).all()
     routable_conditions = _routable_deployment_condition()
     id_active_model_names = set(
         (
@@ -249,6 +259,9 @@ async def llm_log_filters(session: AsyncSession) -> dict:
             if m
         ],
         "providers": [p for p in providers if p],
+        "user_key_pairs": [
+            (int(user_id), int(ai_key_id)) for user_id, ai_key_id in user_key_pairs
+        ],
     }
 
 
@@ -360,11 +373,24 @@ async def mcp_log_filters(session: AsyncSession) -> dict:
         .scalars()
         .all()
     )
+    user_key_pairs = (
+        await session.execute(
+            select(McpCallLog.user_id, McpCallLog.ai_key_id)
+            .where(
+                McpCallLog.user_id.isnot(None),
+                McpCallLog.ai_key_id.isnot(None),
+            )
+            .distinct()
+        )
+    ).all()
     return {
         "user_ids": [u for u in user_ids if u],
         "server_ids": [s for s in server_ids if s],
         "ai_key_ids": [k for k in ai_key_ids if k],
         "tool_names": [t for t in tool_names if t],
+        "user_key_pairs": [
+            (int(user_id), int(ai_key_id)) for user_id, ai_key_id in user_key_pairs
+        ],
     }
 
 
@@ -574,7 +600,13 @@ async def load_skills(session: AsyncSession, skill_ids: list[int]) -> dict[int, 
         return {}
     result = await session.execute(select(Skill).where(Skill.id.in_(ids)))
     return {
-        s.id: {"id": s.id, "name": s.name, "icon": s.icon, "version": s.version}
+        s.id: {
+            "id": s.id,
+            "name": s.name,
+            "icon": s.icon,
+            "icon_url": s.icon_url,
+            "version": s.version,
+        }
         for s in result.scalars().all()
     }
 

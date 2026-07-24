@@ -7,7 +7,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_current_user, get_db, require_permission
-from services import efficiency_service
+from services import (
+    efficiency_budget_service,
+    efficiency_cost_service,
+    efficiency_health_service,
+    efficiency_report_service,
+    efficiency_service,
+)
 
 router = APIRouter(prefix="/efficiency")
 
@@ -192,7 +198,7 @@ async def get_cost(
     selected_scopes = _parse_scope_ids(scope_ids, scope_id, department)
     dept_id = selected_scopes if dimension == "department" else None
     project_id = selected_scopes if dimension == "project" else None
-    data = await efficiency_service.get_cost(
+    data = await efficiency_cost_service.get_cost(
         session, start, end, cost_type, dept_id, dimension, project_id
     )
     if isinstance(data, dict):
@@ -222,8 +228,56 @@ async def get_cost_detail(
     selected_scopes = _parse_scope_ids(scope_ids, scope_id, department)
     dept_id = selected_scopes if dimension == "department" else None
     project_id = selected_scopes if dimension == "project" else None
-    data = await efficiency_service.get_cost_detail(
+    data = await efficiency_cost_service.get_cost_detail(
         session, start, end, tab, cost_type, dept_id, dimension, project_id
+    )
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.get("/cost/detail/scope-users")
+async def get_cost_detail_scope_users(
+    period: str | None = Query(None),
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    resource_type: str = Query(""),
+    dimension: str = Query("department", pattern="^(department|project)$"),
+    scope_id: int = Query(...),
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    if start_date and end_date:
+        start, end = start_date, end_date
+    else:
+        start, end = _parse_period(period)
+    cost_type = resource_type if resource_type else "all"
+    data = await efficiency_cost_service.get_cost_detail_scope_users(
+        session, start, end, dimension, scope_id, cost_type
+    )
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.get("/top-users")
+async def get_top_users(
+    period: str | None = Query(None),
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    metric: str = Query("cost", pattern="^(cost|tokens|requests)$"),
+    resource_type: str = Query(""),
+    dimension: str = Query("department", pattern="^(department|project)$"),
+    scope_ids: str = Query(""),
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    if start_date and end_date:
+        start, end = start_date, end_date
+    else:
+        start, end = _parse_period(period)
+    cost_type = resource_type if resource_type else "all"
+    selected = _parse_scope_ids(scope_ids, "", "")
+    department_ids = selected if dimension == "department" else None
+    project_ids = selected if dimension == "project" else None
+    data = await efficiency_cost_service.get_top_users(
+        session, start, end, metric, cost_type, department_ids, project_ids
     )
     return {"code": 200, "message": "ok", "data": data}
 
@@ -234,7 +288,7 @@ async def get_budget(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    data = await efficiency_service.get_budget(session, month)
+    data = await efficiency_budget_service.get_budget(session, month)
     data["freshness"] = await efficiency_service.get_freshness(session)
     return {"code": 200, "message": "ok", "data": data}
 
@@ -245,7 +299,7 @@ async def get_budget_alerts(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    data = await efficiency_service.get_budget_alerts(session, month)
+    data = await efficiency_budget_service.get_budget_alerts(session, month)
     return {"code": 200, "message": "ok", "data": data}
 
 
@@ -277,7 +331,7 @@ async def get_ai_health(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    data = await efficiency_service.get_ai_health(session)
+    data = await efficiency_health_service.get_ai_health(session)
     data["freshness"] = await efficiency_service.get_freshness(session)
     return {"code": 200, "message": "ok", "data": data}
 
@@ -289,7 +343,9 @@ async def list_reports(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    items, total = await efficiency_service.list_reports(session, page, page_size)
+    items, total = await efficiency_report_service.list_reports(
+        session, page, page_size
+    )
     return {
         "code": 200,
         "message": "ok",
@@ -303,7 +359,7 @@ async def get_report(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    data = await efficiency_service.get_report_detail(session, report_id)
+    data = await efficiency_report_service.get_report_detail(session, report_id)
     if not data:
         raise HTTPException(status_code=404, detail="报告不存在")
     return {"code": 200, "message": "ok", "data": data}
@@ -323,7 +379,7 @@ async def create_report(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    data = await efficiency_service.create_report(
+    data = await efficiency_report_service.create_report(
         session,
         report_type=req.report_type,
         period_start=req.period_start,
@@ -347,7 +403,7 @@ async def update_suggestion(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    data = await efficiency_service.update_suggestion_status(
+    data = await efficiency_report_service.update_suggestion_status(
         session, suggestion_id, req.status, req.note, current_user["id"]
     )
     if not data:

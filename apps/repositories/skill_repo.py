@@ -33,9 +33,7 @@ async def find_by_name(session: AsyncSession, name: str) -> Skill | None:
 async def find_by_builtin_slug(session: AsyncSession, slug: str) -> Skill | None:
     """S8 · 按 builtin_slug 查内置 skill（幂等键查重）。"""
     result = await session.execute(
-        select(Skill).where(
-            Skill.is_builtin.is_(True), Skill.builtin_slug == slug
-        )
+        select(Skill).where(Skill.is_builtin.is_(True), Skill.builtin_slug == slug)
     )
     return result.scalar_one_or_none()
 

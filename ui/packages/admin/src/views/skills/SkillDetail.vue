@@ -49,7 +49,7 @@ const MAX_ZIP_SIZE = 100 * 1024 * 1024
 
 const form = ref({
   name: '',
-  icon: '📦',
+  icon_url: '/icons/v1/default.svg',
   description: '',
   author: '',
   category: 'general',
@@ -111,7 +111,7 @@ async function loadData(): Promise<void> {
       }
       form.value = {
         name: s.name,
-        icon: s.icon,
+        icon_url: s.icon_url,
         description: s.description,
         author: s.author ?? '',
         category: s.category,
@@ -211,7 +211,7 @@ async function handleSave(): Promise<void> {
       : []
     const payload = {
       name: form.value.name.trim(),
-      icon: form.value.icon,
+      icon_url: form.value.icon_url,
       description: form.value.description,
       author: form.value.author,
       category: form.value.category,
@@ -308,7 +308,7 @@ onMounted(loadData)
           </ul>
         </div>
 
-        <div class="grid grid-cols-2 gap-4">
+        <div class="grid grid-cols-3 gap-3">
           <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">名称 *</label>
             <input
@@ -317,7 +317,7 @@ onMounted(loadData)
             />
           </div>
           <div>
-            <IconPicker v-model="form.icon" label="图标" />
+            <IconPicker v-model="form.icon_url" label="图标" />
           </div>
           <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">作者</label>
@@ -351,7 +351,7 @@ onMounted(loadData)
               <span class="truncate text-xs text-slate-400">由下方「版本管理」新增/激活，此处仅展示</span>
             </div>
           </div>
-          <div class="col-span-2">
+          <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">分类关键词（逗号分隔）</label>
             <input
               v-model="form.tags"
@@ -359,7 +359,7 @@ onMounted(loadData)
               placeholder="legal, ocr, markdown"
             />
           </div>
-          <div class="col-span-2">
+          <div class="col-span-3">
             <label class="mb-1 block text-sm font-medium text-slate-700">描述</label>
             <textarea
               v-model="form.description"
@@ -367,7 +367,7 @@ onMounted(loadData)
               class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
             />
           </div>
-          <div class="col-span-2">
+          <div class="col-span-3">
             <label class="mb-1 block text-sm font-medium text-slate-700">使用说明（支持 Markdown）</label>
             <textarea
               v-model="form.usage_instructions"
@@ -375,7 +375,7 @@ onMounted(loadData)
               class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs focus:border-purple-500 focus:outline-none"
             />
           </div>
-          <div class="col-span-2">
+          <div class="col-span-3">
             <label v-if="isNew" class="mb-1 block text-sm font-medium text-slate-700">来源方式</label>
             <div v-if="isNew" class="mb-2 flex gap-2">
               <button
@@ -445,24 +445,7 @@ onMounted(loadData)
             </p>
           </div>
 
-          <div v-if="!isNew && skillId" class="col-span-2">
-            <SkillVersionPanel
-              :skill-id="skillId"
-              :active-version="skill?.active_version ?? null"
-              @activated="handleVersionActivated"
-            />
-          </div>
-
-          <div v-if="!isNew && skillId" class="col-span-2">
-            <SkillContentPanel :skill-id="skillId" />
-          </div>
-
-          <div v-if="!isNew && skillId" class="col-span-2">
-            <h3 class="mb-3 text-sm font-semibold text-slate-900">使用统计</h3>
-            <UsageStatsPanel entity-type="skill" :entity-id="skillId" />
-          </div>
-
-          <div class="col-span-2">
+          <div class="col-span-3">
             <label class="mb-1 block text-sm font-medium text-slate-700">可见性</label>
             <select
               v-model="form.visibility_type"
@@ -476,7 +459,7 @@ onMounted(loadData)
               private 仅创建者和管理员可见；unlisted 不进市场列表，持有直链的登录用户可查看详情
             </p>
           </div>
-          <div class="col-span-2 flex items-center gap-4">
+          <div class="col-span-3 flex items-center gap-4">
             <label class="flex items-center gap-2 text-sm text-slate-700">
               <input v-model="form.is_published" type="checkbox" class="h-4 w-4 rounded border-slate-300" />
               发布到用户端
@@ -491,7 +474,7 @@ onMounted(loadData)
               领用前需要审批
             </label>
           </div>
-          <div v-if="skill" class="col-span-2 flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
+          <div v-if="skill" class="col-span-3 flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
             <div>
               <p class="text-sm font-medium text-slate-700">治理下架（hidden）</p>
               <p class="text-xs text-slate-400">独立的治理下架 overlay，与发布开关、可见性正交。下架后非管理员不可见。</p>
@@ -510,7 +493,7 @@ onMounted(loadData)
               </button>
             </div>
           </div>
-          <div v-if="skill" class="col-span-2 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
+          <div v-if="skill" class="col-span-3 rounded-lg border border-slate-200 bg-slate-50/50 px-3 py-2">
             <div class="mb-2 flex items-center gap-1.5">
               <Award class="h-4 w-4 text-amber-500" />
               <p class="text-sm font-medium text-slate-700">治理标签</p>
@@ -566,6 +549,23 @@ onMounted(loadData)
           >
             {{ saving ? '保存中...' : '保存' }}
           </button>
+        </div>
+
+        <div v-if="!isNew && skillId" class="mt-6">
+          <SkillVersionPanel
+            :skill-id="skillId"
+            :active-version="skill?.active_version ?? null"
+            @activated="handleVersionActivated"
+          />
+        </div>
+
+        <div v-if="!isNew && skillId" class="mt-6">
+          <SkillContentPanel :skill-id="skillId" />
+        </div>
+
+        <div v-if="!isNew && skillId" class="mt-6">
+          <h3 class="mb-2 text-sm font-semibold text-slate-900">使用统计</h3>
+          <UsageStatsPanel entity-type="skill" :entity-id="skillId" />
         </div>
       </div>
     </template>

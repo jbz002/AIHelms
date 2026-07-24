@@ -34,6 +34,7 @@ EXPORT_TYPE_OPTIONS = {
         "cost_department",
         "cost_project",
         "budget_key",
+        "budget_user",
         "budget_department",
         "budget_project",
         "health_model",

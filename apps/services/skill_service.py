@@ -20,6 +20,7 @@ from repositories import (
     storage_deletion_compensation_repo,
 )
 from services import skill_tag_service, versioning_service
+from services.icon_url import normalize_hosted_icon_path
 from services.skill_content_service import ParsedSkillContent
 from services.skill_lifecycle_service import (
     DRAFT,
@@ -166,6 +167,7 @@ async def create_skill(
     session: AsyncSession,
     name: str,
     icon: str = "📦",
+    icon_url: str | None = None,
     description: str = "",
     category: str = "general",
     version: str = "1.0.0",
@@ -220,6 +222,7 @@ async def create_skill(
         skill_id=sid,
         name=name,
         icon=icon,
+        icon_url=normalize_hosted_icon_path(icon_url),
         description=description,
         category=category,
         version=version,
@@ -320,6 +323,10 @@ async def update_skill(
         raise NotFoundError("skill", skill_id)
 
     was_published = skill.is_published
+    if "icon_url" in kwargs:
+        kwargs["icon_url"] = normalize_hosted_icon_path(kwargs["icon_url"])
+    elif "icon" in kwargs:
+        skill.icon_url = None
     for key, value in kwargs.items():
         if hasattr(skill, key) and value is not None:
             setattr(skill, key, value)

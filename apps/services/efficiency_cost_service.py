@@ -4,7 +4,7 @@ from datetime import date, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from repositories import efficiency_repo
+from repositories import efficiency_cost_repo as efficiency_repo
 
 
 def _calc_change(current: float, previous: float) -> float | None:
@@ -318,3 +318,39 @@ async def get_cost_detail(
         for item in raw
     ]
     return {"department": items}
+
+
+async def get_cost_detail_scope_users(
+    session: AsyncSession,
+    start_date: date,
+    end_date: date,
+    dimension: str,
+    scope_id: int,
+    cost_type: str = "all",
+) -> list[dict]:
+    ct = None if cost_type == "all" else cost_type
+    return await efficiency_repo.get_cost_detail_scope_users(
+        session, start_date, end_date, dimension, scope_id, ct
+    )
+
+
+async def get_top_users(
+    session: AsyncSession,
+    start_date: date,
+    end_date: date,
+    metric: str = "cost",
+    cost_type: str = "all",
+    department_id=None,
+    project_id=None,
+) -> list[dict]:
+    selected_cost_type = None if cost_type == "all" else cost_type
+    rows = await efficiency_repo.get_user_top10(
+        session,
+        start_date,
+        end_date,
+        selected_cost_type,
+        department_id,
+        project_id,
+        metric,
+    )
+    return [{"rank": index + 1, **row} for index, row in enumerate(rows)]

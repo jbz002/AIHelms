@@ -8,7 +8,7 @@
 <p>Built on top of LiteLLM · Model distribution, AI identity, cost control, and governance</p>
 
 
-[![Release](https://img.shields.io/badge/Release-v0.1.14-brightgreen.svg)](https://github.com/beizhu-1209/AIHelms/releases/tag/0.1.14)
+[![Release](https://img.shields.io/badge/Release-v0.1.18-brightgreen.svg)](https://github.com/beizhu-1209/AIHelms/releases/tag/0.1.18)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://www.docker.com/)
 [![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
@@ -27,7 +27,7 @@
 <p align="center">
 
 
-[What Is It](#what-is-it) · [Why AIHelms](#why-aihelms) · [Built on LiteLLM](#built-on-litellm) · [Quick Start](#quick-start) · [Deployment](#deployment)
+[What Is It](#what-is-it) · [Why AIHelms](#why-aihelms) · [Quick Start](#quick-start) · [Deployment](#deployment) · [Cookbook](http://www.aihelms.cn/docs)
 
 </div>
 
@@ -84,6 +84,11 @@ Recent versions are summarized from [GitHub Releases](https://github.com/beizhu-
 
 | Version | Date | Summary |
 |------|----------|----------|
+| `0.1.19` | 2026-07-23 | Added Hunyuan and Grok provider support; reworked static asset (icon) hosting; enhanced batch operations for some APIs; upgraded the LiteLLM model-management base to v1.93. |
+| `0.1.18` | 2026-07-22 | Added a Token column to cost detail by department/project with inline drill-down into members; added Token usage stats and a Top 10 people leaderboard to Efficiency overview, cost, budget and the dashboard; reworked the budget detail "Key budget" tab into "Per-person budget". |
+| `0.1.17` | 2026-07-17 | Unified department and project filters across AI Efficiency and fixed cost details; added fuzzy search to log and admin filters with correct person-to-Key linkage; added Workbuddy to the user-portal client guidance. |
+| `0.1.16` | 2026-07-14 | Added enterprise license management and platform branding customization. |
+| `0.1.15` | 2026-07-013 | Fix bug . |
 | `0.1.14` | 2026-07-07 | AI Policies adds LLM-based review. |
 | `0.1.13` | 2026-07-03 | New AI Policies security review: scan a Skill in one click, flag malicious instructions, data exfiltration, and excessive permissions, and generate a report. |
 | `0.1.12` | 2026-07-01 | Resource requests support batch approval; Skill / MCP add author info, with usage shown in the user portal. |

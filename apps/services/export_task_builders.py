@@ -2,7 +2,13 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services import efficiency_service, usage_log_service
+from services import (
+    efficiency_budget_service,
+    efficiency_cost_service,
+    efficiency_health_service,
+    efficiency_service,
+    usage_log_service,
+)
 
 MAX_EXPORT_ROWS = 100000
 
@@ -59,6 +65,11 @@ def _date_range(params: dict[str, object]) -> tuple[date, date]:
         return date.fromisoformat(str(start_raw)), date.fromisoformat(str(end_raw))
     today = date.today()
     period = _text(params, "period", "month")
+    if period == "today":
+        return today, today
+    if period == "yesterday":
+        yesterday = today - timedelta(days=1)
+        return yesterday, yesterday
     if period == "7d":
         return today - timedelta(days=6), today
     if period == "30d":
@@ -371,7 +382,7 @@ async def _build_efficiency_rows(
         scope_ids = _ids(params, "scope_ids", "scope_id", "department")
         department_id = scope_ids if dimension == "department" else None
         project_id = scope_ids if dimension == "project" else None
-        detail = await efficiency_service.get_cost_detail(
+        detail = await efficiency_cost_service.get_cost_detail(
             session,
             start,
             end,
@@ -572,6 +583,10 @@ async def _build_efficiency_rows(
             "外部总成本(元)",
             "差额(元)",
             "请求数",
+            "输入Token",
+            "输出Token",
+            "缓存读Token",
+            "缓存写Token",
             "人均成本(元)",
             "活跃人均成本(元)",
             "内部总成本环比(%)",
@@ -584,6 +599,10 @@ async def _build_efficiency_rows(
                 row["external_cost"],
                 row["cost_diff"],
                 row["requests"],
+                row["input_tokens"],
+                row["output_tokens"],
+                row["cache_read_tokens"],
+                row["cache_creation_tokens"],
                 row["per_capita_cost"],
                 row["active_per_capita_cost"],
                 row["cost_change"] if row["cost_change"] is not None else "",
@@ -591,7 +610,7 @@ async def _build_efficiency_rows(
             for row in detail.get(scope_key, [])
         ]
     if export_type.startswith("budget_"):
-        result = await efficiency_service.get_budget(
+        result = await efficiency_budget_service.get_budget(
             session, _text(params, "month") or None
         )
         if export_type == "budget_key":
@@ -615,6 +634,20 @@ async def _build_efficiency_rows(
                 ]
                 for row in result["keys"]
             ]
+        if export_type == "budget_user":
+            header = ["姓名", "Key", "Key类型", "预算(元)", "已用(元)", "执行率(%)"]
+            rows = [
+                [
+                    row["user_name"],
+                    row["key_name"],
+                    "主" if row["is_main"] else "场景",
+                    row["budget"],
+                    row["used"],
+                    row["execution_rate"],
+                ]
+                for row in result["user_keys"]
+            ]
+            return header, rows
         key = "departments" if export_type == "budget_department" else "projects"
         name_key = "department" if export_type == "budget_department" else "project"
         return [
@@ -648,7 +681,7 @@ async def _build_efficiency_rows(
             for row in result[key]
         ]
     if export_type.startswith("health_"):
-        result = await efficiency_service.get_ai_health(session)
+        result = await efficiency_health_service.get_ai_health(session)
         if export_type == "health_model":
             return [
                 "模型",

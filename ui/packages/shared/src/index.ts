@@ -90,7 +90,7 @@ export {
 } from './api/usageLogs'
 export type { LlmLogQuery, McpLogQuery, SkillLogQuery, AgentLogQuery } from './api/usageLogs'
 export type {
-  DashboardData, DashboardStatus, PendingItem, HourlyTrend, TrendPoint, ResourceSummary, RecentActivity, ServiceStatusItem,
+  DashboardData, DashboardStatus, PendingItem, HourlyTrend, TrendPoint, ResourceSummary, RecentActivity, ServiceStatusItem, CostLeaderboardItem,
 } from './types/dashboard'
 export { getDashboard, refreshDashboard, getDashboardRefreshStatus } from './api/dashboard'
 export type { DashboardQuery, RefreshTaskStatus } from './api/dashboard'
@@ -102,6 +102,7 @@ export { useAuth } from './composables/useAuth'
 export { usePermission } from './composables/usePermission'
 export { toast } from './utils/toast'
 export { getLoginUrl } from './utils/auth-redirect'
+export { getProviderIconUrl } from './utils/icon'
 export type {
   EfficiencyKpi, TrendItem, CompositionItem, KeyTypeItem, RankingItem,
   AnalysisItem, BudgetOverview, EfficiencyReport, EfficiencySuggestion,
@@ -114,6 +115,7 @@ export {
   refreshEfficiencyData, getEfficiencyAdoption, getEfficiencyAdoptionAgents,
   getEfficiencyAdoptionResources, getEfficiencyAdoptionUnusedUsers,
   getEfficiencyAdoptionScopeUsers, getEfficiencyCost, getEfficiencyCostDetail,
+  getEfficiencyCostDetailScopeUsers, getEfficiencyTopUsers,
   getEfficiencyBudget, getEfficiencyBudgetAlerts, getEfficiencyHealth,
 } from './api/efficiency'
 export type { StatsRange, UsageTrendPoint, ToolDistItem, ActionDistItem, McpUsageStats, SkillUsageStats } from './types/usageStats'

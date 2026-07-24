@@ -154,6 +154,9 @@ async def get_overview(
     )
     active_count = len(active_ids)
     total_cost = await efficiency_repo.get_total_cost(session, start_date, end_date)
+    token_stats = await efficiency_repo.get_period_token_stats(
+        session, start_date, end_date
+    )
     coverage_rate = round(active_count / total_users * 100, 1) if total_users > 0 else 0
     active_per_capita = round(total_cost / active_count, 2) if active_count > 0 else 0
 
@@ -249,6 +252,11 @@ async def get_overview(
             "total_cost": total_cost,
             "per_capita_cost": active_per_capita,
             "active_per_capita_cost": active_per_capita,
+            "total_tokens": token_stats["total"],
+            "input_tokens": token_stats["input"],
+            "output_tokens": token_stats["output"],
+            "cache_read_tokens": token_stats["cache_read"],
+            "cache_creation_tokens": token_stats["cache_creation"],
             "coverage_change": _calc_change(coverage_rate, prev_coverage),
             "cost_change": _calc_change(total_cost, prev_total_cost),
             "per_capita_change": _calc_change(

@@ -16,6 +16,7 @@ interface ModelItem {
   capabilities: string[]
   description: string
   logo_provider_type: string
+  icon_url: string
   is_published: boolean
   requires_approval: boolean
   deployment_count: number
@@ -158,10 +159,7 @@ onMounted(async () => {
         <!-- 头部 -->
         <div class="flex items-center gap-3">
           <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-50 to-blue-50">
-            <ProviderIcon v-if="model.logo_provider_type" :type="model.logo_provider_type" :size="22" />
-            <MessageSquare v-else-if="model.category === 'chat'" class="h-5 w-5 text-purple-600" />
-            <Box v-else-if="model.category === 'embedding'" class="h-5 w-5 text-blue-600" />
-            <Cpu v-else class="h-5 w-5 text-slate-600" />
+            <ProviderIcon :src="model.icon_url" :type="model.logo_provider_type" :size="22" />
           </div>
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
