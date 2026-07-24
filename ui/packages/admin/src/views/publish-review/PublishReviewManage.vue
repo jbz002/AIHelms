@@ -166,7 +166,7 @@ onMounted(() => {
         @click="toggleGate"
       >
         <span
-          class="absolute top-1 inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
+          class="absolute left-0 top-1 inline-block h-4 w-4 transform rounded-full bg-white transition-transform"
           :class="gateEnabled ? 'translate-x-6' : 'translate-x-1'"
         />
       </button>
