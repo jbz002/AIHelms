@@ -124,7 +124,6 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
       { label: 'API文档管理', icon: BookOpen, path: '/lab/docs', permission: 'efficiency:read' },
       { label: '报告', icon: FileText, path: '/efficiency/reports', permission: 'efficiency:read' },
       { label: 'AI健康', icon: HeartPulse, path: '/ai-health', permission: 'efficiency:read' },
-      { label: 'AI Policies', icon: ShieldCheck, path: '/lab/ai-policies', permission: 'ai_policies:read' },
     ],
   },
 ])

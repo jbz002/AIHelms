@@ -123,12 +123,6 @@ const router = createRouter({
           meta: { permission: 'ai_policies:read' },
         },
         {
-          path: 'lab/ai-policies',
-          name: 'AiPoliciesLab',
-          component: () => import('../views/ai-policies/AiPoliciesLabView.vue'),
-          meta: { permission: 'ai_policies:read' },
-        },
-        {
           path: 'lab/docs',
           name: 'DocsMcp',
           component: () => import('../views/docs-mcp/DocsMcpView.vue'),
