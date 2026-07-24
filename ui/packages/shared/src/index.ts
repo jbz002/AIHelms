@@ -49,7 +49,7 @@ export {
   getSkillVersions, createSkillVersion, activateSkillVersion,
   deprecateSkillVersion, createSkillVersionSecurityAudit,
   checkSkillVersionDrift, resyncSkillVersion,
-  yankSkillVersion, setSkillHidden,
+  yankSkillVersion, restoreSkillVersion, setSkillHidden,
   getSkillSummary, getSkillFull, getSkillIntegrity,
   listSkillTags, createOrMoveSkillTag, deleteSkillTag,
   listSkillLabels, grantSkillLabel, revokeSkillLabel,

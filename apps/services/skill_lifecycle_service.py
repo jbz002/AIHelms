@@ -1,16 +1,22 @@
 """S3 · Skill 版本生命周期状态机：合法流转校验。
 
-新状态机（替换旧 3 态 inactive/active/deprecated）：
+两维度正交：
+    lifecycle_status — 版本在发布管线中的阶段（本模块校验合法流转）
+    is_active        — 独立单指针（skill.current_version_id），标记当前生效版本
+
+合法流转：
     draft → scanning → pending_review → published
     scanning → rejected / draft
-    pending_review → rejected
+    pending_review → published / rejected
     published → yanked / deprecated
+    yanked → published（恢复；单版本撤回场景由 skill_service 重新激活指针）
 
-is_active 由 published 派生（published=True，其余 False）。terminal 态：
-yanked / rejected / deprecated 无合法出边。
+published 是“已发布”容器，可多版本共存（当前激活 + 历史发布），由 is_active
+区分当前生效的那一个；故 published 不蕴含 is_active。
+terminal 态 rejected / deprecated 无合法出边。
 
-本模块只做纯校验（无 DB/无副作用），供 skill_service /
-ai_policies_service 复用，避免循环导入。实际 DB 翻转与 Yank 指针重算在 skill_service。
+本模块只做纯校验（无 DB/无副作用），供 skill_service / ai_policies_service
+复用，避免循环导入。实际 DB 翻转、Yank 指针重算、Restore 智能恢复在 skill_service。
 """
 
 from exceptions import ValidationError
@@ -40,17 +46,10 @@ _TRANSITIONS: dict[str, set[str]] = {
     SCANNING: {PENDING_REVIEW, REJECTED, DRAFT},
     PENDING_REVIEW: {PUBLISHED, REJECTED, DRAFT},
     PUBLISHED: {YANKED, DEPRECATED},
-    YANKED: set(),
+    YANKED: {PUBLISHED},
     REJECTED: set(),
     DEPRECATED: set(),
 }
-
-# is_active 派生：仅 published 为 True
-ACTIVE_LIKE_STATUSES: frozenset[str] = frozenset({PUBLISHED})
-
-
-def is_published(status: str) -> bool:
-    return status == PUBLISHED
 
 
 def assert_transition(current: str, target: str) -> None:
@@ -59,8 +58,3 @@ def assert_transition(current: str, target: str) -> None:
         raise ValidationError(f"未知生命周期状态：{current}")
     if target not in _TRANSITIONS.get(current, set()):
         raise ValidationError(f"非法状态流转：{current} → {target}")
-
-
-def derives_is_active(status: str) -> bool:
-    """is_active 由 lifecycle_status 派生。"""
-    return status in ACTIVE_LIKE_STATUSES

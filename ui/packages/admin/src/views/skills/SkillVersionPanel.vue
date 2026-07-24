@@ -10,6 +10,7 @@ import {
   checkSkillVersionDrift,
   resyncSkillVersion,
   yankSkillVersion,
+  restoreSkillVersion,
   listSkillTags,
   createOrMoveSkillTag,
   deleteSkillTag,
@@ -195,6 +196,9 @@ function primaryActions(v: SkillVersion): RowAction[] {
     }
     return []
   }
+  if (v.lifecycle_status === 'yanked') {
+    return [{ key: 'restore', label: busy ? '...' : '恢复', variant: 'primary', disabled: busy, title: '恢复为已发布，可再次设为激活', run: () => handleRestore(v) }]
+  }
   if (v.lifecycle_status === 'published') {
     if (v.is_active) {
       return [{ key: 'yank', label: busy ? '...' : '撤回', variant: 'danger', disabled: busy, title: '撤回此已激活版本', run: () => { yankTarget.value = v } }]
@@ -264,7 +268,7 @@ function protocolBadge(v: SkillVersion): { cls: string; label: string; tip: stri
 function lifecycleBadge(s: string): { cls: string; label: string } {
   switch (s) {
     case 'published':
-      return { cls: 'bg-green-50 text-green-600', label: '可激活' }
+      return { cls: 'bg-green-50 text-green-600', label: '已发布' }
     case 'pending_review':
       return { cls: 'bg-amber-50 text-amber-600', label: '待激活' }
     case 'scanning':
@@ -277,12 +281,11 @@ function lifecycleBadge(s: string): { cls: string; label: string } {
       return { cls: 'bg-slate-100 text-slate-400 line-through', label: '已弃用' }
     case 'draft':
     default:
-      return { cls: 'bg-slate-100 text-slate-500', label: '草稿' }
+      return { cls: 'bg-slate-100 text-slate-500', label: '待审核' }
   }
 }
 
 function securityBadge(v: SkillVersion): { cls: string; label: string } {
-  if (v.is_active) return { cls: 'bg-emerald-50 text-emerald-600', label: '当前激活' }
   if (v.security_status === 'queued' || v.security_status === 'running') {
     return { cls: 'bg-indigo-50 text-indigo-600', label: '审查中' }
   }
@@ -304,6 +307,20 @@ async function handleActivate(v: SkillVersion): Promise<void> {
     await loadVersions()
   } catch (e) {
     toast.error((e as { message?: string }).message || '激活失败')
+  } finally {
+    actingId.value = null
+  }
+}
+
+async function handleRestore(v: SkillVersion): Promise<void> {
+  actingId.value = v.id
+  try {
+    const skill = await restoreSkillVersion(props.skillId, v.id)
+    toast.success(`已恢复版本 ${v.version}`)
+    emit('activated', skill)
+    await loadVersions()
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '恢复失败')
   } finally {
     actingId.value = null
   }
@@ -519,11 +536,12 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
               class="rounded bg-emerald-50 px-1 py-0.5 text-xs font-medium text-emerald-600"
             >当前激活</span>
             <span
+              v-if="!v.is_active"
               class="rounded px-1.5 py-0.5 text-xs"
               :class="lifecycleBadge(v.lifecycle_status).cls"
             >{{ lifecycleBadge(v.lifecycle_status).label }}</span>
             <span
-              v-if="!isExpanded(v)"
+              v-if="!isExpanded(v) && !v.is_active"
               class="rounded px-1 py-0.5 text-xs"
               :class="securityBadge(v).cls"
             >{{ securityBadge(v).label }}</span>

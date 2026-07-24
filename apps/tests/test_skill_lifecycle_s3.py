@@ -67,8 +67,13 @@ def test_transition_published_to_yanked_or_deprecated():
     assert_transition(PUBLISHED, DEPRECATED)
 
 
+def test_transition_yanked_restorable():
+    # yanked 不再终态，可恢复到 published（不自动激活）
+    assert_transition(YANKED, PUBLISHED)
+
+
 def test_transition_terminal_states_blocked():
-    for terminal in (YANKED, REJECTED, DEPRECATED):
+    for terminal in (REJECTED, DEPRECATED):
         with pytest.raises(ValidationError):
             assert_transition(terminal, PUBLISHED)
     # 非法回流
@@ -137,54 +142,144 @@ async def _stage_activatable_version(skill_id: int, version: str) -> int:
 
 
 @pytest.mark.asyncio
-async def test_create_skill_seeds_v1_published():
+async def test_restore_single_version_reactivates():
+    """单版本撤回 → 恢复：current 为 None，restore 重新激活回撤回前状态。"""
     skill_id = await _make_skill()
     try:
         async with _session() as s:
-            versions = await skill_version_repo.list_versions(s, skill_id)
-            assert len(versions) == 1
-            assert versions[0].lifecycle_status == PUBLISHED
-            assert versions[0].is_active is True
+            v1 = (await skill_version_repo.list_versions(s, skill_id))[0]
+            # create_skill 现状种 draft；直接置 published+active 以独立验 restore 链路
+            v1.lifecycle_status = PUBLISHED
+            v1.is_active = True
+            skill = await skill_repo.find_by_id(s, skill_id)
+            assert skill is not None
+            skill.current_version_id = v1.id
+            await s.commit()
+
+        # 撤回 v1 → yanked，无次新 published，current_version_id 置空
+        session = _session()
+        try:
+            await skill_service.yank_version(session, skill_id, v1.id)
+        finally:
+            await session.close()
+        async with _session() as s:
+            v = await skill_version_repo.find_by_id(s, v1.id)
+            skill = await skill_repo.find_by_id(s, skill_id)
+            assert v.lifecycle_status == YANKED
+            assert v.is_active is False
+            assert skill is not None
+            assert skill.current_version_id is None
+
+        # 恢复 v1（单版本，current 为 None）→ 重新激活，回到撤回前
+        session = _session()
+        try:
+            await skill_service.restore_version(session, skill_id, v1.id)
+        finally:
+            await session.close()
+        async with _session() as s:
+            v = await skill_version_repo.find_by_id(s, v1.id)
+            skill = await skill_repo.find_by_id(s, skill_id)
+            assert v.lifecycle_status == PUBLISHED
+            assert v.is_active is True
+            assert skill is not None
+            assert skill.current_version_id == v1.id
+
+        # 非 yanked 状态恢复被拦
+        session = _session()
+        try:
+            with pytest.raises(ValidationError):
+                await skill_service.restore_version(session, skill_id, v1.id)
+        finally:
+            await session.close()
     finally:
         await _cleanup([skill_id])
 
 
 @pytest.mark.asyncio
-async def test_yank_recomputes_pointer_to_previous_published():
+async def test_restore_with_other_active_stays_candidate():
+    """多版本：v2 已 active 时恢复 v1 → published+inactive 候选，不抢夺 current。"""
     skill_id = await _make_skill()
     try:
         async with _session() as s:
-            versions = await skill_version_repo.list_versions(s, skill_id)
-            v1 = versions[0]
+            v1 = (await skill_version_repo.list_versions(s, skill_id))[0]
+            v1.lifecycle_status = PUBLISHED
+            v1.is_active = True
+            skill = await skill_repo.find_by_id(s, skill_id)
+            assert skill is not None
+            skill.current_version_id = v1.id
+            await s.commit()
         v2 = await _stage_activatable_version(skill_id, "2.0.0")
-
+        # 激活 v2 → v1 降为 published+inactive
         session = _session()
         try:
             await skill_service.activate_version(session, skill_id, v2)
         finally:
             await session.close()
-
-        async with _session() as s:
-            skill = await skill_repo.find_by_id(s, skill_id)
-            assert skill is not None
-            assert skill.current_version_id == v2
-
-        # 撤回 v2 → 重算到 v1（仍为 published，恢复 is_active）
+        # 撤回 v1（非 current，仅翻 lifecycle）
         session = _session()
         try:
-            await skill_service.yank_version(session, skill_id, v2)
+            await skill_service.yank_version(session, skill_id, v1.id)
         finally:
             await session.close()
-
+        # 恢复 v1（v2 仍 active）→ published+inactive 候选，不抢夺
+        session = _session()
+        try:
+            await skill_service.restore_version(session, skill_id, v1.id)
+        finally:
+            await session.close()
         async with _session() as s:
+            v1r = await skill_version_repo.find_by_id(s, v1.id)
+            v2r = await skill_version_repo.find_by_id(s, v2)
             skill = await skill_repo.find_by_id(s, skill_id)
-            v1_refreshed = await skill_version_repo.find_by_id(s, v1.id)
-            v2_refreshed = await skill_version_repo.find_by_id(s, v2)
+            assert v1r.lifecycle_status == PUBLISHED
+            assert v1r.is_active is False
+            assert v2r.is_active is True
+            assert skill is not None
+            assert skill.current_version_id == v2
+    finally:
+        await _cleanup([skill_id])
+
+
+@pytest.mark.asyncio
+async def test_published_inactive_can_reactivate():
+    """published+inactive 历史版本可重新激活（多版本回切）。"""
+    skill_id = await _make_skill()
+    try:
+        async with _session() as s:
+            v1 = (await skill_version_repo.list_versions(s, skill_id))[0]
+            v1.lifecycle_status = PUBLISHED
+            v1.is_active = True
+            v1.security_status = "completed"
+            v1.security_decision = "passed"
+            v1.protocol_valid = True
+            skill = await skill_repo.find_by_id(s, skill_id)
+            assert skill is not None
+            skill.current_version_id = v1.id
+            await s.commit()
+        v2 = await _stage_activatable_version(skill_id, "2.0.0")
+        # 激活 v2 → v1 降 published+inactive
+        session = _session()
+        try:
+            await skill_service.activate_version(session, skill_id, v2)
+        finally:
+            await session.close()
+        async with _session() as s:
+            v1r = await skill_version_repo.find_by_id(s, v1.id)
+            assert v1r.lifecycle_status == PUBLISHED
+            assert v1r.is_active is False
+        # 回切 v1（published+inactive 可重新激活）
+        session = _session()
+        try:
+            await skill_service.activate_version(session, skill_id, v1.id)
+        finally:
+            await session.close()
+        async with _session() as s:
+            v1r = await skill_version_repo.find_by_id(s, v1.id)
+            v2r = await skill_version_repo.find_by_id(s, v2)
+            skill = await skill_repo.find_by_id(s, skill_id)
+            assert v1r.is_active is True
+            assert v2r.is_active is False
             assert skill is not None
             assert skill.current_version_id == v1.id
-            assert v1_refreshed.lifecycle_status == PUBLISHED
-            assert v1_refreshed.is_active is True
-            assert v2_refreshed.lifecycle_status == YANKED
-            assert v2_refreshed.is_active is False
     finally:
         await _cleanup([skill_id])

@@ -647,8 +647,10 @@ async def activate_version(
         latest_audit_map = await _latest_audit_map(session, [skill])
         return _serialize(skill, latest_audit_map)
 
-    # 状态守卫：只有 draft / pending_review 可激活（deprecated/yanked/rejected/scanning 不可）
-    if version.lifecycle_status not in (DRAFT, PENDING_REVIEW):
+    # 状态守卫：draft / pending_review / published 可激活。
+    # published 含历史已发布版本（is_active=False），允许回切为当前激活；
+    # scanning / yanked / rejected / deprecated 不可激活。
+    if version.lifecycle_status not in (DRAFT, PENDING_REVIEW, PUBLISHED):
         raise ValidationError(f"版本当前状态为 {version.lifecycle_status}，不可激活")
 
     # 硬门控：必须通过安全审查（passed / attention_required）才可激活
@@ -773,6 +775,51 @@ async def yank_version(session: AsyncSession, skill_id: int, version_id: int) ->
                 skill.current_version_id = None
         await session.commit()
         await skill_tag_service.refresh_latest_tag(session, skill_id)
+    await session.refresh(skill)
+    latest_audit_map = await _latest_audit_map(session, [skill])
+    return _serialize(skill, latest_audit_map)
+
+
+async def restore_version(
+    session: AsyncSession, skill_id: int, version_id: int
+) -> dict:
+    """恢复已撤回版本：yanked → published，撤销 yank 全部副作用。
+
+    - 若 skill 当前无激活版本（current_version_id 为 None，单版本撤回场景）→
+      重新激活本版本（is_active=True、current 回指、快照回主表、刷 tag），
+      回到撤回前的激活态。
+    - 若已有 active 版本（多版本场景）→ published+inactive 候选，不抢夺当前激活。
+
+    复用 versioning_service.activate_version 做指针翻转 + 快照，与 activate 一致；
+    版本撤回前已通过门控，撤回/恢复不改动 security/protocol 状态，故不重跑门控。
+    """
+    skill = await skill_repo.find_by_id(session, skill_id)
+    if not skill:
+        raise NotFoundError("skill", skill_id)
+    version = await skill_version_repo.find_by_id(session, version_id)
+    if not version or version.skill_id != skill_id:
+        raise NotFoundError("skill_version", version_id)
+    if version.lifecycle_status != YANKED:
+        raise ValidationError(
+            f"版本当前状态为 {version.lifecycle_status}，仅 yanked 可恢复"
+        )
+    version.lifecycle_status = PUBLISHED
+    version.is_active = False
+    await session.flush()
+    # 撤回导致 skill 无激活版本 → 恢复即重新激活（撤销 yank 副作用）
+    if skill.current_version_id is None:
+        await versioning_service.activate_version(
+            session,
+            version,
+            skill,
+            skill_id,
+            skill_version_repo,
+            on_sync=_noop_sync,
+            apply_snapshot=_apply_version_snapshot_to_skill,
+        )
+        await skill_tag_service.refresh_latest_tag(session, skill_id)
+    else:
+        await session.commit()
     await session.refresh(skill)
     latest_audit_map = await _latest_audit_map(session, [skill])
     return _serialize(skill, latest_audit_map)

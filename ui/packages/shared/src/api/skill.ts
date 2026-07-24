@@ -176,6 +176,13 @@ export function yankSkillVersion(skillId: number, versionId: number): Promise<Sk
   )
 }
 
+export function restoreSkillVersion(skillId: number, versionId: number): Promise<Skill> {
+  return request<Skill>(
+    `/api/v1/skills/${skillId}/versions/${versionId}/restore`,
+    { method: 'POST' },
+  )
+}
+
 export function setSkillHidden(skillId: number, hidden: boolean): Promise<Skill> {
   return request<Skill>(
     `/api/v1/skills/${skillId}/hidden`,

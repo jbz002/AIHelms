@@ -512,6 +512,23 @@ async def yank_skill_version(
     return {"code": 200, "message": "Skill 版本已撤回", "data": data}
 
 
+@router.post("/{skill_id}/versions/{version_id}/restore", summary="恢复Skill版本")
+async def restore_skill_version(
+    skill_id: int,
+    version_id: int,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("skill:update")),
+):
+    """恢复已撤回版本（yanked→published），恢复后可再次设为激活。"""
+    try:
+        data = await skill_service.restore_version(session, skill_id, version_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 或版本不存在")
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "Skill 版本已恢复", "data": data}
+
+
 @router.put("/{skill_id}/hidden", summary="切换Skill治理下架")
 async def set_skill_hidden(
     skill_id: int,
