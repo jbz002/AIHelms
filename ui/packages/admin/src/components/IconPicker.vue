@@ -4,7 +4,8 @@ import { Search, X } from 'lucide-vue-next'
 import HostedIcon from '@aihelms/shared/src/components/HostedIcon.vue'
 
 interface Props {
-  modelValue: string
+  // v-model 绑定的字段可能为旧数据 null/undefined，必须可选以防 render 崩
+  modelValue?: string
   label?: string
 }
 
@@ -56,13 +57,15 @@ function toIconUrl(name: string): string {
 }
 
 const selectedName = computed(() => {
-  if (props.modelValue === '📦') return 'Package'
-  if (props.modelValue === '🤖') return 'Bot'
-  const pathMatch = props.modelValue.match(/\/icons\/v1\/lucide\/([a-z0-9-]+)\.svg(?:$|[?#])/)
+  const v = props.modelValue
+  if (!v) return ''
+  if (v === '📦') return 'Package'
+  if (v === '🤖') return 'Bot'
+  const pathMatch = v.match(/\/icons\/v1\/lucide\/([a-z0-9-]+)\.svg(?:$|[?#])/)
   if (pathMatch) {
     return ICON_NAMES.find(name => toIconUrl(name).includes(`/${pathMatch[1]}.svg`)) || ''
   }
-  return ICON_NAMES.includes(props.modelValue) ? props.modelValue : ''
+  return ICON_NAMES.includes(v) ? v : ''
 })
 
 const selectedIconUrl = computed(() => {
@@ -71,8 +74,10 @@ const selectedIconUrl = computed(() => {
 
 const selectedLabel = computed(() => {
   if (selectedName.value) return selectedName.value
-  if (props.modelValue.includes('/icons/v1/default.svg')) return '平台默认图标'
-  return props.modelValue
+  const v = props.modelValue
+  if (!v) return ''
+  if (v.includes('/icons/v1/default.svg')) return '平台默认图标'
+  return v
 })
 
 function handleSelect(name: string) {

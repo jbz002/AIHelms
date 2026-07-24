@@ -75,7 +75,8 @@ watch(
       const s = props.editing
       form.value = {
         name: s.name,
-        icon_url: s.icon_url,
+        // 旧数据可能只有 icon(emoji)而无 icon_url，回退旧字段再兜底默认图标
+        icon_url: s.icon_url ?? s.icon ?? '/icons/v1/default.svg',
         description: s.description,
         author: s.author ?? '',
         category: s.category,
