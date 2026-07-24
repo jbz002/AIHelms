@@ -10,10 +10,6 @@ import {
   checkSkillVersionDrift,
   resyncSkillVersion,
   yankSkillVersion,
-  submitSkillVersionReview,
-  approveSkillVersionReview,
-  rejectSkillVersionReview,
-  withdrawSkillVersionReview,
   listSkillTags,
   createOrMoveSkillTag,
   deleteSkillTag,
@@ -133,11 +129,11 @@ watch(() => props.skillId, loadVersions, { immediate: true })
 
 function canActivate(v: SkillVersion): boolean {
   if (v.is_active || !v.protocol_valid) return false
-  const securityOk =
+  // 激活强制前置：必须通过安全审查（passed / attention_required）
+  return (
     v.security_status === 'completed' &&
     (v.security_decision === 'passed' || v.security_decision === 'attention_required')
-  // pending_review：已提交审核，若已通过则可激活（最终由后端门控判定）
-  return securityOk || v.lifecycle_status === 'pending_review'
+  )
 }
 
 const openMenuId = ref<number | null>(null)
@@ -193,21 +189,18 @@ function variantClass(variant: RowAction['variant']): string {
 
 function primaryActions(v: SkillVersion): RowAction[] {
   const busy = actingId.value === v.id
-  if (v.lifecycle_status === 'draft' || v.lifecycle_status === 'scanning') {
-    return [{ key: 'submit', label: busy ? '...' : '提交审核', variant: 'warn', disabled: busy, title: '提交此版本进入版本审核', run: () => handleSubmitReview(v) }]
-  }
   if (v.lifecycle_status === 'pending_review') {
-    return [
-      { key: 'approve', label: busy ? '...' : '通过审核', variant: 'primary', disabled: busy, title: '批准版本审核(非安全审查)，通过后可激活', run: () => handleApproveReview(v) },
-      { key: 'reject', label: busy ? '...' : '驳回审核', variant: 'danger', disabled: busy, title: '驳回此版本审核', run: () => handleRejectReview(v) },
-    ]
+    if (canActivate(v)) {
+      return [{ key: 'activate', label: busy ? '...' : '设为激活', variant: 'primary', disabled: busy, title: '设为当前激活版本(需安全审查通过 + 协议校验)', run: () => handleActivate(v) }]
+    }
+    return []
   }
   if (v.lifecycle_status === 'published') {
     if (v.is_active) {
       return [{ key: 'yank', label: busy ? '...' : '撤回', variant: 'danger', disabled: busy, title: '撤回此已激活版本', run: () => { yankTarget.value = v } }]
     }
     if (canActivate(v)) {
-      return [{ key: 'activate', label: busy ? '...' : '设为激活', variant: 'primary', disabled: busy, title: '设为当前激活版本(需安全审查或审核通过 + 协议校验)', run: () => handleActivate(v) }]
+      return [{ key: 'activate', label: busy ? '...' : '设为激活', variant: 'primary', disabled: busy, title: '设为当前激活版本(需安全审查通过 + 协议校验)', run: () => handleActivate(v) }]
     }
   }
   return []
@@ -227,12 +220,6 @@ function overflowActions(v: SkillVersion): RowAction[] {
       disabled: busy,
       run: () => openAuditDialog(v),
     })
-  }
-  if (canManage && v.lifecycle_status === 'pending_review' && canActivate(v) && !v.is_active) {
-    actions.push({ key: 'activate', label: '激活', variant: 'ghost', disabled: busy, run: () => handleActivate(v) })
-  }
-  if (canManage && v.lifecycle_status === 'pending_review') {
-    actions.push({ key: 'withdraw', label: '撤回审核', variant: 'ghost', disabled: busy, run: () => handleWithdrawReview(v) })
   }
   if (canManage && v.lifecycle_status === 'published' && !v.is_active) {
     actions.push({ key: 'yank', label: '撤回', variant: 'ghost', disabled: busy, run: () => { yankTarget.value = v } })
@@ -279,7 +266,7 @@ function lifecycleBadge(s: string): { cls: string; label: string } {
     case 'published':
       return { cls: 'bg-green-50 text-green-600', label: '可激活' }
     case 'pending_review':
-      return { cls: 'bg-amber-50 text-amber-600', label: '待审核' }
+      return { cls: 'bg-amber-50 text-amber-600', label: '待激活' }
     case 'scanning':
       return { cls: 'bg-indigo-50 text-indigo-600', label: '扫描中' }
     case 'yanked':
@@ -413,58 +400,6 @@ async function confirmYank(): Promise<void> {
     toast.success(`已撤回版本 ${target.version}`)
     emit('activated', skill)
     yankTarget.value = null
-    await loadVersions()
-  } catch (e) {
-    toast.error((e as { message?: string }).message || '撤回失败')
-  } finally {
-    actingId.value = null
-  }
-}
-
-async function handleSubmitReview(v: SkillVersion): Promise<void> {
-  actingId.value = v.id
-  try {
-    await submitSkillVersionReview(props.skillId, v.id)
-    toast.success('已提交审核')
-    await loadVersions()
-  } catch (e) {
-    toast.error((e as { message?: string }).message || '提交审核失败')
-  } finally {
-    actingId.value = null
-  }
-}
-
-async function handleApproveReview(v: SkillVersion): Promise<void> {
-  actingId.value = v.id
-  try {
-    await approveSkillVersionReview(props.skillId, v.id)
-    toast.success('审核已通过，可激活')
-    await loadVersions()
-  } catch (e) {
-    toast.error((e as { message?: string }).message || '通过失败')
-  } finally {
-    actingId.value = null
-  }
-}
-
-async function handleRejectReview(v: SkillVersion): Promise<void> {
-  actingId.value = v.id
-  try {
-    await rejectSkillVersionReview(props.skillId, v.id)
-    toast.success('已拒绝审核')
-    await loadVersions()
-  } catch (e) {
-    toast.error((e as { message?: string }).message || '拒绝失败')
-  } finally {
-    actingId.value = null
-  }
-}
-
-async function handleWithdrawReview(v: SkillVersion): Promise<void> {
-  actingId.value = v.id
-  try {
-    await withdrawSkillVersionReview(props.skillId, v.id)
-    toast.success('已撤回审核')
     await loadVersions()
   } catch (e) {
     toast.error((e as { message?: string }).message || '撤回失败')

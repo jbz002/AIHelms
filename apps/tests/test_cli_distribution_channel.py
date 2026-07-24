@@ -18,7 +18,7 @@ from api.v1.cli import cli_publish_version
 from core.database import get_worker_session_factory
 from core.deps import require_cli_scope
 from exceptions import NotFoundError, ValidationError
-from models.db import AiKey, Permission, Skill, SkillReviewTask, SkillVersion, User
+from models.db import AiKey, Permission, Skill, SkillVersion, User
 from repositories import ai_key_repo, skill_label_repo, skill_repo
 from services import cli_token_service, skill_service
 
@@ -362,7 +362,7 @@ def _upload(zip_bytes: bytes, filename: str = "skill.zip") -> UploadFile:
 
 
 @pytest.mark.asyncio
-async def test_cli_publish_creates_version_and_review_task():
+async def test_cli_publish_creates_draft_version():
     uid = await _make_user("pub")
     sid, uuid_id = await _make_published_skill("pub")
     token_ids: list[int] = []
@@ -401,17 +401,7 @@ async def test_cli_publish_creates_version_and_review_task():
 
         assert resp["code"] == 200
         version = resp["data"]["version"]
-        assert version["lifecycle_status"] == "pending_review"
-        async with _session() as s:
-            task = (
-                await s.execute(
-                    select(SkillReviewTask).where(
-                        SkillReviewTask.skill_version_id == version["id"]
-                    )
-                )
-            ).scalar_one_or_none()
-            assert task is not None
-            assert task.status == "pending"
+        assert version["lifecycle_status"] == "draft"
     finally:
         await _cleanup_skills([sid])
         await _cleanup_tokens(token_ids)

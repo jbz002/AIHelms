@@ -1033,45 +1033,6 @@ class SkillVersion(Base):
     )
 
 
-class SkillReviewTask(Base):
-    """S3 · 版本级审核任务（一版本一活跃 task）。
-
-    与实体级 publish_reviews 正交：本表驱动 SkillVersion 生命周期审核流
-    （pending_review → approved/rejected/withdrawn），用 lock_version 做乐观锁。
-    """
-
-    __tablename__ = "skill_review_tasks"
-    __table_args__ = (
-        Index(
-            "uq_skill_review_tasks_pending",
-            "skill_version_id",
-            unique=True,
-            postgresql_where=text("status = 'pending'"),
-        ),
-        {"schema": "aihelms"},
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    skill_version_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("aihelms.skill_versions.id", ondelete="CASCADE")
-    )
-    status: Mapped[str] = mapped_column(String(20), default="pending")
-    reviewer_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
-    )
-    submitted_by: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL")
-    )
-    decision_notes: Mapped[str] = mapped_column(Text, default="")
-    lock_version: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-    resolved_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-
 class SkillTag(Base):
     """S4 · 版本别名 Tag（beta/stable/latest）。
 

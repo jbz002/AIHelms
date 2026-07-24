@@ -7,7 +7,6 @@ import type {
   SkillVersion,
   CreateSkillVersionParams,
   DeprecateSkillVersionParams,
-  SkillReviewTask,
   SkillSummaryView,
   SkillFullView,
   SkillIntegrityView,
@@ -170,56 +169,9 @@ export function resyncSkillVersion(
   )
 }
 
-export interface SkillVersionReviewResult {
-  version: SkillVersion
-  review_task: SkillReviewTask
-}
-
 export function yankSkillVersion(skillId: number, versionId: number): Promise<Skill> {
   return request<Skill>(
     `/api/v1/skills/${skillId}/versions/${versionId}/yank`,
-    { method: 'POST' },
-  )
-}
-
-export function submitSkillVersionReview(
-  skillId: number,
-  versionId: number,
-): Promise<SkillVersionReviewResult> {
-  return request<SkillVersionReviewResult>(
-    `/api/v1/skills/${skillId}/versions/${versionId}/review`,
-    { method: 'POST' },
-  )
-}
-
-export function approveSkillVersionReview(
-  skillId: number,
-  versionId: number,
-  decisionNotes: string = '',
-): Promise<SkillVersionReviewResult> {
-  return request<SkillVersionReviewResult>(
-    `/api/v1/skills/${skillId}/versions/${versionId}/review/approve`,
-    { method: 'POST', body: { decision_notes: decisionNotes } },
-  )
-}
-
-export function rejectSkillVersionReview(
-  skillId: number,
-  versionId: number,
-  decisionNotes: string = '',
-): Promise<SkillVersionReviewResult> {
-  return request<SkillVersionReviewResult>(
-    `/api/v1/skills/${skillId}/versions/${versionId}/review/reject`,
-    { method: 'POST', body: { decision_notes: decisionNotes } },
-  )
-}
-
-export function withdrawSkillVersionReview(
-  skillId: number,
-  versionId: number,
-): Promise<SkillVersionReviewResult> {
-  return request<SkillVersionReviewResult>(
-    `/api/v1/skills/${skillId}/versions/${versionId}/review/withdraw`,
     { method: 'POST' },
   )
 }

@@ -14,7 +14,6 @@ from repositories import (
     ai_policies_repo,
     skill_label_repo,
     skill_repo,
-    skill_review_repo,
     skill_tag_repo,
     skill_version_repo,
     storage_deletion_compensation_repo,
@@ -26,29 +25,11 @@ from services.skill_lifecycle_service import (
     DRAFT,
     PENDING_REVIEW,
     PUBLISHED,
-    REJECTED,
     YANKED,
-    assert_transition,
-)
-from services.skill_review_service import (
-    approve as review_approve,
-)
-from services.skill_review_service import (
-    reject as review_reject,
-)
-from services.skill_review_service import (
-    require_pending_for_version,
-)
-from services.skill_review_service import (
-    submit as review_submit,
-)
-from services.skill_review_service import (
-    withdraw as review_withdraw,
 )
 from services.skill_serializers import (
     _latest_audit_map,
     _serialize,
-    _serialize_review_task,
     _serialize_version,
 )
 
@@ -670,15 +651,13 @@ async def activate_version(
     if version.lifecycle_status not in (DRAFT, PENDING_REVIEW):
         raise ValidationError(f"版本当前状态为 {version.lifecycle_status}，不可激活")
 
-    # 硬门控：通过安全审查（passed / attention_required）或存在 approved 审核任务
+    # 硬门控：必须通过安全审查（passed / attention_required）才可激活
     security_ok = (
         version.security_status == "completed"
         and version.security_decision in _ACTIVATE_ALLOWED_DECISIONS
     )
-    review_task = await skill_review_repo.find_latest_for_version(session, version.id)
-    review_approved = review_task is not None and review_task.status == "approved"
-    if not (security_ok or review_approved):
-        raise ValidationError("新版本未通过安全审查或审核，不可激活")
+    if not security_ok:
+        raise ValidationError("新版本未通过安全审查，不可激活")
 
     # 协议门控：SKILL.md 协议校验未通过不可激活（草稿容错，仅在激活时阻断）
     if not version.protocol_valid:
@@ -828,95 +807,6 @@ async def set_hidden(
     await session.refresh(skill)
     latest_audit_map = await _latest_audit_map(session, [skill])
     return _serialize(skill, latest_audit_map)
-
-
-async def _load_version_for_review(
-    session: AsyncSession, skill_id: int, version_id: int
-) -> tuple[Skill, SkillVersion]:
-    skill = await skill_repo.find_by_id(session, skill_id)
-    if not skill:
-        raise NotFoundError("skill", skill_id)
-    version = await skill_version_repo.find_by_id(session, version_id)
-    if not version or version.skill_id != skill_id:
-        raise NotFoundError("skill_version", version_id)
-    return skill, version
-
-
-async def submit_version_review(
-    session: AsyncSession, skill_id: int, version_id: int, submitted_by: int
-) -> dict:
-    """提交版本审核：draft/scanning → pending_review（auto-withdraw 旧 task）。
-
-    已在 pending_review 时允许重提（auto-withdraw 旧 task 并新建），lifecycle 不变。
-    """
-    _, version = await _load_version_for_review(session, skill_id, version_id)
-    if version.lifecycle_status != PENDING_REVIEW:
-        assert_transition(version.lifecycle_status, PENDING_REVIEW)
-        version.lifecycle_status = PENDING_REVIEW
-    task = await review_submit(session, version_id, submitted_by)
-    await session.commit()
-    await session.refresh(version)
-    return {
-        "version": _serialize_version(version),
-        "review_task": _serialize_review_task(task),
-    }
-
-
-async def approve_version_review(
-    session: AsyncSession,
-    skill_id: int,
-    version_id: int,
-    reviewer_id: int,
-    decision_notes: str = "",
-) -> dict:
-    """通过版本审核（防自审 + 乐观锁）。版本激活随后由 activate_version 门控放行。"""
-    _, version = await _load_version_for_review(session, skill_id, version_id)
-    task = await require_pending_for_version(session, version_id)
-    task = await review_approve(session, task, reviewer_id, decision_notes)
-    await session.commit()
-    await session.refresh(version)
-    return {
-        "version": _serialize_version(version),
-        "review_task": _serialize_review_task(task),
-    }
-
-
-async def reject_version_review(
-    session: AsyncSession,
-    skill_id: int,
-    version_id: int,
-    reviewer_id: int,
-    decision_notes: str = "",
-) -> dict:
-    """拒绝版本审核：pending_review → rejected。"""
-    _, version = await _load_version_for_review(session, skill_id, version_id)
-    task = await require_pending_for_version(session, version_id)
-    task = await review_reject(session, task, reviewer_id, decision_notes)
-    assert_transition(version.lifecycle_status, REJECTED)
-    version.lifecycle_status = REJECTED
-    await session.commit()
-    await session.refresh(version)
-    return {
-        "version": _serialize_version(version),
-        "review_task": _serialize_review_task(task),
-    }
-
-
-async def withdraw_version_review(
-    session: AsyncSession, skill_id: int, version_id: int, actor_id: int
-) -> dict:
-    """撤回版本审核（仅提交人）：pending_review → draft。"""
-    _, version = await _load_version_for_review(session, skill_id, version_id)
-    task = await require_pending_for_version(session, version_id)
-    task = await review_withdraw(session, task, actor_id)
-    assert_transition(version.lifecycle_status, DRAFT)
-    version.lifecycle_status = DRAFT
-    await session.commit()
-    await session.refresh(version)
-    return {
-        "version": _serialize_version(version),
-        "review_task": _serialize_review_task(task),
-    }
 
 
 async def _noop_sync(skill: Skill, version: SkillVersion) -> None:

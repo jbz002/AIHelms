@@ -47,11 +47,10 @@ export async function publishCommand(
       skillId,
       version: version.version,
       lifecycleStatus: version.lifecycle_status,
-      reviewTaskId: (result.reviewTask as { id?: number }).id ?? null,
     })
   }
   return [
-    `Submitted version ${version.version} for review.`,
+    `Published version ${version.version}. Awaiting security review before activation.`,
     `Skill: ${skillId}`,
     `Status: ${version.lifecycle_status}`,
   ].join('\n')

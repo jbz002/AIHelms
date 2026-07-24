@@ -236,9 +236,6 @@ async def cli_publish_version(
             zip_filename=zip_filename,
             created_by=identity["owner_id"],
         )
-        result = await skill_service.submit_version_review(
-            session, skill.id, int(vdata["id"]), identity["owner_id"]
-        )
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValidationError as e:
@@ -250,4 +247,8 @@ async def cli_publish_version(
         "cli_publish",
         identity["ai_key_id"],
     )
-    return {"code": 200, "message": "版本已提交审核", "data": result}
+    return {
+        "code": 200,
+        "message": "版本已发布，待安全审查后激活",
+        "data": {"version": vdata},
+    }

@@ -3,7 +3,6 @@
 纯单元（assert_transition 合法性）+ 真实 DB（依赖 dev 中间件）：
 - migration 兼容映射：create_skill 种 v1 为 published
 - Yank 命中 current_version_id 重算到次新 published
-- ReviewTask：auto-withdraw、防自审、撤回仅限提交人、乐观锁冲突
 """
 
 import io
@@ -13,13 +12,13 @@ import uuid
 import zipfile
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete
 
 from core.config import settings
 from core.database import get_worker_session_factory
-from exceptions import ConflictError, ForbiddenError, ValidationError
-from models.db import Skill, SkillReviewTask, SkillVersion, User
-from repositories import skill_repo, skill_review_repo, skill_version_repo
+from exceptions import ValidationError
+from models.db import Skill, SkillVersion
+from repositories import skill_repo, skill_version_repo
 from services import skill_service
 from services.skill_lifecycle_service import (
     DEPRECATED,
@@ -98,23 +97,8 @@ async def _make_skill(suffix: str | None = None) -> int:
     return int(data["id"])
 
 
-async def _real_user_ids(n: int = 1) -> list[int]:
-    async with _session() as s:
-        result = await s.execute(select(User.id).limit(n))
-        ids = [int(r) for r in result.scalars().all()]
-    assert len(ids) == n, f"测试需至少 {n} 个真实用户"
-    return ids
-
-
 async def _cleanup(skill_ids: list[int]) -> None:
     async with _session() as s:
-        await s.execute(
-            delete(SkillReviewTask).where(
-                SkillReviewTask.skill_version_id.in_(
-                    select(SkillVersion.id).where(SkillVersion.skill_id.in_(skill_ids))
-                )
-            )
-        )
         await s.execute(
             delete(SkillVersion).where(SkillVersion.skill_id.in_(skill_ids))
         )
@@ -202,131 +186,5 @@ async def test_yank_recomputes_pointer_to_previous_published():
             assert v1_refreshed.is_active is True
             assert v2_refreshed.lifecycle_status == YANKED
             assert v2_refreshed.is_active is False
-    finally:
-        await _cleanup([skill_id])
-
-
-@pytest.mark.asyncio
-async def test_review_submit_and_auto_withdraw():
-    skill_id = await _make_skill()
-    user_id = (await _real_user_ids(1))[0]
-    try:
-        v2 = await _stage_activatable_version(skill_id, "2.0.0")  # draft
-
-        session = _session()
-        try:
-            await skill_service.submit_version_review(session, skill_id, v2, user_id)
-        finally:
-            await session.close()
-
-        async with _session() as s:
-            tasks = await s.execute(
-                select(SkillReviewTask).where(SkillReviewTask.skill_version_id == v2)
-            )
-            rows = list(tasks.scalars().all())
-            assert len(rows) == 1
-            assert rows[0].status == "pending"
-
-        # 二次提交 → 旧 task auto-withdraw，新建 pending
-        session = _session()
-        try:
-            await skill_service.submit_version_review(session, skill_id, v2, user_id)
-        finally:
-            await session.close()
-
-        async with _session() as s:
-            tasks = await s.execute(
-                select(SkillReviewTask)
-                .where(SkillReviewTask.skill_version_id == v2)
-                .order_by(SkillReviewTask.id)
-            )
-            rows = list(tasks.scalars().all())
-            assert len(rows) == 2
-            assert rows[0].status == "withdrawn"
-            assert rows[1].status == "pending"
-    finally:
-        await _cleanup([skill_id])
-
-
-@pytest.mark.asyncio
-async def test_review_self_review_forbidden():
-    skill_id = await _make_skill()
-    user_id = (await _real_user_ids(1))[0]
-    try:
-        v2 = await _stage_activatable_version(skill_id, "2.0.0")
-        session = _session()
-        try:
-            await skill_service.submit_version_review(session, skill_id, v2, user_id)
-        finally:
-            await session.close()
-
-        session = _session()
-        with pytest.raises(ForbiddenError):
-            try:
-                await skill_service.approve_version_review(
-                    session, skill_id, v2, user_id, ""
-                )
-            finally:
-                await session.close()
-    finally:
-        await _cleanup([skill_id])
-
-
-@pytest.mark.asyncio
-async def test_review_withdraw_only_submitter():
-    skill_id = await _make_skill()
-    submitter, other = await _real_user_ids(2)
-    try:
-        v2 = await _stage_activatable_version(skill_id, "2.0.0")
-        session = _session()
-        try:
-            await skill_service.submit_version_review(session, skill_id, v2, submitter)
-        finally:
-            await session.close()
-
-        session = _session()
-        with pytest.raises(ForbiddenError):
-            try:
-                await skill_service.withdraw_version_review(
-                    session, skill_id, v2, other
-                )
-            finally:
-                await session.close()
-    finally:
-        await _cleanup([skill_id])
-
-
-@pytest.mark.asyncio
-async def test_review_optimistic_lock_conflict():
-    skill_id = await _make_skill()
-    submitter, reviewer = await _real_user_ids(2)
-    try:
-        v2 = await _stage_activatable_version(skill_id, "2.0.0")
-        session = _session()
-        try:
-            await skill_service.submit_version_review(session, skill_id, v2, submitter)
-        finally:
-            await session.close()
-
-        async with _session() as s:
-            task = await skill_review_repo.find_pending_by_version(s, v2)
-            assert task is not None
-            task_id = task.id
-            stale_lock = task.lock_version + 999  # 故意陈旧的 expected
-
-        # 直接以陈旧 lock_version 调 repo CAS → rowcount 0 → ConflictError
-        session = _session()
-        try:
-            with pytest.raises(ConflictError):
-                await skill_review_repo.resolve_with_lock(
-                    session,
-                    task_id,
-                    stale_lock,
-                    status="approved",
-                    reviewer_id=reviewer,
-                    decision_notes="",
-                )
-        finally:
-            await session.close()
     finally:
         await _cleanup([skill_id])

@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_ai_key_identity, get_current_user, get_db, require_permission
-from exceptions import ConflictError, ForbiddenError, NotFoundError, ValidationError
+from exceptions import ConflictError, NotFoundError, ValidationError
 from repositories import skill_label_repo, skill_repo
 from services import (
     ai_policies_service,
@@ -35,10 +35,6 @@ class DeprecateVersionRequest(BaseModel):
 
 class ResyncVersionRequest(BaseModel):
     new_version: str | None = Field(None, max_length=64)
-
-
-class ReviewDecisionRequest(BaseModel):
-    decision_notes: str = Field("", max_length=1000)
 
 
 class SetHiddenRequest(BaseModel):
@@ -514,94 +510,6 @@ async def yank_skill_version(
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
     return {"code": 200, "message": "Skill 版本已撤回", "data": data}
-
-
-@router.post("/{skill_id}/versions/{version_id}/review", summary="提交版本审核")
-async def submit_version_review(
-    skill_id: int,
-    version_id: int,
-    session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:update")),
-):
-    try:
-        data = await skill_service.submit_version_review(
-            session, skill_id, version_id, current_user["id"]
-        )
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Skill 或版本不存在")
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    return {"code": 200, "message": "已提交审核", "data": data}
-
-
-@router.post("/{skill_id}/versions/{version_id}/review/approve", summary="通过版本审核")
-async def approve_version_review(
-    skill_id: int,
-    version_id: int,
-    req: ReviewDecisionRequest,
-    session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:update")),
-):
-    try:
-        data = await skill_service.approve_version_review(
-            session, skill_id, version_id, current_user["id"], req.decision_notes
-        )
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Skill 或版本不存在")
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except ForbiddenError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    return {"code": 200, "message": "审核已通过", "data": data}
-
-
-@router.post("/{skill_id}/versions/{version_id}/review/reject", summary="拒绝版本审核")
-async def reject_version_review(
-    skill_id: int,
-    version_id: int,
-    req: ReviewDecisionRequest,
-    session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:update")),
-):
-    try:
-        data = await skill_service.reject_version_review(
-            session, skill_id, version_id, current_user["id"], req.decision_notes
-        )
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Skill 或版本不存在")
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except ForbiddenError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    return {"code": 200, "message": "审核已拒绝", "data": data}
-
-
-@router.post(
-    "/{skill_id}/versions/{version_id}/review/withdraw", summary="撤回版本审核"
-)
-async def withdraw_version_review(
-    skill_id: int,
-    version_id: int,
-    session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:update")),
-):
-    try:
-        data = await skill_service.withdraw_version_review(
-            session, skill_id, version_id, current_user["id"]
-        )
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Skill 或版本不存在")
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except ForbiddenError as e:
-        raise HTTPException(status_code=403, detail=str(e))
-    except ConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    return {"code": 200, "message": "审核已撤回", "data": data}
 
 
 @router.put("/{skill_id}/hidden", summary="切换Skill治理下架")

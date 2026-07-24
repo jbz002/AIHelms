@@ -5,7 +5,7 @@ Extracted from skill_service.py to keep it under the 500-line limit.
 
 from __future__ import annotations
 
-from models.db import Skill, SkillReviewTask, SkillVersion
+from models.db import Skill, SkillVersion
 from repositories import ai_policies_repo
 from services.skill_lifecycle_projection import build_projection
 
@@ -60,19 +60,6 @@ def _serialize_version(
         "latest_ai_policies_audit_code": audit_code,
         "created_by": v.created_by,
         "created_at": v.created_at.isoformat() if v.created_at else None,
-    }
-
-
-def _serialize_review_task(t: SkillReviewTask) -> dict:
-    return {
-        "id": t.id,
-        "skill_version_id": t.skill_version_id,
-        "status": t.status,
-        "reviewer_id": t.reviewer_id,
-        "submitted_by": t.submitted_by,
-        "decision_notes": t.decision_notes,
-        "created_at": t.created_at.isoformat() if t.created_at else None,
-        "resolved_at": t.resolved_at.isoformat() if t.resolved_at else None,
     }
 
 

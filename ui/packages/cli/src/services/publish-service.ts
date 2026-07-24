@@ -19,7 +19,6 @@ export interface PublishOptions {
 
 export interface PublishResult {
   version: SkillVersion
-  reviewTask: Record<string, unknown>
 }
 
 async function readPathStat(path: string): Promise<{ isFile: boolean; isDirectory: boolean }> {
@@ -75,5 +74,5 @@ export async function publishSkill(options: PublishOptions): Promise<PublishResu
     change_log: options.changeLog,
   }, name)
 
-  return { version: result.version, reviewTask: result.review_task }
+  return { version: result.version }
 }

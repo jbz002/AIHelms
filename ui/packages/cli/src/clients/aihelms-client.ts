@@ -171,7 +171,7 @@ export class AihelmsClient {
     file: Blob,
     fields: PublishVersionFields,
     fileName = 'skill.zip',
-  ): Promise<{ version: SkillVersion; review_task: Record<string, unknown> }> {
+  ): Promise<{ version: SkillVersion }> {
     const formData = new FormData()
     formData.append('zip_file', file, fileName)
     formData.append('version', fields.version)

@@ -9,7 +9,7 @@
 is_active 由 published 派生（published=True，其余 False）。terminal 态：
 yanked / rejected / deprecated 无合法出边。
 
-本模块只做纯校验（无 DB/无副作用），供 skill_service / skill_review_service /
+本模块只做纯校验（无 DB/无副作用），供 skill_service /
 ai_policies_service 复用，避免循环导入。实际 DB 翻转与 Yank 指针重算在 skill_service。
 """
 

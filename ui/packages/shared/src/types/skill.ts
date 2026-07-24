@@ -170,23 +170,6 @@ export interface DeprecateSkillVersionParams {
   sunset_date?: string | null
 }
 
-export type SkillReviewTaskStatus =
-  | 'pending'
-  | 'approved'
-  | 'rejected'
-  | 'withdrawn'
-
-export interface SkillReviewTask {
-  id: number
-  skill_version_id: number
-  status: SkillReviewTaskStatus
-  reviewer_id: number | null
-  submitted_by: number | null
-  decision_notes: string
-  created_at: string | null
-  resolved_at: string | null
-}
-
 export interface SkillLifecycleProjection {
   headline_version: SkillVersion | null
   published_version: SkillVersion | null
