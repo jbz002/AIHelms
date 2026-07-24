@@ -133,6 +133,7 @@ async def update_model(
         raise NotFoundError("model", model_id)
 
     old_model_id = model.model_id
+    old_active = model.is_active
     renamed = False
     if model_id_str is not None and model_id_str != model.model_id:
         if model_id_str:
@@ -156,6 +157,16 @@ async def update_model(
 
     if renamed:
         await _sync_model_rename(session, model, old_model_id)
+    # is_active 变更须重新同步主 Key：禁用已发布的公开模型要从主 Key 移除，
+    # 否则 model_id 残留导致「可用资源」计数偏多。仅对自动授权类（已发布且免审批）
+    # 模型触发，避免误清未发布/需审批模型在 Key 上的手动授权。
+    if (
+        is_active is not None
+        and is_active != old_active
+        and model.is_published
+        and not model.requires_approval
+    ):
+        await _sync_published_model_to_main_keys(session, model)
 
     await session.commit()
     await session.refresh(model)
@@ -770,12 +781,16 @@ def _apply_credential_to_litellm_params(litellm_params: dict, credential) -> dic
 async def _sync_published_model_to_main_keys(
     session: AsyncSession, model: Model
 ) -> int:
-    """Sync a public no-approval model to all active main keys; remove if unpublished or requires approval."""
+    """Sync a public no-approval active model to all active main keys; remove otherwise.
+
+    is_active 必须与 get_public_resources 保持一致：禁用的模型不属于公开可用资源，
+    否则主 Key 的 models 会残留 inactive model_id，导致「可用资源」计数大于实际可选池。
+    """
     if not model or not model.model_id:
         return 0
     from services import ai_key_service
 
-    if model.is_published and not model.requires_approval:
+    if model.is_published and not model.requires_approval and model.is_active:
         return await ai_key_service.sync_public_resource_to_all_keys(
             session, "models", model.model_id
         )
