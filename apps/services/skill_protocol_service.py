@@ -88,32 +88,57 @@ def _content_type_for_path(path: str) -> str:
     return guess or "application/octet-stream"
 
 
-def _build_manifest(parsed: ParsedSkillContent) -> dict[str, dict]:
-    """在 file_hashes {path:{sha256,size}} 基础上补 content_type/category。"""
+def _build_manifest(
+    parsed: ParsedSkillContent, root_prefix: str = ""
+) -> dict[str, dict]:
+    """在 file_hashes {path:{sha256,size}} 基础上补 content_type/category。
+
+    category 按「相对于 skill 根」的路径判定：root_prefix 是 SKILL.md 所在
+    目录前缀（如 Anthropic 官方包解出的 ``pdf/``），需先剥离再分类，否则
+    外层目录会被误判为非标准子目录。manifest 键仍保留 zip 内原始路径。
+    """
     manifest: dict[str, dict] = {}
     for path, entry in parsed.file_hashes.items():
+        rel = _strip_root_prefix(path, root_prefix)
         manifest[path] = {
             "sha256": entry.get("sha256", ""),
             "size": entry.get("size", 0),
             "content_type": _content_type_for_path(path),
-            "category": _category_for_path(path),
+            "category": _category_for_path(rel),
         }
     return manifest
 
 
-def _shared_top_dir(paths: list[str]) -> str | None:
-    """所有文件是否共享同一顶层目录；是则返回该目录名，否则 None。"""
-    tops = {p.split("/", 1)[0] for p in paths if "/" in p}
-    if len(tops) == 1:
-        return next(iter(tops))
-    return None
+def _strip_root_prefix(path: str, root_prefix: str) -> str:
+    """剥除 skill 根目录前缀，返回相对路径；无前缀或不匹配则原样返回。"""
+    if root_prefix and path.startswith(root_prefix):
+        return path[len(root_prefix) :]
+    return path
+
+
+def _skill_root_prefix(paths: list[str]) -> str:
+    """SKILL.md 所在目录前缀（含尾斜杠）；SKILL.md 在包根则返回 ``''``。
+
+    用于区分「包外层目录」（如 ``pdf.zip`` 解出的 ``pdf/``，是 skill 根）
+    与「内容子目录」（references/scripts/assets）。大小写不敏感定位
+    SKILL.md，取其最后一级目录。
+    """
+    for p in paths:
+        if p.lower().endswith("skill.md"):
+            idx = p.rfind("/")
+            return p[: idx + 1] if idx != -1 else ""
+    return ""
 
 
 def validate_skill_protocol(parsed: ParsedSkillContent) -> ProtocolValidationResult:
     """校验解析结果，返回 (valid, errors, warnings, manifest)。"""
     errors: list[ProtocolIssue] = []
     warnings: list[ProtocolIssue] = []
-    manifest = _build_manifest(parsed)
+
+    paths = list(parsed.file_hashes.keys())
+    # SKILL.md 所在目录即 skill 根（如 ``pdf/``）；分类与子目录校验均相对它
+    root_prefix = _skill_root_prefix(paths)
+    manifest = _build_manifest(parsed, root_prefix)
 
     # 1. SKILL.md 存在性
     if not _has_skill_md(parsed):
@@ -182,38 +207,37 @@ def validate_skill_protocol(parsed: ParsedSkillContent) -> ProtocolValidationRes
             )
         )
 
-    # 4. name 与目录名一致性（warning，仅当能确定唯一顶层目录时）
-    paths = list(parsed.file_hashes.keys())
-    if name and len(paths) > 1:
-        top = _shared_top_dir(paths)
-        if top and top != name:
+    # 4. name 与包外层目录一致性（仅当 SKILL.md 位于子目录时）
+    if name and root_prefix:
+        root_dir = root_prefix[:-1]
+        if root_dir != name:
             warnings.append(
                 ProtocolIssue(
                     "warning",
                     "name.dir_mismatch",
-                    f"name '{name}' 与包顶层目录 '{top}' 不一致，"
+                    f"name '{name}' 与包顶层目录 '{root_dir}' 不一致，"
                     "建议对齐以便生态客户端按目录加载",
                 )
             )
 
-    # 5. 非标准目录识别（warning）
+    # 5. 非标准子目录识别（warning，相对 skill 根）
+    flagged: set[str] = set()
+    _standard = {_CATEGORY_REFERENCES, _CATEGORY_SCRIPTS, _CATEGORY_ASSETS}
     for path in paths:
-        cat = manifest[path]["category"]
-        if cat == _CATEGORY_OTHER and "/" in path:
-            top = path.split("/", 1)[0]
-            if top.lower() not in {
-                _CATEGORY_REFERENCES,
-                _CATEGORY_SCRIPTS,
-                _CATEGORY_ASSETS,
-            }:
-                warnings.append(
-                    ProtocolIssue(
-                        "warning",
-                        "dir.non_standard",
-                        f"非标准目录 '{top}/'，建议使用 references/ scripts/ assets/",
-                    )
-                )
-                break
+        rel = _strip_root_prefix(path, root_prefix)
+        if "/" not in rel:
+            continue
+        top = rel.split("/", 1)[0]
+        if top.lower() in _standard or top in flagged:
+            continue
+        flagged.add(top)
+        warnings.append(
+            ProtocolIssue(
+                "warning",
+                "dir.non_standard",
+                f"非标准目录 '{top}/'，建议使用 references/ scripts/ assets/",
+            )
+        )
 
     return ProtocolValidationResult(
         valid=len(errors) == 0,

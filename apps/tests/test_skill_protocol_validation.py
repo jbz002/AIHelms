@@ -110,6 +110,44 @@ def test_non_standard_dir_returns_warning():
     assert "dir.non_standard" in _warning_codes(result)
 
 
+def test_wrapped_top_dir_not_flagged_non_standard():
+    """Anthropic 官方布局：整个 skill 包在同名外层目录里（pdf/SKILL.md ...）。
+    外层目录是 skill 根，不应被当成非标准子目录；其下的 scripts/ 应正确分类。
+    """
+    zip_bytes = _make_zip(
+        {
+            "pdf/SKILL.md": _skill_md(name="pdf"),
+            "pdf/scripts/pdf_to_text.py": "# script",
+            "pdf/references/format.md": "# ref",
+            "pdf/assets/icon.svg": "<svg/>",
+        }
+    )
+    result = validate_skill_protocol(parse_skill_zip(zip_bytes))
+    assert result.valid is True
+    assert "dir.non_standard" not in _warning_codes(result)
+    assert "name.dir_mismatch" not in _warning_codes(result)
+    assert result.manifest["pdf/SKILL.md"]["category"] == "root"
+    assert result.manifest["pdf/scripts/pdf_to_text.py"]["category"] == "scripts"
+    assert result.manifest["pdf/references/format.md"]["category"] == "references"
+    assert result.manifest["pdf/assets/icon.svg"]["category"] == "assets"
+
+
+def test_wrapped_non_standard_subdir_flagged():
+    """外层根目录剥离后，真正的非标准子目录仍应告警。"""
+    zip_bytes = _make_zip(
+        {
+            "pdf/SKILL.md": _skill_md(name="pdf"),
+            "pdf/randomdir/note.md": "# note",
+        }
+    )
+    result = validate_skill_protocol(parse_skill_zip(zip_bytes))
+    assert "dir.non_standard" in _warning_codes(result)
+    assert (
+        result.warnings[0].message
+        == "非标准目录 'randomdir/'，建议使用 references/ scripts/ assets/"
+    )
+
+
 def test_description_too_long_returns_warning():
     long_desc = "x" * 300
     zip_bytes = _make_zip({"SKILL.md": _skill_md(description=long_desc)})
