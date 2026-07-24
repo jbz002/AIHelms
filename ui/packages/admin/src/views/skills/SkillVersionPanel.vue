@@ -544,7 +544,7 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
 </script>
 
 <template>
-  <div class="rounded-xl border border-slate-200/60 p-3">
+  <div class="mb-4 rounded-xl border border-slate-200/60 p-3">
     <div class="mb-2 flex items-center justify-between">
       <h4 class="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
         <GitBranch class="h-4 w-4 text-purple-500" /> 版本管理
@@ -581,15 +581,15 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             <span v-if="v.version_label" class="truncate text-slate-400">{{ v.version_label }}</span>
             <span
               v-if="v.is_active"
-              class="rounded bg-emerald-50 px-1 py-0.5 text-[10px] font-medium text-emerald-600"
+              class="rounded bg-emerald-50 px-1 py-0.5 text-xs font-medium text-emerald-600"
             >当前激活</span>
             <span
-              class="rounded px-1.5 py-0.5 text-[10px]"
+              class="rounded px-1.5 py-0.5 text-xs"
               :class="lifecycleBadge(v.lifecycle_status).cls"
             >{{ lifecycleBadge(v.lifecycle_status).label }}</span>
             <span
               v-if="!isExpanded(v)"
-              class="rounded px-1 py-0.5 text-[10px]"
+              class="rounded px-1 py-0.5 text-xs"
               :class="securityBadge(v).cls"
             >{{ securityBadge(v).label }}</span>
           </button>
@@ -598,7 +598,7 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             <button
               v-for="a in primaryActions(v)"
               :key="a.key"
-              class="rounded px-1.5 py-0.5 text-[10px] disabled:cursor-not-allowed disabled:opacity-50"
+              class="rounded px-1.5 py-0.5 text-xs disabled:cursor-not-allowed disabled:opacity-50"
               :class="variantClass(a.variant)"
               :disabled="a.disabled"
               :title="a.title"
@@ -632,43 +632,38 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
           </div>
         </div>
 
-        <div v-if="isExpanded(v)" class="mt-2 border-t border-slate-100 pt-2">
-          <div class="flex items-center gap-1.5">
-            <span class="w-16 shrink-0 text-[10px] text-slate-400">阶段</span>
+        <div v-if="isExpanded(v)" class="mt-2 space-y-1.5 border-t border-slate-100 pt-2">
+          <!-- 行1：阶段 / 安全审查 / 协议校验 -->
+          <div class="flex flex-wrap items-center gap-1.5">
+            <span class="text-xs text-slate-400">阶段</span>
             <span
-              class="rounded px-2 py-0.5 text-[11px] font-medium"
+              class="rounded px-2 py-0.5 text-xs font-medium"
               :class="lifecycleBadge(v.lifecycle_status).cls"
             >{{ lifecycleBadge(v.lifecycle_status).label }}</span>
+            <span class="ml-1 text-xs text-slate-400">安全审查</span>
+            <span class="rounded px-1.5 py-0.5 text-xs" :class="securityBadge(v).cls">{{ securityBadge(v).label }}</span>
+            <button
+              v-if="v.latest_ai_policies_audit_code"
+              type="button"
+              class="inline-flex items-center gap-0.5 text-xs text-purple-600 hover:underline"
+              @click="openAuditReport(v)"
+            >
+              <FileText class="h-3 w-3" /> 报告
+            </button>
+            <span
+              v-if="v.security_status === 'running' || v.security_status === 'queued'"
+              class="text-xs text-slate-400"
+            >审查中…</span>
+            <span class="ml-1 text-xs text-slate-400">协议校验</span>
+            <span
+              class="cursor-help rounded px-1.5 py-0.5 text-xs"
+              :class="protocolBadge(v).cls"
+              :title="protocolBadge(v).tip"
+            >{{ protocolBadge(v).label }}</span>
           </div>
 
-          <div class="mt-1.5 space-y-1">
-            <div class="flex flex-wrap items-center gap-1.5">
-              <span class="w-16 shrink-0 text-[10px] text-slate-400">安全审查</span>
-              <span class="rounded px-1.5 py-0.5 text-[10px]" :class="securityBadge(v).cls">{{ securityBadge(v).label }}</span>
-              <button
-                v-if="v.latest_ai_policies_audit_code"
-                type="button"
-                class="inline-flex items-center gap-0.5 text-[10px] text-purple-600 hover:underline"
-                @click="openAuditReport(v)"
-              >
-                <FileText class="h-3 w-3" /> 报告
-              </button>
-              <span
-                v-if="v.security_status === 'running' || v.security_status === 'queued'"
-                class="text-[10px] text-slate-400"
-              >审查中…</span>
-            </div>
-            <div class="flex items-center gap-1.5">
-              <span class="w-16 shrink-0 text-[10px] text-slate-400">协议校验</span>
-              <span
-                class="cursor-help rounded px-1.5 py-0.5 text-[10px]"
-                :class="protocolBadge(v).cls"
-                :title="protocolBadge(v).tip"
-              >{{ protocolBadge(v).label }}</span>
-            </div>
-          </div>
-
-          <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] text-slate-400">
+          <!-- 行2：文件 / hash / 标签 / 漂移 -->
+          <div class="flex flex-wrap items-center gap-1.5 text-xs text-slate-400">
             <span v-if="v.zip_filename" class="truncate">{{ v.zip_filename }}</span>
             <span v-else class="italic">无独立 zip</span>
             <span v-if="v.composite_hash" class="truncate font-mono text-slate-300">{{ v.composite_hash.slice(0, 8) }}</span>
@@ -687,8 +682,11 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             >{{ driftBadge(v)!.label }}</span>
           </div>
 
-          <div v-if="v.change_log" class="mt-1 truncate text-slate-400">变更：{{ v.change_log }}</div>
-          <div v-if="v.summary_text" class="mt-0.5 truncate italic text-slate-400">{{ v.summary_text.slice(0, 80) }}{{ v.summary_text.length > 80 ? '...' : '' }}</div>
+          <!-- 行3：变更说明 + 摘要 -->
+          <div v-if="v.change_log || v.summary_text" class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-400">
+            <span v-if="v.change_log" class="truncate">变更：{{ v.change_log }}</span>
+            <span v-if="v.summary_text" class="truncate italic">{{ v.summary_text.slice(0, 80) }}{{ v.summary_text.length > 80 ? '...' : '' }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -734,7 +732,7 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
             @change="handleZipChange"
           />
           <p v-if="zipFileError" class="mt-1 text-xs text-red-500">{{ zipFileError }}</p>
-          <div class="mt-1 text-[11px] text-slate-400">{{ createHint }}</div>
+          <div class="mt-1 text-xs text-slate-400">{{ createHint }}</div>
         </div>
         <div class="mb-4">
           <label class="mb-1 block text-xs font-medium text-slate-600">变更说明</label>
@@ -830,7 +828,7 @@ const createHint = computed(() => (zipFile.value ? `已选择：${zipFile.value.
           <span
             v-for="t in tagsForVersion(tagTarget)"
             :key="t.id"
-            class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px]"
+            class="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs"
             :class="t.is_system ? 'bg-slate-200 text-slate-500' : 'bg-purple-50 text-purple-600'"
           >
             {{ t.tag_name }}

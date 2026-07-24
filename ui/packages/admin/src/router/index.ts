@@ -88,14 +88,8 @@ const router = createRouter({
         },
         {
           path: 'skills',
-          name: 'SkillList',
-          component: () => import('../views/skills/SkillList.vue'),
-          meta: { permission: 'skill:read' },
-        },
-        {
-          path: 'skills/:id',
-          name: 'SkillDetail',
-          component: () => import('../views/skills/SkillDetail.vue'),
+          name: 'SkillManage',
+          component: () => import('../views/skills/SkillManage.vue'),
           meta: { permission: 'skill:read' },
         },
         {

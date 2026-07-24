@@ -12,7 +12,7 @@ import {
   type ManifestFile,
 } from '@aihelms/shared'
 import MarkdownRenderer from '@aihelms/shared/src/components/MarkdownRenderer.vue'
-import { ChevronDown, ChevronUp, ShieldCheck, CheckCircle2, AlertTriangle, XCircle } from 'lucide-vue-next'
+import { ChevronDown, ChevronUp, ShieldCheck, CheckCircle2, AlertTriangle, XCircle, FileText } from 'lucide-vue-next'
 import { toast } from '@aihelms/shared'
 
 interface Props {
@@ -168,22 +168,26 @@ watch(
     fullData.value = null
     integrityData.value = null
     showIntegrity.value = false
+    loadSummary()
   },
 )
 </script>
 
 <template>
-  <div class="mt-4 rounded-xl border border-gray-200 bg-white">
+  <div class="mb-4 rounded-xl border border-slate-200/60 p-3">
+    <h4 class="mb-2 flex items-center gap-1.5 text-sm font-semibold text-slate-900">
+      <FileText class="h-4 w-4 text-purple-500" /> 内容
+    </h4>
     <!-- Tab header -->
-    <div class="flex border-b border-gray-200">
+    <div class="mb-2 flex gap-1 border-b border-slate-200/60">
       <button
         v-for="tab in tabs"
         :key="tab.key"
-        class="px-4 py-2.5 text-sm font-medium transition-colors"
+        class="-mb-px border-b-2 px-3 py-1.5 text-sm font-medium transition-colors"
         :class="
           activeLayer === tab.key
-            ? 'border-b-2 border-blue-500 text-blue-600'
-            : 'text-gray-500 hover:text-gray-700'
+            ? 'border-purple-500 text-purple-600'
+            : 'border-transparent text-slate-500 hover:text-slate-700'
         "
         @click="switchLayer(tab.key)"
       >
@@ -192,7 +196,7 @@ watch(
     </div>
 
     <!-- Tab content -->
-    <div class="p-4">
+    <div>
       <!-- Overview: frontmatter key-value table -->
       <div v-if="activeLayer === 'overview'">
         <div v-if="summaryData?.frontmatter && Object.keys(summaryData.frontmatter).length > 0" class="space-y-2">
@@ -234,7 +238,7 @@ watch(
     </div>
 
     <!-- Integrity section (admin only) -->
-    <div v-if="hasPermission('skill:read')" class="border-t border-gray-200">
+    <div v-if="hasPermission('skill:read')" class="mt-2 border-t border-slate-200/60">
       <button
         class="flex w-full items-center justify-between px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
         @click="toggleIntegrity"
