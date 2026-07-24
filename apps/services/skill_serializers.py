@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from models.db import Skill, SkillVersion
 from repositories import ai_policies_repo
+from services.icon_url import resolve_icon_url
 from services.skill_lifecycle_projection import build_projection
 
 
@@ -89,6 +90,7 @@ def _serialize(
         "skill_id": skill.skill_id,
         "name": skill.name,
         "icon": skill.icon,
+        "icon_url": resolve_icon_url(skill.icon_url or skill.icon),
         "description": skill.description,
         "category": skill.category,
         "version": skill.version,

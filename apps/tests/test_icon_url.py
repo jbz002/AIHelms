@@ -24,14 +24,14 @@ def platform_url(monkeypatch: pytest.MonkeyPatch) -> None:
     ],
 )
 def test_resolve_icon_url_returns_hosted_asset(raw: str | None, path: str) -> None:
-    assert icon_url.resolve_icon_url(raw) == f"https://platform.example{path}"
+    assert icon_url.resolve_icon_url(raw) == path
 
 
 def test_resolve_icon_url_keeps_existing_urls() -> None:
     relative = "/icons/v1/lucide/globe.svg"
     absolute = "https://cdn.example/icon.svg"
 
-    assert icon_url.resolve_icon_url(relative) == f"https://platform.example{relative}"
+    assert icon_url.resolve_icon_url(relative) == relative
     assert icon_url.resolve_icon_url(absolute) == absolute
 
 
@@ -49,14 +49,12 @@ def test_resolve_provider_icon_url_uses_real_extension(
     provider_type: str, filename: str
 ) -> None:
     assert icon_url.resolve_provider_icon_url(provider_type) == (
-        f"https://platform.example/icons/v1/providers/{filename}"
+        f"/icons/v1/providers/{filename}"
     )
 
 
 def test_resolve_provider_icon_url_unknown_uses_default() -> None:
-    assert icon_url.resolve_provider_icon_url("unknown") == (
-        "https://platform.example/icons/v1/default.svg"
-    )
+    assert icon_url.resolve_provider_icon_url("unknown") == "/icons/v1/default.svg"
 
 
 @pytest.mark.parametrize(

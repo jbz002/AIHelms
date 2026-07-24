@@ -11,7 +11,8 @@ import {
   type McpCategory,
 } from '@aihelms/shared'
 import { toast, usePermission } from '@aihelms/shared'
-import { Activity, RefreshCw, CheckCircle2, XCircle, HelpCircle, Eye as EyeIcon, EyeOff as EyeOffIcon } from 'lucide-vue-next'
+import { Activity, RefreshCw, Eye as EyeIcon, EyeOff as EyeOffIcon } from 'lucide-vue-next'
+import HostedIcon from '@aihelms/shared/src/components/HostedIcon.vue'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import McpServerForm from './McpServerForm.vue'
 import McpToolPanel from './McpToolPanel.vue'
@@ -263,10 +264,12 @@ onMounted(loadData)
             :class="selectedServer?.id === server.id ? 'bg-purple-50 ring-1 ring-purple-200' : 'hover:bg-slate-50'"
             @click="selectedServer = server"
           >
-            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100">
-              <CheckCircle2 v-if="server.status === 'healthy'" class="h-5 w-5 text-green-600" />
-              <XCircle v-else-if="server.status === 'unhealthy'" class="h-5 w-5 text-red-600" />
-              <HelpCircle v-else class="h-5 w-5 text-slate-400" />
+            <div class="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100">
+              <HostedIcon :src="server.icon_url" :size="20" :alt="server.name" />
+              <span
+                class="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-white"
+                :class="server.status === 'healthy' ? 'bg-green-500' : server.status === 'unhealthy' ? 'bg-red-500' : 'bg-slate-300'"
+              />
             </div>
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2">

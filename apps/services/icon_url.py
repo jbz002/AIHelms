@@ -145,10 +145,6 @@ def _base_url() -> str:
     return settings.platform_public_url.rstrip("/")
 
 
-def _default_url() -> str:
-    return f"{_base_url()}/icons/v1/default.svg"
-
-
 def normalize_hosted_icon_path(raw: str | None) -> str | None:
     if not raw or not raw.strip():
         return None
@@ -164,14 +160,17 @@ def normalize_hosted_icon_path(raw: str | None) -> str | None:
 
 
 def resolve_icon_url(raw: str | None) -> str:
+    # 图标是前端静态资源，由前端/Nginx 同源提供，必须返回相对路径。
+    # 拼接 platform_public_url 会指向后端端口（如 :8000），后端不托管 /icons，
+    # 导致 <img> 404 回退默认图标。外链 http(s) 原样返回。
     if not raw or not raw.strip():
-        return _default_url()
+        return "/icons/v1/default.svg"
 
     value = raw.strip()
     if value.startswith(("http://", "https://")):
         return value
     if value.startswith("/icons/"):
-        return f"{_base_url()}{value}"
+        return value
     if value in _EMOJI_ICON_FILES:
         filename = _EMOJI_ICON_FILES[value]
     elif value in _LUCIDE_ICON_NAMES:
@@ -179,12 +178,15 @@ def resolve_icon_url(raw: str | None) -> str:
     elif value.lower() in _LUCIDE_ICON_FILES:
         filename = value.lower()
     else:
-        return _default_url()
-    return f"{_base_url()}/icons/v1/lucide/{filename}"
+        return "/icons/v1/default.svg"
+    return f"/icons/v1/lucide/{filename}"
 
 
 def resolve_provider_icon_url(provider_type: str | None) -> str:
+    # 图标是前端静态资源，由前端/Nginx 同源提供，必须返回相对路径。
+    # 拼接 platform_public_url 会指向后端端口（如 :8000），后端不托管 /icons，
+    # 导致 <img> 404 回退默认图标。
     filename = _PROVIDER_ICON_FILES.get((provider_type or "").lower())
     if not filename:
-        return _default_url()
-    return f"{_base_url()}/icons/v1/providers/{filename}"
+        return "/icons/v1/default.svg"
+    return f"/icons/v1/providers/{filename}"
