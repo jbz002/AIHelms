@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import {
   getRoles,
   createRole,
@@ -28,6 +28,51 @@ const formDisplayName = ref('')
 const formDescription = ref('')
 const selectedPermissionIds = ref<number[]>([])
 const errorMessage = ref('')
+const isReadOnlyMode = ref(false)
+
+const RESOURCE_LABELS: Record<string, string> = {
+  user: '用户',
+  role: '角色',
+  permission: '权限',
+  department: '部门',
+  project: '项目',
+  skill: 'Skill',
+  mcp: 'MCP',
+  agent: '智能体',
+  resource_application: '资源申请',
+  publish_review: '发布审核',
+  audit_log: '管理员日志',
+  api_key: 'API Key',
+  cli_token: 'CLI 令牌',
+  usage_log: '使用日志',
+  efficiency: 'AI效能',
+  ai_policies: 'AI Policies',
+}
+
+interface PermissionGroup {
+  resource: string
+  label: string
+  perms: Permission[]
+}
+
+const groupedPermissions = computed<PermissionGroup[]>(() => {
+  const map = new Map<string, Permission[]>()
+  for (const p of allPermissions.value) {
+    const list = map.get(p.resource)
+    if (list) {
+      list.push(p)
+    } else {
+      map.set(p.resource, [p])
+    }
+  }
+  const known = Object.keys(RESOURCE_LABELS)
+    .filter((r) => map.has(r))
+    .map((r) => ({ resource: r, label: RESOURCE_LABELS[r], perms: map.get(r)! }))
+  const unknown = Array.from(map.entries())
+    .filter(([r]) => !RESOURCE_LABELS[r])
+    .map(([resource, perms]) => ({ resource, label: resource, perms }))
+  return [...known, ...unknown]
+})
 
 async function fetchData(): Promise<void> {
   roles.value = await getRoles()
@@ -55,6 +100,14 @@ function handleEdit(role: Role): void {
 function handleEditPermissions(role: Role): void {
   selectedRole.value = role
   selectedPermissionIds.value = role.permissions.map((p: { id: number }) => p.id)
+  isReadOnlyMode.value = false
+  showPermissionEditor.value = true
+}
+
+function handleViewPermissions(role: Role): void {
+  selectedRole.value = role
+  selectedPermissionIds.value = role.permissions.map((p: { id: number }) => p.id)
+  isReadOnlyMode.value = true
   showPermissionEditor.value = true
 }
 
@@ -181,6 +234,13 @@ onMounted(fetchData)
                 >
                   删除
                 </button>
+                <button
+                  v-if="role.is_system"
+                  class="text-sm text-blue-600 transition-colors hover:text-blue-700"
+                  @click="handleViewPermissions(role)"
+                >
+                  查看权限
+                </button>
               </div>
             </td>
           </tr>
@@ -236,26 +296,32 @@ onMounted(fetchData)
       </div>
     </div>
 
-    <!-- 编辑权限弹窗 -->
+    <!-- 权限弹窗（查看/编辑） -->
     <div v-if="showPermissionEditor" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
       <div class="w-full max-w-lg rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">
-          编辑权限 - {{ selectedRole?.display_name }}
+          {{ isReadOnlyMode ? '查看权限' : '编辑权限' }} - {{ selectedRole?.display_name }}
         </h3>
-        <div class="mb-4 max-h-64 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
-          <div
-            v-for="perm in allPermissions"
-            :key="perm.id"
-            class="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-slate-50"
-          >
-            <input
-              type="checkbox"
-              :checked="selectedPermissionIds.includes(perm.id)"
-              class="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500/20"
-              @change="togglePermission(perm.id)"
-            />
-            <span class="text-sm font-medium text-slate-700">{{ perm.name }}</span>
-            <span class="text-xs text-slate-400">({{ perm.code }})</span>
+        <div class="mb-4 max-h-80 overflow-y-auto rounded-lg border border-slate-200 bg-white p-3">
+          <div v-for="group in groupedPermissions" :key="group.resource" class="mb-3 last:mb-0">
+            <div class="mb-1 px-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {{ group.label }}
+            </div>
+            <div
+              v-for="perm in group.perms"
+              :key="perm.id"
+              class="flex items-center gap-3 rounded-lg px-3 py-2 transition-colors hover:bg-slate-50"
+            >
+              <input
+                type="checkbox"
+                :checked="selectedPermissionIds.includes(perm.id)"
+                :disabled="isReadOnlyMode"
+                class="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500/20 disabled:opacity-50"
+                @change="togglePermission(perm.id)"
+              />
+              <span class="text-sm font-medium text-slate-700">{{ perm.name }}</span>
+              <span class="text-xs text-slate-400">({{ perm.code }})</span>
+            </div>
           </div>
         </div>
         <div class="flex justify-end gap-3">
@@ -263,9 +329,10 @@ onMounted(fetchData)
             class="rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200"
             @click="showPermissionEditor = false"
           >
-            取消
+            {{ isReadOnlyMode ? '关闭' : '取消' }}
           </button>
           <button
+            v-if="!isReadOnlyMode"
             class="rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 px-4 py-2 text-sm font-medium text-white shadow-md shadow-purple-500/20 transition-all hover:from-purple-500 hover:to-blue-500 active:scale-[0.98]"
             @click="handleSavePermissions"
           >
