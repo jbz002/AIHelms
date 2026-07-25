@@ -12,7 +12,6 @@ from core.exception_handlers import register_exception_handlers
 from core.idempotency import IdempotencyMiddleware
 from core.logging import setup_logging
 from core.migrate import run_migrations
-from services.auth_service import ensure_super_admin
 from services.docs_mcp_event_subscriber import run_docs_mcp_event_subscriber
 
 logger = logging.getLogger(__name__)
@@ -24,7 +23,6 @@ setup_logging()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await run_migrations()
-    await ensure_super_admin(settings.super_admin_password)
     # S8 · 内置 skills 异步同步（不阻塞启动；失败仅告警）
     if settings.builtin_skills_enabled and settings.builtin_skills_sync_on_startup:
         try:
@@ -50,9 +48,9 @@ app = FastAPI(
 
 ## 认证方式
 
-所有接口（除 `/api/v1/auth/login` 和 `/api/v1/config/public`）需要在请求头携带 Bearer Token 或 API Key：
+所有接口（除 `/api/v1/auth/login/oauth2` 和 `/api/v1/config/public`）需要在请求头携带 Bearer Token 或 API Key：
 
-- **JWT Token**：通过 `/api/v1/auth/login` 获取，`Authorization: Bearer <token>`
+- **JWT Token**：通过 `/api/v1/auth/login/oauth2`（AI Hub OAuth2 SSO）获取，`Authorization: Bearer <token>`
 - **API Key**：在管理后台「安全 → API Key」创建，`Authorization: Bearer <api_key>`
 """,
     version="0.1.0",

@@ -2,8 +2,8 @@
 import { onMounted, onUnmounted, ref, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { useAuth, changePassword } from '@aihelms/shared'
-import { LogOut, Settings, KeyRound, ChevronDown } from 'lucide-vue-next'
+import { useAuth } from '@aihelms/shared'
+import { LogOut, Settings, ChevronDown } from 'lucide-vue-next'
 import LanguageSwitcher from '@aihelms/shared/src/components/LanguageSwitcher.vue'
 
 const router = useRouter()
@@ -73,44 +73,6 @@ function updateDropdownPosition(): void {
     right: `${window.innerWidth - rect.right}px`,
   }
 }
-
-function closeDropdown(): void {
-  showDropdown.value = false
-}
-
-// 修改密码弹窗
-const showPasswordModal = ref(false)
-const passwordForm = ref({ oldPassword: '', newPassword: '', confirmPassword: '' })
-const passwordError = ref('')
-const passwordLoading = ref(false)
-
-function handleOpenPasswordModal(): void {
-  showDropdown.value = false
-  showPasswordModal.value = true
-}
-
-async function handleChangePassword(): Promise<void> {
-  passwordError.value = ''
-  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
-    passwordError.value = t('layout.password.mismatch')
-    return
-  }
-  passwordLoading.value = true
-  try {
-    await changePassword({
-      old_password: passwordForm.value.oldPassword,
-      new_password: passwordForm.value.newPassword,
-    })
-    showPasswordModal.value = false
-    passwordForm.value = { oldPassword: '', newPassword: '', confirmPassword: '' }
-    logout()
-  } catch (e: unknown) {
-    const err = e as { message?: string }
-    passwordError.value = err.message || t('layout.password.failed')
-  } finally {
-    passwordLoading.value = false
-  }
-}
 </script>
 
 <template>
@@ -166,61 +128,12 @@ async function handleChangePassword(): Promise<void> {
       <div v-if="showDropdown" ref="dropdownRef"
         class="fixed z-[9999] w-48 rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
         :style="dropdownStyle">
-        <button @click="handleOpenPasswordModal"
-          class="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-50">
-          <KeyRound class="h-4 w-4" />
-          {{ t('layout.password.change') }}
-        </button>
-        <div class="my-1 border-t border-slate-100" />
         <button @click="handleLogout"
           class="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-red-500 hover:bg-slate-50">
           <LogOut class="h-4 w-4" />
           {{ t('layout.logout') }}
         </button>
       </div>
-    </Teleport>
-
-    <!-- 修改密码弹窗 -->
-    <Teleport to="body">
-      <Transition enter-active-class="transition duration-200 ease-out"
-        enter-from-class="opacity-0" enter-to-class="opacity-100"
-        leave-active-class="transition duration-150 ease-in"
-        leave-from-class="opacity-100" leave-to-class="opacity-0">
-        <div v-if="showPasswordModal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-          @click.self="showPasswordModal = false">
-          <div class="w-[400px] rounded-xl bg-white p-6 shadow-xl">
-            <h3 class="mb-4 text-lg font-semibold text-slate-900">{{ t('layout.password.change') }}</h3>
-            <form @submit.prevent="handleChangePassword" class="space-y-4">
-              <div>
-                <label class="mb-1 block text-sm text-slate-600">{{ t('layout.password.current') }}</label>
-                <input v-model="passwordForm.oldPassword" type="password" required
-                  class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400" />
-              </div>
-              <div>
-                <label class="mb-1 block text-sm text-slate-600">{{ t('layout.password.new') }}</label>
-                <input v-model="passwordForm.newPassword" type="password" required minlength="8"
-                  class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400" />
-              </div>
-              <div>
-                <label class="mb-1 block text-sm text-slate-600">{{ t('layout.password.confirm') }}</label>
-                <input v-model="passwordForm.confirmPassword" type="password" required minlength="8"
-                  class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-400" />
-              </div>
-              <p v-if="passwordError" class="text-sm text-red-500">{{ passwordError }}</p>
-              <div class="flex justify-end gap-2 pt-2">
-                <button type="button" @click="showPasswordModal = false"
-                  class="rounded-lg px-4 py-2 text-sm text-slate-600 hover:bg-slate-100">
-                  {{ t('common.action.cancel') }}
-                </button>
-                <button type="submit" :disabled="passwordLoading"
-                  class="rounded-lg bg-purple-600 px-4 py-2 text-sm text-white hover:bg-purple-700 disabled:opacity-50">
-                  {{ passwordLoading ? t('layout.password.submitting') : t('layout.password.confirmChange') }}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </Transition>
     </Teleport>
   </div>
 </template>

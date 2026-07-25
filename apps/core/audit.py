@@ -29,8 +29,6 @@ PATH_WHITELIST_PREFIXES = (
     "/api/v1/ping",
 )
 
-LOGIN_PATH = "/api/v1/auth/login"
-
 SENSITIVE_KEYS = {
     "password",
     "hashed_password",
@@ -165,26 +163,15 @@ def _schedule_audit(
 ) -> None:
     path = scope.get("path", "")
     method = scope.get("method", "")
-    is_login = path == LOGIN_PATH
 
     state = scope.get("state") or {}
     user = state.get("current_user")
 
-    if is_login:
-        if status_code == 200 and user:
-            user_id = user["id"]
-            username = user["username"]
-            identity_type = user.get("identity_type", "user")
-        else:
-            user_id = 0
-            username = _extract_username_from_body(body_bytes)
-            identity_type = "user"
-    else:
-        if not user or not user.get("is_admin"):
-            return
-        user_id = user["id"]
-        username = user["username"]
-        identity_type = user.get("identity_type", "user")
+    if not user or not user.get("is_admin"):
+        return
+    user_id = user["id"]
+    username = user["username"]
+    identity_type = user.get("identity_type", "user")
 
     route = scope.get("route")
     summary = getattr(route, "summary", None) if route else None
@@ -228,20 +215,6 @@ def _get_client_ip(scope, headers: dict) -> str:
     client = scope.get("client")
     if client:
         return str(client[0])[:64]
-    return ""
-
-
-def _extract_username_from_body(body_bytes: bytes) -> str:
-    if not body_bytes:
-        return ""
-    try:
-        data = json.loads(body_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError):
-        return ""
-    if isinstance(data, dict):
-        username = data.get("username")
-        if isinstance(username, str):
-            return username[:64]
     return ""
 
 

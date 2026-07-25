@@ -2,8 +2,6 @@ import commonZh from '@aihelms/shared/src/i18n/locales/zh-CN/common.json'
 import errorsZh from '@aihelms/shared/src/i18n/locales/zh-CN/errors.json'
 import commonEn from '@aihelms/shared/src/i18n/locales/en-US/common.json'
 import errorsEn from '@aihelms/shared/src/i18n/locales/en-US/errors.json'
-import loginZh from './zh-CN/login.json'
-import loginEn from './en-US/login.json'
 import layoutZh from './zh-CN/layout.json'
 import layoutEn from './en-US/layout.json'
 import modelSquareZh from './zh-CN/modelSquare.json'
@@ -17,7 +15,6 @@ export const messages = {
   'zh-CN': {
     ...commonZh,
     ...errorsZh,
-    ...loginZh,
     ...layoutZh,
     ...modelSquareZh,
     ...marketZh,
@@ -26,7 +23,6 @@ export const messages = {
   'en-US': {
     ...commonEn,
     ...errorsEn,
-    ...loginEn,
     ...layoutEn,
     ...modelSquareEn,
     ...marketEn,

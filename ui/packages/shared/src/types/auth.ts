@@ -1,8 +1,3 @@
-export interface LoginParams {
-  username: string
-  password: string
-}
-
 export interface TokenData {
   access_token: string
   token_type: string
@@ -21,9 +16,4 @@ export interface CurrentUser {
   permissions: string[]
   roles: { id: number; name: string; display_name: string }[]
   departments?: { id: number; name: string }[]
-}
-
-export interface ChangePasswordParams {
-  old_password: string
-  new_password: string
 }

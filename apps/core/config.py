@@ -38,7 +38,6 @@ class Settings(BaseSettings):
     # 应用
     secret_key: str = ""
     access_token_expire_minutes: int = 60 * 24
-    super_admin_password: str = ""
 
     # AI Hub 统一鉴权(SSO)
     ai_hub_url: str = (
