@@ -30,7 +30,7 @@ celery_app.conf.beat_schedule = {
     },
     "sync-llm-logs": {
         "task": "llm_log.sync",
-        "schedule": settings.llm_log_sync_interval_minutes * 60,
+        "schedule": 1.0,
     },
     "cleanup-llm-logs": {
         "task": "llm_log.cleanup",
@@ -42,7 +42,7 @@ celery_app.conf.beat_schedule = {
     },
     "efficiency-aggregate": {
         "task": "efficiency.aggregate",
-        "schedule": 5 * 60,
+        "schedule": 30.0,
     },
     "cleanup-export-tasks": {
         "task": "export_task.cleanup",

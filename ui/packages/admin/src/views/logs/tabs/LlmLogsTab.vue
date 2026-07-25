@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, onMounted } from 'vue'
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { Download } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import {
@@ -103,24 +103,39 @@ watch(visibleModelOptions, (options) => {
 async function loadLogs(): Promise<void> {
   loading.value = true
   try {
-    const res = await getLlmLogs({
-      page: page.value,
-      page_size: pageSize.value,
-      start_time: filterStartTime.value || undefined,
-      end_time: filterEndTime.value || undefined,
-      user_id: filterUserId.value === '' ? undefined : Number(filterUserId.value),
-      ai_key_id: filterAiKeyId.value === '' ? undefined : Number(filterAiKeyId.value),
-      model: routeModels.value.length ? undefined : filterModel.value || undefined,
-      models: routeModels.value.length ? routeModels.value.join(',') : undefined,
-      provider: filterProvider.value || undefined,
-      status: filterStatus.value ? (filterStatus.value as 'success' | 'failure') : undefined,
-    })
+    const res = await getLlmLogs(buildLogQuery())
     logs.value = res.items
     total.value = res.total
   } catch (e) {
     toast.error((e as { message?: string }).message || '加载失败')
   } finally {
     loading.value = false
+  }
+}
+
+// 静默刷新：不动 loading，避免表格整表重绘闪屏
+async function silentRefresh(): Promise<void> {
+  try {
+    const res = await getLlmLogs(buildLogQuery())
+    logs.value = res.items
+    total.value = res.total
+  } catch {
+    /* ignore */
+  }
+}
+
+function buildLogQuery() {
+  return {
+    page: page.value,
+    page_size: pageSize.value,
+    start_time: filterStartTime.value || undefined,
+    end_time: filterEndTime.value || undefined,
+    user_id: filterUserId.value === '' ? undefined : Number(filterUserId.value),
+    ai_key_id: filterAiKeyId.value === '' ? undefined : Number(filterAiKeyId.value),
+    model: routeModels.value.length ? undefined : filterModel.value || undefined,
+    models: routeModels.value.length ? routeModels.value.join(',') : undefined,
+    provider: filterProvider.value || undefined,
+    status: filterStatus.value ? (filterStatus.value as 'success' | 'failure') : undefined,
   }
 }
 
@@ -231,10 +246,23 @@ function userLabel(log: LlmLog): string {
   return `${log.user.display_name || log.user.username}${dept}`
 }
 
+let refreshTimer: ReturnType<typeof setInterval> | null = null
+
 onMounted(() => {
   applyRouteFilters()
   loadFilters()
   loadLogs()
+  // 实时刷新：1 秒轮询，loading 时跳过避免请求堆叠
+  refreshTimer = setInterval(() => {
+    if (!loading.value) silentRefresh()
+  }, 1000)
+})
+
+onUnmounted(() => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
 })
 </script>
 
