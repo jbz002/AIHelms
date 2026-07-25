@@ -25,6 +25,12 @@ export function getAgents(
   return request<AgentListResult>('/api/v1/agents', { params })
 }
 
+export function getPublishedAgents(pageSize: number = 100): Promise<AgentListResult> {
+  return request<AgentListResult>('/api/v1/agents/published', {
+    params: { page: 1, page_size: pageSize },
+  })
+}
+
 export function getAgentById(id: number): Promise<Agent> {
   return request<Agent>(`/api/v1/agents/${id}`)
 }

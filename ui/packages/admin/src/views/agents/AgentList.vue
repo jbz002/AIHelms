@@ -9,6 +9,7 @@ import {
   deleteAgentCategory,
   createAgentPlatform,
   deleteAgentPlatform,
+  deleteAgent,
   type Agent,
   type AgentCategory,
   type AgentPlatform,
@@ -27,6 +28,7 @@ const platforms = ref<AgentPlatform[]>([])
 const loading = ref(false)
 const selectedCategory = ref<string | null>(null)
 const selectedPlatform = ref<string | null>(null)
+const selectedAgent = ref<Agent | null>(null)
 
 const showCategoryForm = ref(false)
 const categoryFormName = ref('')
@@ -36,6 +38,7 @@ const platformFormLabel = ref('')
 
 const deleteCategoryTarget = ref<AgentCategory | null>(null)
 const deletePlatformTarget = ref<AgentPlatform | null>(null)
+const deleteAgentTarget = ref<Agent | null>(null)
 
 const categoriesWithCount = computed(() => {
   const counts = new Map<string, number>()
@@ -75,12 +78,12 @@ async function loadData(): Promise<void> {
   }
 }
 
-function openDetail(agent: Agent): void {
-  router.push(`/agents/${agent.id}`)
-}
-
 function openCreate(): void {
   router.push('/agents/new')
+}
+
+function openEdit(agent: Agent): void {
+  router.push(`/agents/${agent.id}`)
 }
 
 async function handleCreateCategory(): Promise<void> {
@@ -146,6 +149,19 @@ async function confirmDeletePlatform(): Promise<void> {
   }
 }
 
+async function confirmDeleteAgent(): Promise<void> {
+  if (!deleteAgentTarget.value) return
+  try {
+    await deleteAgent(deleteAgentTarget.value.id)
+    toast.success('智能体删除成功')
+    if (selectedAgent.value?.id === deleteAgentTarget.value.id) selectedAgent.value = null
+    deleteAgentTarget.value = null
+    await loadData()
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '删除失败')
+  }
+}
+
 function statusColor(status: string): string {
   if (status === 'online') return 'bg-green-50 text-green-600'
   if (status === 'offline') return 'bg-slate-100 text-slate-500'
@@ -160,136 +176,187 @@ onMounted(loadData)
 </script>
 
 <template>
-  <div>
-    <div class="mb-6 flex items-center justify-between">
-      <div>
-        <h1 class="text-2xl font-bold text-slate-900">智能体管理</h1>
-        <p class="mt-1 text-sm text-slate-500">纳管外部 Agent 平台（Dify / Coze / 自研等），用户通过 web 端使用</p>
-      </div>
-      <button
-        v-if="hasPermission('agent:create')"
-        class="flex items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-500"
-        @click="openCreate"
-      >
-        <Plus class="h-4 w-4" />
-        新建智能体
-      </button>
-    </div>
+  <div class="flex h-full flex-col">
+    <div class="flex flex-1 gap-4 overflow-hidden">
+      <!-- 左栏：列表 -->
+      <div class="flex w-80 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm">
+        <div class="flex h-12 shrink-0 items-center justify-between border-b border-slate-200/60 px-4">
+          <h3 class="text-sm font-semibold text-slate-900">智能体</h3>
+          <button
+            v-if="hasPermission('agent:create')"
+            class="flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700"
+            @click="openCreate"
+          >
+            <Plus class="h-3 w-3" /> 新建
+          </button>
+        </div>
 
-    <!-- 分类筛选条 -->
-    <div class="mb-3 flex flex-wrap items-center gap-2">
-      <span class="text-xs font-medium text-slate-400">分类：</span>
-      <button
-        class="rounded-full px-3 py-1 text-xs font-medium transition-colors"
-        :class="!selectedCategory ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-        @click="selectedCategory = null"
-      >
-        全部 ({{ agents.length }})
-      </button>
-      <div v-for="cat in categoriesWithCount" :key="cat.id" class="group flex items-center">
-        <button
-          class="rounded-full px-3 py-1 text-xs font-medium transition-colors"
-          :class="selectedCategory === cat.name ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-          @click="selectedCategory = cat.name"
-        >
-          {{ cat.name }} ({{ cat.count }})
-        </button>
-        <button
-          v-if="hasPermission('agent:delete')"
-          class="ml-1 hidden text-slate-400 hover:text-red-500 group-hover:inline-block"
-          @click="deleteCategoryTarget = cat"
-        >
-          <X class="h-3 w-3" />
-        </button>
-      </div>
-      <button
-        v-if="hasPermission('agent:create')"
-        class="rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs text-slate-500 hover:border-purple-500 hover:text-purple-600"
-        @click="showCategoryForm = true"
-      >
-        + 新建分类
-      </button>
-    </div>
-
-    <!-- 平台筛选条 -->
-    <div class="mb-5 flex flex-wrap items-center gap-2">
-      <span class="text-xs font-medium text-slate-400">平台：</span>
-      <button
-        class="rounded-full px-3 py-1 text-xs font-medium transition-colors"
-        :class="!selectedPlatform ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-        @click="selectedPlatform = null"
-      >
-        全部
-      </button>
-      <div v-for="plat in platformsWithCount" :key="plat.id" class="group flex items-center">
-        <button
-          class="rounded-full px-3 py-1 text-xs font-medium transition-colors"
-          :class="selectedPlatform === plat.name ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-          @click="selectedPlatform = plat.name"
-        >
-          {{ plat.label }} ({{ plat.count }})
-        </button>
-        <button
-          v-if="hasPermission('agent:delete')"
-          class="ml-1 hidden text-slate-400 hover:text-red-500 group-hover:inline-block"
-          @click="deletePlatformTarget = plat"
-        >
-          <X class="h-3 w-3" />
-        </button>
-      </div>
-      <button
-        v-if="hasPermission('agent:create')"
-        class="rounded-full border border-dashed border-slate-300 px-3 py-1 text-xs text-slate-500 hover:border-blue-500 hover:text-blue-600"
-        @click="showPlatformForm = true"
-      >
-        + 新建平台
-      </button>
-    </div>
-
-    <!-- 卡片网格 -->
-    <div v-if="loading" class="py-20 text-center text-sm text-slate-400">加载中...</div>
-    <div v-else-if="filteredAgents.length === 0" class="py-20 text-center text-sm text-slate-400">
-      暂无智能体，点击右上角"新建智能体"开始
-    </div>
-    <div v-else class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      <div
-        v-for="agent in filteredAgents"
-        :key="agent.id"
-        class="group cursor-pointer rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-purple-300 hover:shadow-md"
-        @click="openDetail(agent)"
-      >
-        <div class="mb-3 flex items-start justify-between">
-          <div class="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-purple-50 to-blue-50">
-            <HostedIcon :src="agent.icon_url" :size="24" :alt="agent.name" />
-          </div>
-          <div class="flex flex-col items-end gap-1">
-            <span class="rounded-full px-2 py-0.5 text-[10px] font-medium" :class="statusColor(agent.status)">
-              {{ agent.status }}
-            </span>
-            <span v-if="agent.is_published" class="rounded-full bg-green-50 px-2 py-0.5 text-[10px] text-green-600">
-              已发布
-            </span>
-            <span v-if="agent.requires_approval" class="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] text-amber-600">
-              需审批
-            </span>
+        <!-- 分类导航 -->
+        <div class="border-b border-slate-100 px-2 py-1.5">
+          <div class="flex flex-wrap items-center gap-1">
+            <button
+              class="rounded-md px-3 py-1.5 text-xs font-medium"
+              :class="!selectedCategory ? 'bg-purple-50 text-purple-700' : 'text-slate-500 hover:bg-slate-50'"
+              @click="selectedCategory = null"
+            >
+              全部 ({{ agents.length }})
+            </button>
+            <div v-for="cat in categoriesWithCount" :key="cat.id" class="group flex items-center">
+              <button
+                class="rounded-md px-3 py-1.5 text-xs font-medium"
+                :class="selectedCategory === cat.name ? 'bg-purple-50 text-purple-700' : 'text-slate-500 hover:bg-slate-50'"
+                @click="selectedCategory = cat.name"
+              >
+                {{ cat.name }} ({{ cat.count }})
+              </button>
+              <button
+                v-if="hasPermission('agent:delete')"
+                class="ml-0.5 hidden text-slate-400 hover:text-red-500 group-hover:inline-block"
+                @click="deleteCategoryTarget = cat"
+              >
+                <X class="h-3 w-3" />
+              </button>
+            </div>
+            <button
+              v-if="hasPermission('agent:create')"
+              class="rounded-md px-2 py-1.5 text-xs text-purple-500 hover:text-purple-600"
+              @click="showCategoryForm = true"
+            >
+              + 新建分类
+            </button>
           </div>
         </div>
-        <h3 class="mb-1 truncate text-base font-semibold text-slate-900 group-hover:text-purple-700">
-          {{ agent.name }}
-        </h3>
-        <p class="mb-3 line-clamp-2 text-xs text-slate-500" :title="agent.description">
-          {{ agent.description || '无描述' }}
-        </p>
-        <div class="flex flex-wrap gap-1">
-          <span class="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-600">
-            {{ getPlatformLabel(agent.platform) }}
-          </span>
-          <span class="rounded bg-purple-50 px-1.5 py-0.5 text-[10px] text-purple-600">
-            {{ agent.category }}
-          </span>
-          <span v-for="tag in agent.tags.slice(0, 2)" :key="tag" class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500">
-            {{ tag }}
-          </span>
+
+        <!-- 平台导航 -->
+        <div class="border-b border-slate-100 px-2 py-1.5">
+          <div class="flex flex-wrap items-center gap-1">
+            <button
+              class="rounded-md px-3 py-1.5 text-xs font-medium"
+              :class="!selectedPlatform ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:bg-slate-50'"
+              @click="selectedPlatform = null"
+            >
+              全部平台
+            </button>
+            <div v-for="plat in platformsWithCount" :key="plat.id" class="group flex items-center">
+              <button
+                class="rounded-md px-3 py-1.5 text-xs font-medium"
+                :class="selectedPlatform === plat.name ? 'bg-blue-50 text-blue-700' : 'text-slate-500 hover:bg-slate-50'"
+                @click="selectedPlatform = plat.name"
+              >
+                {{ plat.label }} ({{ plat.count }})
+              </button>
+              <button
+                v-if="hasPermission('agent:delete')"
+                class="ml-0.5 hidden text-slate-400 hover:text-red-500 group-hover:inline-block"
+                @click="deletePlatformTarget = plat"
+              >
+                <X class="h-3 w-3" />
+              </button>
+            </div>
+            <button
+              v-if="hasPermission('agent:create')"
+              class="rounded-md px-2 py-1.5 text-xs text-blue-500 hover:text-blue-600"
+              @click="showPlatformForm = true"
+            >
+              + 新建平台
+            </button>
+          </div>
+        </div>
+
+        <!-- 列表 -->
+        <div class="flex-1 overflow-y-auto p-2">
+          <div v-if="loading" class="py-10 text-center text-xs text-slate-400">加载中...</div>
+          <div v-else-if="filteredAgents.length === 0" class="py-10 text-center text-xs text-slate-400">暂无智能体</div>
+          <div
+            v-for="agent in filteredAgents"
+            v-else
+            :key="agent.id"
+            class="mb-1 flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors"
+            :class="selectedAgent?.id === agent.id ? 'bg-purple-50 ring-1 ring-purple-200' : 'hover:bg-slate-50'"
+            @click="selectedAgent = agent"
+          >
+            <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100">
+              <HostedIcon :src="agent.icon_url" :size="20" :alt="agent.name" />
+            </div>
+            <div class="min-w-0 flex-1">
+              <span
+                class="block truncate text-sm font-medium"
+                :class="selectedAgent?.id === agent.id ? 'text-purple-700' : 'text-slate-900'"
+              >
+                {{ agent.name }}
+              </span>
+              <div class="mt-0.5 flex flex-wrap items-center gap-1">
+                <span class="rounded bg-blue-50 px-1 py-0.5 text-[10px] text-blue-600">{{ getPlatformLabel(agent.platform) }}</span>
+                <span v-if="agent.is_published" class="rounded bg-green-50 px-1 py-0.5 text-[10px] text-green-600">已发布</span>
+                <span v-if="agent.requires_approval" class="rounded bg-amber-50 px-1 py-0.5 text-[10px] text-amber-600">需审批</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右栏：详情 -->
+      <div class="flex flex-1 flex-col overflow-hidden rounded-2xl border border-slate-200/60 bg-white shadow-sm">
+        <template v-if="selectedAgent">
+          <div class="flex h-12 shrink-0 items-center justify-between border-b border-slate-200/60 px-4">
+            <div class="flex min-w-0 items-center gap-3">
+              <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100">
+                <HostedIcon :src="selectedAgent.icon_url" :size="20" :alt="selectedAgent.name" />
+              </div>
+              <h3 class="truncate text-sm font-semibold text-slate-900">{{ selectedAgent.name }}</h3>
+              <span class="rounded px-1.5 py-0.5 text-[10px] font-medium" :class="statusColor(selectedAgent.status)">
+                {{ selectedAgent.status }}
+              </span>
+              <span v-if="selectedAgent.is_published" class="rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-600">已发布</span>
+              <span v-if="selectedAgent.requires_approval" class="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">需审批</span>
+            </div>
+            <div class="flex shrink-0 gap-1.5">
+              <button
+                v-if="hasPermission('agent:update')"
+                class="rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                @click="openEdit(selectedAgent)"
+              >
+                编辑
+              </button>
+              <button
+                v-if="hasPermission('agent:delete')"
+                class="rounded-md bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-100"
+                @click="deleteAgentTarget = selectedAgent"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+
+          <div class="flex-1 overflow-y-auto p-4">
+            <div class="mb-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+              <div><span class="text-slate-500">平台：</span><span class="text-slate-700">{{ getPlatformLabel(selectedAgent.platform) }}</span></div>
+              <div><span class="text-slate-500">分类：</span><span class="text-slate-700">{{ selectedAgent.category || '-' }}</span></div>
+              <div><span class="text-slate-500">状态：</span><span class="text-slate-700">{{ selectedAgent.status }}</span></div>
+              <div><span class="text-slate-500">使用人数：</span><span class="text-slate-700">{{ selectedAgent.user_count }}</span></div>
+              <div><span class="text-slate-500">调用次数：</span><span class="text-slate-700">{{ selectedAgent.call_count }}</span></div>
+              <div><span class="text-slate-500">创建时间：</span><span class="text-slate-700">{{ selectedAgent.created_at || '-' }}</span></div>
+              <div class="col-span-2">
+                <span class="text-slate-500">Chat URL：</span>
+                <span class="break-all font-mono text-slate-700">{{ selectedAgent.chat_url || '-' }}</span>
+              </div>
+              <div v-if="selectedAgent.tags?.length" class="col-span-2">
+                <span class="text-slate-500">标签：</span>
+                <span
+                  v-for="tag in selectedAgent.tags"
+                  :key="tag"
+                  class="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-slate-600"
+                >{{ tag }}</span>
+              </div>
+            </div>
+            <div class="mb-2 text-xs font-medium text-slate-500">描述</div>
+            <p class="whitespace-pre-wrap text-sm leading-relaxed text-slate-700">
+              {{ selectedAgent.description || '暂无描述' }}
+            </p>
+          </div>
+        </template>
+        <div v-else class="flex h-full items-center justify-center text-sm text-slate-400">
+          请从左侧选择智能体查看详情
         </div>
       </div>
     </div>
@@ -348,6 +415,13 @@ onMounted(loadData)
       :message="`确认删除平台 ${deletePlatformTarget?.label}？该平台下的智能体不会被删除。`"
       @confirm="confirmDeletePlatform"
       @cancel="deletePlatformTarget = null"
+    />
+    <ConfirmDialog
+      :visible="!!deleteAgentTarget"
+      title="删除智能体"
+      :message="`确认删除 ${deleteAgentTarget?.name}？此操作不可恢复。`"
+      @confirm="confirmDeleteAgent"
+      @cancel="deleteAgentTarget = null"
     />
   </div>
 </template>

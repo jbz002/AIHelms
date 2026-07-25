@@ -48,7 +48,6 @@ const navItems = [
   { path: '/', labelKey: 'layout.nav.identity' },
   { path: '/market', labelKey: 'layout.nav.market' },
   { path: '/models', labelKey: 'layout.nav.models' },
-  { path: '/agents', labelKey: 'layout.nav.agents' },
 ]
 
 // 下拉菜单

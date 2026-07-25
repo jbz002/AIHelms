@@ -6,8 +6,6 @@ import loginZh from './zh-CN/login.json'
 import loginEn from './en-US/login.json'
 import layoutZh from './zh-CN/layout.json'
 import layoutEn from './en-US/layout.json'
-import agentZh from './zh-CN/agent.json'
-import agentEn from './en-US/agent.json'
 import modelSquareZh from './zh-CN/modelSquare.json'
 import modelSquareEn from './en-US/modelSquare.json'
 import marketZh from './zh-CN/market.json'
@@ -21,7 +19,6 @@ export const messages = {
     ...errorsZh,
     ...loginZh,
     ...layoutZh,
-    ...agentZh,
     ...modelSquareZh,
     ...marketZh,
     ...identityZh,
@@ -31,7 +28,6 @@ export const messages = {
     ...errorsEn,
     ...loginEn,
     ...layoutEn,
-    ...agentEn,
     ...modelSquareEn,
     ...marketEn,
     ...identityEn,

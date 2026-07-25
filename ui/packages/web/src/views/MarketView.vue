@@ -1,22 +1,23 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getMyKeys, search, request, createResourceApplication, LabelBadge } from '@aihelms/shared'
-import type { AiKey, Skill, McpServer, SearchResultItem, SkillLabelGrant } from '@aihelms/shared'
-import { Server, Sparkles, CheckCircle2, Search, X, ExternalLink, Flame } from 'lucide-vue-next'
+import { getMyKeys, search, request, createResourceApplication, getPublishedAgents, recordAgentUsage, LabelBadge } from '@aihelms/shared'
+import type { AiKey, Skill, McpServer, Agent, SearchResultItem, SkillLabelGrant } from '@aihelms/shared'
+import { Server, Sparkles, CheckCircle2, Search, X, ExternalLink, Flame, Bot } from 'lucide-vue-next'
 import * as lucideIcons from 'lucide-vue-next'
 import SkillInstallDialog from '../components/SkillInstallDialog.vue'
 
-type MarketItem = (Skill & { _type: 'skill' }) | (McpServer & { _type: 'mcp' })
+type MarketItem = (Skill & { _type: 'skill' }) | (McpServer & { _type: 'mcp' }) | (Agent & { _type: 'agent' })
 
 const items = ref<MarketItem[]>([])
 const mySkills = ref<number[]>([])
 const myMcps = ref<number[]>([])
+const myAgents = ref<number[]>([])
 const isLoading = ref(true)
 const searchQuery = ref('')
 const searchResults = ref<SearchResultItem[]>([])
 const isSearching = ref(false)
-const typeFilter = ref<'all' | 'skill' | 'mcp' | 'tool'>('all')
+const typeFilter = ref<'all' | 'skill' | 'mcp' | 'agent'>('all')
 const sortMode = ref<'latest' | 'usage'>('latest')
 const { t } = useI18n()
 const categoryFilter = ref('')
@@ -57,7 +58,7 @@ const backendResults = computed<MarketItem[]>(() => {
   // Map backend SearchResultItem back to MarketItem-like structure for template
   return searchResults.value.map(r => {
     const meta = r.metadata as Record<string, unknown> | undefined
-    const type = r.entity_type === 'skill' ? 'skill' : 'mcp'
+    const type = r.entity_type === 'skill' ? 'skill' : r.entity_type === 'agent' ? 'agent' : 'mcp'
     return {
       _type: type,
       name: r.name,
@@ -96,12 +97,14 @@ const displayItems = computed<MarketItem[]>(() => {
   return sortItems(filtered)
 })
 
-function itemToType(item: MarketItem): 'skill' | 'mcp' {
+function itemToType(item: MarketItem): 'skill' | 'mcp' | 'agent' {
   return item._type
 }
 
 function isOwned(item: MarketItem): boolean {
-  return item._type === 'skill' ? mySkills.value.includes(item.id) : myMcps.value.includes(item.id)
+  if (item._type === 'skill') return mySkills.value.includes(item.id)
+  if (item._type === 'agent') return myAgents.value.includes(item.id)
+  return myMcps.value.includes(item.id)
 }
 
 // S4 · 治理 Label（仅 skill 携带）
@@ -128,16 +131,23 @@ function getSkillIcon(item: MarketItem): string {
   return ''
 }
 
+function getAgentIcon(item: MarketItem): string {
+  if (item._type === 'agent') return (item as unknown as Agent).icon || ''
+  return ''
+}
+
 function getLucideIcon(name: string) {
   return (lucideIcons as Record<string, unknown>)[name] || null
 }
 
 function getAuthor(item: MarketItem): string {
+  if (item._type === 'agent') return ''
   return item.author ?? ''
 }
 
 function getUsageCount(item: MarketItem): number {
   if (item._type === 'skill') return (item as Skill).install_count ?? 0
+  if (item._type === 'agent') return (item as Agent).user_count ?? 0
   return (item as McpServer).call_count ?? 0
 }
 
@@ -161,6 +171,7 @@ async function performSearch(keyword: string): Promise<void> {
     if (typeFilter.value === 'all' || typeFilter.value === 'mcp') {
       etypes.push('mcp_server')
     }
+    if (typeFilter.value === 'all' || typeFilter.value === 'agent') etypes.push('agent')
     const res = await search(
       { q: keyword.trim(), entity_types: etypes, category: categoryFilter.value || undefined },
       { page: 1, page_size: 50 },
@@ -236,6 +247,14 @@ function handleViewAccess(item: MarketItem) {
   loadMcpConfig(item.id)
 }
 
+function handleOpenAgent(item: MarketItem) {
+  if (item._type !== 'agent') return
+  const agent = item as unknown as Agent
+  if (!agent.chat_url) return
+  recordAgentUsage(agent.id, '').catch(() => {})
+  window.open(agent.chat_url, '_blank')
+}
+
 interface McpConnectConfig {
   name: string
   description: string
@@ -307,18 +326,21 @@ async function submitApply() {
 async function loadData() {
   isLoading.value = true
   try {
-    const [skillRes, mcpRes, keysRes] = await Promise.all([
+    const [skillRes, mcpRes, agentRes, keysRes] = await Promise.all([
       request<{ items: Skill[] }>('/api/v1/skills/published', { params: { page_size: 100 } }),
       request<{ items: McpServer[] }>('/api/v1/mcp/servers/published', { params: { page_size: 100 } }),
+      getPublishedAgents(100),
       getMyKeys(),
     ])
     const skillItems: MarketItem[] = (skillRes?.items ?? []).map(s => ({ ...s, _type: 'skill' as const }))
     const mcpItems: MarketItem[] = (mcpRes?.items ?? []).map(m => ({ ...m, _type: 'mcp' as const }))
-    items.value = [...skillItems, ...mcpItems]
+    const agentItems: MarketItem[] = (agentRes?.items ?? []).map(a => ({ ...a, _type: 'agent' as const }))
+    items.value = [...skillItems, ...mcpItems, ...agentItems]
 
     const mainKey = keysRes.personal?.find((k: AiKey) => k.key_type === 'personal_main')
     mySkills.value = mainKey?.skills ?? []
     myMcps.value = mainKey?.mcps ?? []
+    myAgents.value = mainKey?.agents ?? []
   } finally {
     isLoading.value = false
   }
@@ -340,13 +362,13 @@ onMounted(loadData)
       <div class="flex items-center gap-4">
         <div class="flex items-center gap-1 rounded-xl bg-white p-1 border border-slate-200/60">
           <button
-            v-for="opt in [{ key: 'all', label: '全部' }, { key: 'skill', label: 'Skill' }, { key: 'mcp', label: 'MCP' }]"
+            v-for="opt in [{ key: 'all', label: '全部' }, { key: 'skill', label: 'Skill' }, { key: 'mcp', label: 'MCP' }, { key: 'agent', label: t('market.filter.agent') }]"
             :key="opt.key"
             class="rounded-lg px-4 py-1.5 text-sm font-medium transition-all"
             :class="typeFilter === opt.key
               ? 'bg-gradient-to-r from-purple-500 to-blue-500 text-white shadow-sm'
               : 'text-slate-600 hover:text-slate-900'"
-            @click="typeFilter = opt.key as 'all' | 'skill' | 'mcp'"
+            @click="typeFilter = opt.key as 'all' | 'skill' | 'mcp' | 'agent'"
           >
             {{ opt.label }}
           </button>
@@ -357,7 +379,7 @@ onMounted(loadData)
             v-model="searchQuery"
             @input="handleSearchInput(($event.target as HTMLInputElement).value)"
             type="text"
-            placeholder="搜索 Skill / MCP ..."
+            :placeholder="t('market.search.placeholder')"
             class="w-full rounded-xl border border-slate-200/60 bg-white py-2 pl-9 pr-4 text-sm placeholder:text-slate-400 focus:border-purple-300 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
           />
         </div>
@@ -467,11 +489,12 @@ onMounted(loadData)
         <div class="mb-3 flex items-start justify-between">
           <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-100 to-blue-100">
             <component
-              :is="getLucideIcon(getIconUrl(item) || getSkillIcon(item))"
-              v-if="getLucideIcon(getIconUrl(item) || getSkillIcon(item))"
+              :is="getLucideIcon(getIconUrl(item) || getSkillIcon(item) || getAgentIcon(item))"
+              v-if="getLucideIcon(getIconUrl(item) || getSkillIcon(item) || getAgentIcon(item))"
               class="h-5 w-5 text-purple-600"
             />
             <Server v-else-if="item._type === 'mcp'" class="h-5 w-5 text-blue-600" />
+            <Bot v-else-if="item._type === 'agent'" class="h-5 w-5 text-emerald-600" />
             <Sparkles v-else class="h-5 w-5 text-purple-600" />
           </div>
           <div class="flex items-center gap-1.5">
@@ -486,9 +509,9 @@ onMounted(loadData)
             />
             <span
               class="rounded-md px-2 py-0.5 text-xs font-medium"
-              :class="item._type === 'skill' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'"
+              :class="item._type === 'skill' ? 'bg-purple-100 text-purple-700' : item._type === 'agent' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'"
             >
-              {{ item._type === 'skill' ? 'Skill' : 'MCP' }}
+              {{ item._type === 'skill' ? 'Skill' : item._type === 'agent' ? t('market.filter.agent') : 'MCP' }}
             </span>
           </div>
         </div>
@@ -535,6 +558,14 @@ onMounted(loadData)
           >
             <ExternalLink class="h-3 w-3" />
             查看接入信息
+          </button>
+          <button
+            v-else-if="(isOwned(item) || !item.requires_approval) && item._type === 'agent' && (item as unknown as Agent).chat_url"
+            class="flex items-center gap-1 rounded-lg bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-1.5 text-xs font-medium text-white shadow-sm transition-transform hover:scale-105"
+            @click="handleOpenAgent(item)"
+          >
+            <ExternalLink class="h-3 w-3" />
+            {{ t('market.action.openChat') }}
           </button>
           <button
             v-else

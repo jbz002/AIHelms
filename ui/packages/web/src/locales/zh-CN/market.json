@@ -1,6 +1,8 @@
 {
   "market.title": "AI 市场",
   "market.filter.all": "全部",
+  "market.filter.agent": "智能体",
+  "market.action.openChat": "开始对话",
   "market.search.placeholder": "搜索名称或描述...",
   "market.filter.allCategories": "全部分类",
   "market.empty": "暂无可用资源",

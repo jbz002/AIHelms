@@ -22,7 +22,7 @@ const router = createRouter({
           component: () => import('../views/ResourceDetailView.vue'),
         },
         { path: 'models', name: 'Models', component: () => import('../views/ModelSquare.vue') },
-        { path: 'agents', name: 'Agents', component: () => import('../views/AgentCenter.vue') },
+        { path: 'agents', redirect: { name: 'Market' } },
       ],
     },
   ],

@@ -8,7 +8,6 @@ import {
   UserCog,
   KeyRound,
   GitBranch,
-  Brain,
   Zap,
   Plug,
   Factory,
@@ -75,18 +74,12 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
     ],
   },
   {
-    title: '智能体中心',
-    icon: Bot,
-    items: [
-      { label: '智能体列表', icon: Brain, path: '/agents', permission: 'agent:read' },
-    ],
-  },
-  {
     title: 'AI市场',
     icon: Store,
     items: [
       { label: 'Skill管理', icon: Zap, path: '/skills', permission: 'skill:read' },
       { label: 'MCP管理', icon: Plug, path: '/mcp', permission: 'mcp:read' },
+      { label: '智能体管理', icon: Bot, path: '/agents', permission: 'agent:read' },
       { label: '治理标签', icon: Award, path: '/skills/label-definitions', permission: 'skill:label:manage' },
     ],
   },
@@ -130,7 +123,7 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
   },
 ])
 
-const expandedGroups = ref<Set<string>>(new Set(['AI身份', '资源审计', '智能体中心', 'AI市场', '模型纳管', 'AI效能', '安全', 'AI实验室']))
+const expandedGroups = ref<Set<string>>(new Set(['AI身份', '资源审计', 'AI市场', '模型纳管', 'AI效能', '安全', 'AI实验室']))
 
 watch(
   () => route.fullPath,

@@ -1,6 +1,8 @@
 {
   "market.title": "Market",
   "market.filter.all": "All",
+  "market.filter.agent": "Agent",
+  "market.action.openChat": "Start chat",
   "market.search.placeholder": "Search name or description...",
   "market.filter.allCategories": "All categories",
   "market.empty": "No resources available",
