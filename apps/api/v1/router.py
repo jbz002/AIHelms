@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 
 from api.v1.access_test import router as access_test_router
 from api.v1.agents import router as agents_router
@@ -36,7 +36,7 @@ from api.v1.storage_compensations import router as storage_compensations_router
 from api.v1.usage_logs import router as usage_logs_router
 from api.v1.usage_stats import router as usage_stats_router
 from api.v1.users import router as users_router
-from core.config import settings
+from core.public_urls import resolve_litellm_public_url
 
 # 接入文档板块暂搁置（详见 dev/roadmap/web.md），保留代码不接入路由
 # from api.v1.docs import router as docs_router
@@ -87,11 +87,11 @@ async def ping():
 
 
 @router.get("/config/public", tags=["系统"])
-async def get_public_config():
+async def get_public_config(request: Request):
     return {
         "code": 200,
         "message": "ok",
         "data": {
-            "litellm_base_url": settings.litellm_public_url,
+            "litellm_base_url": resolve_litellm_public_url(request),
         },
     }

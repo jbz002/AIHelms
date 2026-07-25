@@ -7,14 +7,17 @@
 from core.config import settings
 
 
-def _public_url() -> str:
-    """对外的 LiteLLM 地址，用户客户端实际连接的目标。"""
-    return settings.litellm_public_url.rstrip("/")
+def _public_url(litellm_url_override: str | None = None) -> str:
+    """对外的 LiteLLM 地址，用户客户端实际连接的目标。
+
+    litellm_url_override 优先（按当前请求主机名解析），缺省回退 settings 配置值。
+    """
+    return (litellm_url_override or settings.litellm_public_url).rstrip("/")
 
 
-def _render(template: str) -> str:
+def _render(template: str, litellm_url_override: str | None = None) -> str:
     """渲染模板里的占位符。"""
-    return template.replace("{{LITELLM_URL}}", _public_url())
+    return template.replace("{{LITELLM_URL}}", _public_url(litellm_url_override))
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +379,9 @@ def list_docs() -> list[dict[str, str]]:
     ]
 
 
-def get_doc(slug: str) -> dict[str, str] | None:
+def get_doc(
+    slug: str, litellm_url_override: str | None = None
+) -> dict[str, str] | None:
     """按 slug 取单篇文档，正文中的占位符已渲染。"""
     meta = DOCS.get(slug)
     if not meta:
@@ -385,5 +390,5 @@ def get_doc(slug: str) -> dict[str, str] | None:
         "slug": slug,
         "title": meta["title"],
         "category": meta["category"],
-        "content": _render(meta["content"]),
+        "content": _render(meta["content"], litellm_url_override),
     }

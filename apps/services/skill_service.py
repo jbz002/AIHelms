@@ -503,17 +503,21 @@ async def get_skill_zip(
 
 
 async def get_install_info(
-    session: AsyncSession, skill_id: int, user_id: int | None = None
+    session: AsyncSession,
+    skill_id: int,
+    user_id: int | None = None,
+    base_url_override: str | None = None,
 ) -> dict:
     """返回 Skill 安装信息：介绍 / agent prompt / 使用说明。
     agent_prompt 由后端按 platform_public_url 拼接的下载 URL 自动生成。
     若提供 user_id，会查找用户主 Key 并在 URL 中嵌入 token。
+    base_url_override 优先于 settings.platform_public_url，用于按当前请求主机名生成下载地址。
     """
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
         raise NotFoundError("skill", skill_id)
 
-    base_url = settings.platform_public_url.rstrip("/")
+    base_url = (base_url_override or settings.platform_public_url).rstrip("/")
     download_url = f"{base_url}/api/v1/skills/{skill.id}/zip"
 
     if user_id:

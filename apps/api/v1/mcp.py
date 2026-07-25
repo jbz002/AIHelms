@@ -1,11 +1,11 @@
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import settings
 from core.deps import get_current_user, get_db, require_permission
+from core.public_urls import resolve_litellm_public_url
 from exceptions import ConflictError, NotFoundError, ValidationError
 from services import ai_key_service, mcp_service
 from services.visibility_service import can_access
@@ -368,6 +368,7 @@ async def deprecate_server_version(
 )
 async def get_connect_config(
     server_id: int,
+    request: Request,
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -389,7 +390,7 @@ async def get_connect_config(
     )
     user_key = main_key.get("litellm_key_id", "") if main_key else ""
 
-    base_url = settings.litellm_public_url.rstrip("/")
+    base_url = resolve_litellm_public_url(request)
     server_name = server_data["server_name"]
 
     mcp_url = f"{base_url}/{server_name}/mcp"

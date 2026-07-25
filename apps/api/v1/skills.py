@@ -1,12 +1,22 @@
 import json
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_ai_key_identity, get_current_user, get_db, require_permission
+from core.public_urls import resolve_platform_public_url
 from exceptions import ConflictError, NotFoundError, ValidationError
 from repositories import skill_label_repo, skill_repo
 from services import (
@@ -727,12 +737,16 @@ async def create_skill_ai_policies_audit(
 @router.get("/{skill_id}/install-info")
 async def get_install_info(
     skill_id: int,
+    request: Request,
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     try:
         data = await skill_service.get_install_info(
-            session, skill_id, user_id=current_user["id"]
+            session,
+            skill_id,
+            user_id=current_user["id"],
+            base_url_override=resolve_platform_public_url(request),
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")
