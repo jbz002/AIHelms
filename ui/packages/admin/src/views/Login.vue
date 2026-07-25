@@ -4,12 +4,20 @@ import { useRouter } from 'vue-router'
 import { useAuth } from '@aihelms/shared'
 
 const router = useRouter()
-const { login, currentUser } = useAuth()
+const { login, currentUser, redirectToAiHub } = useAuth()
 
 const username = ref('')
 const password = ref('')
 const errorMessage = ref('')
 const isLoading = ref(false)
+
+function handleSso(): void {
+  redirectToAiHub(
+    import.meta.env.VITE_AI_HUB_URL,
+    import.meta.env.VITE_AI_HUB_APP_CODE,
+    '/admin/auth/callback',
+  )
+}
 
 async function handleLogin(): Promise<void> {
   if (!username.value || !password.value) {
@@ -46,6 +54,22 @@ async function handleLogin(): Promise<void> {
         <img src="/static/img/logo.png" alt="AIHelms" class="mx-auto h-8" />
         <h1 class="text-2xl font-semibold tracking-tight text-slate-900">欢迎回来</h1>
         <p class="text-sm text-slate-500">承载 AI 数字资产 · 释放AI生产力 · 链接未来</p>
+      </div>
+
+      <!-- AI Hub SSO 登录 -->
+      <div class="space-y-3">
+        <button
+          type="button"
+          @click="handleSso"
+          class="flex h-11 w-full items-center justify-center rounded-lg border border-slate-200 bg-white text-sm font-medium text-slate-700 transition-all hover:bg-slate-50 active:scale-[0.98]"
+        >
+          AI Hub 登录
+        </button>
+        <div class="flex items-center gap-3">
+          <div class="h-px flex-1 bg-slate-200"></div>
+          <span class="text-xs text-slate-400">或</span>
+          <div class="h-px flex-1 bg-slate-200"></div>
+        </div>
       </div>
 
       <!-- 表单 -->

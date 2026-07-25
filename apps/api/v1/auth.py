@@ -40,6 +40,9 @@ async def get_me(
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="用户不存在")
+    # is_admin 优先用 JWT 动态值：SSO 用户由 app_roles 映射（oauth2_login 签 JWT 时写入），
+    # DB user.is_admin 是静态默认 False。不覆盖则 SSO admin 登不进 admin 守卫。
+    user_info["is_admin"] = current_user["is_admin"]
     return {"code": 200, "message": "ok", "data": user_info}
 
 
