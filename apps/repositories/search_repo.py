@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy import Integer, Text, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.db import McpServer, McpTool, Skill
+from models.db import Agent, McpServer, McpTool, Skill
 
 
 @dataclass
@@ -202,6 +202,70 @@ async def search_skills(
             Skill.description.ilike(kw),
             Skill.author.ilike(kw),
             Skill.tags.cast(Text).ilike(kw),
+        )
+    )
+
+    stmt = stmt.order_by(score.desc()).limit(limit)
+    result = await session.execute(stmt)
+    rows = result.all()
+
+    out: list[SearchResult] = []
+    for row in rows:
+        matched: list[str] = []
+        n = row.name
+        if kw_lower in n.lower():
+            matched.append("name")
+        desc = row.description
+        if desc and kw_lower in desc.lower():
+            matched.append("description")
+        out.append(
+            SearchResult(
+                entity_id=row.id,
+                signal_score=float(row._score),
+                matched_fields=matched,
+                name=n,
+                description=desc or "",
+            )
+        )
+    return out
+
+
+async def search_agents(
+    session: AsyncSession,
+    keyword: str,
+    category: str | None = None,
+    is_published: bool | None = None,
+    limit: int = 100,
+) -> list[SearchResult]:
+    """Search Agents by keyword across name, description, tags."""
+    kw = f"%{keyword}%"
+    kw_lower = keyword.lower()
+
+    score = func.coalesce(
+        Agent.name.ilike(kw).cast(Integer) * 3.0
+        + Agent.description.ilike(kw).cast(Integer) * 2.0
+        + Agent.tags.cast(Text).ilike(kw).cast(Integer) * 1.5,
+        0.0,
+    ).label("_score")
+
+    stmt = select(
+        Agent.id,
+        Agent.name,
+        Agent.description,
+        Agent.tags,
+        score,
+    ).where(Agent.is_active)
+
+    if category:
+        stmt = stmt.where(Agent.category == category)
+    if is_published is not None:
+        stmt = stmt.where(Agent.is_published == is_published)
+
+    stmt = stmt.where(
+        or_(
+            Agent.name.ilike(kw),
+            Agent.description.ilike(kw),
+            Agent.tags.cast(Text).ilike(kw),
         )
     )
 

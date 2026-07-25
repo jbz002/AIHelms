@@ -93,7 +93,7 @@ async def unified_search(
     3. Soft-cap distribution
     4. Pagination + assemble results
     """
-    etypes = entity_types or ["mcp_server", "skill"]
+    etypes = entity_types or ["mcp_server", "skill", "agent"]
 
     # Phase 1: independent searches per entity type
     candidates: dict[str, list[search_repo.SearchResult]] = {}
@@ -110,6 +110,11 @@ async def unified_search(
 
     if "skill" in etypes:
         candidates["skill"] = await search_repo.search_skills(
+            session, keyword, category=category, is_published=is_published, limit=100
+        )
+
+    if "agent" in etypes:
+        candidates["agent"] = await search_repo.search_agents(
             session, keyword, category=category, is_published=is_published, limit=100
         )
 
@@ -224,6 +229,13 @@ def _build_metadata(entity_type: str, src: search_repo.SearchResult) -> dict:
     if entity_type == "skill":
         return {
             "entity_type": "skill",
+            "entity_id": src.entity_id,
+            "matched_fields": src.matched_fields,
+            "signal_score": round(src.signal_score, 2),
+        }
+    if entity_type == "agent":
+        return {
+            "entity_type": "agent",
             "entity_id": src.entity_id,
             "matched_fields": src.matched_fields,
             "signal_score": round(src.signal_score, 2),
