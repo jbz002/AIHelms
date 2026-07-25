@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BookOpen, Menu } from 'lucide-vue-next'
+import { Menu } from 'lucide-vue-next'
 import { useAuth } from '@aihelms/shared'
 
 const { currentUser, logout } = useAuth()
@@ -27,16 +27,6 @@ function handleLogout(): void {
       </div>
     </div>
     <div class="flex items-center gap-2 sm:gap-4">
-      <a
-        href="http://www.aihelms.cn/docs"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100/80"
-        title="查看文档"
-      >
-        <BookOpen class="h-4 w-4" />
-        <span class="hidden sm:inline">文档</span>
-      </a>
       <span class="hidden text-sm text-slate-600 sm:inline">{{ currentUser?.username }}</span>
       <button
         class="rounded-lg px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100/80"
