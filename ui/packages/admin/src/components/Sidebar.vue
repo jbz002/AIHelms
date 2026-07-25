@@ -28,7 +28,6 @@ import {
   UserCircle2,
   DollarSign,
   HeartPulse,
-  Download,
   ShieldCheck,
   BookOpen,
   Award,
@@ -70,7 +69,6 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
       { label: '审批管理', icon: ClipboardCheck, path: '/resource-approval', permission: 'resource_application:read' },
       { label: '发布审核', icon: ShieldCheck, path: '/publish-reviews', permission: 'publish_review:read' },
       { label: '日志管理', icon: FileText, path: '/logs', permission: 'usage_log:read' },
-      { label: '导出任务', icon: Download, path: '/export-tasks', permission: 'usage_log:read' },
     ],
   },
   {
@@ -106,7 +104,6 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
     icon: Lock,
     items: [
       { label: 'AI Policies', icon: ShieldCheck, path: '/ai-policies', permission: 'ai_policies:read' },
-      { label: 'Regex 规则', icon: FileText, path: '/ai-policies/rules', permission: 'ai_policies:read' },
       { label: '管理员日志', icon: Shield, path: '/audit', permission: 'audit_log:read' },
       { label: 'API Key', icon: KeyRound, path: '/api-keys', permission: 'api_key:read' },
       { label: 'CLI 令牌', icon: Terminal, path: '/cli-tokens', permission: 'cli_token:read' },

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { Download } from 'lucide-vue-next'
 import LlmLogsTab from './tabs/LlmLogsTab.vue'
 import McpLogsTab from './tabs/McpLogsTab.vue'
 import SkillLogsTab from './tabs/SkillLogsTab.vue'
@@ -46,11 +47,20 @@ onMounted(() => {
 
 <template>
   <div>
-    <div class="mb-6">
-      <h1 class="text-2xl font-bold text-slate-900">日志管理</h1>
-      <p class="mt-1 text-sm text-slate-500">
-        查看用户的模型 / MCP / Skill / 智能体调用记录
-      </p>
+    <div class="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900">日志管理</h1>
+        <p class="mt-1 text-sm text-slate-500">
+          查看用户的模型 / MCP / Skill / 智能体调用记录
+        </p>
+      </div>
+      <button
+        class="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 shadow-sm transition-colors hover:border-purple-300 hover:text-purple-700"
+        @click="router.push('/export-tasks')"
+      >
+        <Download class="h-4 w-4" />
+        导出任务
+      </button>
     </div>
 
     <div class="mb-4 flex gap-1 rounded-xl bg-slate-100 p-1">
