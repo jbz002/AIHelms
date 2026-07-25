@@ -296,6 +296,9 @@ INSERT INTO aihelms.provider_prefix_map (provider_type, format, category, prefix
     -- 小米 MiMo
     ('xiaomi_mimo', 'openai', 'chat', 'xiaomi_mimo', false),
     ('xiaomi_mimo', 'anthropic', 'chat', 'anthropic', false),
+    -- 讯飞星火（coding plan：/v2 OpenAI 兼容 + /anthropic Anthropic 兼容，api_base 已含完整路径）
+    ('xunfei', 'openai', 'chat', 'openai', false),
+    ('xunfei', 'anthropic', 'chat', 'anthropic', false),
     -- 腾讯混元与 xAI
     ('tencent', 'openai', 'chat', 'tencent', true),
     ('xai', 'openai', 'chat', 'xai', false),

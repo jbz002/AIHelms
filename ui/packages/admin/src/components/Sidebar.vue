@@ -5,6 +5,7 @@ import { ref, watch, type Component } from 'vue'
 import {
   FolderTree,
   Users,
+  UserCog,
   KeyRound,
   GitBranch,
   Brain,
@@ -59,6 +60,7 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
       { label: '部门管理', icon: FolderTree, path: '/departments', permission: 'department:read' },
       { label: '项目管理', icon: GitBranch, path: '/projects', permission: 'project:read' },
       { label: '人员管理', icon: Users, path: '/users', permission: 'user:read' },
+      { label: '角色权限', icon: UserCog, path: '/roles', permission: 'role:read' },
       { label: 'AI身份管理', icon: Key, path: '/ai-keys', permission: 'user:read' },
     ],
   },

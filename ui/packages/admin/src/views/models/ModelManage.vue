@@ -265,6 +265,7 @@ const BUILT_IN_LOGO_OPTIONS: LogoOption[] = [
   { value: 'xiaomi_mimo', label: '小米MiMo' },
   { value: 'tencent', label: '腾讯混元' },
   { value: 'xai', label: 'xAI（Grok）' },
+  { value: 'xunfei', label: '讯飞星火' },
   { value: 'vllm', label: 'vLLM' },
   { value: 'sglang', label: 'SGLang' },
   { value: 'ollama', label: 'Ollama' },
@@ -1093,7 +1094,7 @@ onMounted(() => {
                   :class="d.is_active ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'"
                   @click="handleToggleDeployment(d)"
                 >
-                  {{ d.is_active ? '启用' : '禁用' }}
+                  {{ d.is_active ? '禁用' : '启用' }}
                 </button>
                 <button
                   v-if="hasPermission('user:update')"

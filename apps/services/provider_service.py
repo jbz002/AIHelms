@@ -2,7 +2,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from exceptions import ConflictError, NotFoundError
+from exceptions import NotFoundError
 from models.db import Provider
 from repositories import credential_repo, provider_repo
 
@@ -92,9 +92,16 @@ async def delete_provider(session: AsyncSession, provider_id: int) -> None:
     if not provider:
         raise NotFoundError("provider", provider_id)
 
+    # 级联删除：供应商 → 凭证 → 部署，逐层同步 LiteLLM 后再删平台数据。
+    # 延迟导入避免 service 层循环依赖。
+    from services import credential_service, model_service
+
     credentials = await credential_repo.find_by_provider(session, provider_id)
-    if credentials:
-        raise ConflictError("该供应商下有凭证，请先删除或迁移凭证")
+    for cred in credentials:
+        full = await credential_repo.find_by_id(session, cred.id)
+        for deployment in full.deployments:
+            await model_service.delete_deployment(session, deployment.id)
+        await credential_service.delete_credential(session, cred.id)
 
     await session.delete(provider)
     await session.commit()

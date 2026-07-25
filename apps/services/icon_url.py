@@ -24,6 +24,7 @@ _PROVIDER_ICON_FILES = {
     "moonshot": "moonshot.svg",
     "minimax": "minimax.svg",
     "xiaomi_mimo": "xiaomi_mimo.png",
+    "xunfei": "xunfei.svg",
     "vllm": "vllm.png",
     "sglang": "sglang.png",
     "ollama": "ollama.svg",

@@ -12,6 +12,7 @@ const PROVIDER_ICON_FILES: Record<string, string> = {
   moonshot: 'moonshot.svg',
   minimax: 'minimax.svg',
   xiaomi_mimo: 'xiaomi_mimo.png',
+  xunfei: 'xunfei.svg',
   vllm: 'vllm.png',
   sglang: 'sglang.png',
   ollama: 'ollama.svg',
