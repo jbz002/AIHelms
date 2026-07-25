@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS aihelms.users (
     is_admin BOOLEAN DEFAULT false,
     is_super_admin BOOLEAN DEFAULT false,
     litellm_user_id VARCHAR(100),
+    aihub_user_id VARCHAR(100),
+    aihub_department_id VARCHAR(100),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

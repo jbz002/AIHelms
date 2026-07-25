@@ -70,6 +70,55 @@ async def create_user(session: AsyncSession, user: User) -> User:
     return user
 
 
+async def find_user_by_aihub_user_id(
+    session: AsyncSession, aihub_user_id: str
+) -> User | None:
+    result = await session.execute(
+        select(User).where(User.aihub_user_id == aihub_user_id)
+    )
+    return result.scalar_one_or_none()
+
+
+async def upsert_user_from_aihub(
+    session: AsyncSession,
+    *,
+    aihub_user_id: str,
+    username: str,
+    email: str,
+    display_name: str,
+    aihub_department_id: str | None,
+) -> User:
+    """按 aihub_user_id 查/建本地用户档案。SSO 登录专用，不写密码、不碰角色/部门中间表。
+
+    绑定顺序：先 aihub_user_id（SSO 回访），再 username（首次登录复用本地同名账号，
+    如本地 admin），都没有则新建。已绑定时不覆盖 email/username，避免 unique 冲突。
+    """
+    user = await find_user_by_aihub_user_id(session, aihub_user_id)
+    if user is None:
+        result = await session.execute(select(User).where(User.username == username))
+        user = result.scalar_one_or_none()
+    if user is None:
+        user = User(
+            username=username,
+            email=email,
+            hashed_password="!",
+            display_name=display_name,
+            aihub_user_id=aihub_user_id,
+            aihub_department_id=aihub_department_id,
+            is_active=True,
+        )
+        session.add(user)
+    else:
+        user.display_name = display_name
+        if user.aihub_user_id is None:
+            user.aihub_user_id = aihub_user_id
+        if aihub_department_id is not None:
+            user.aihub_department_id = aihub_department_id
+    await session.flush()
+    await session.refresh(user)
+    return user
+
+
 async def replace_user_roles(
     session: AsyncSession, user_id: int, role_ids: list[int]
 ) -> None:

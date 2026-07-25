@@ -40,6 +40,13 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60 * 24
     super_admin_password: str = ""
 
+    # AI Hub 统一鉴权(SSO)
+    ai_hub_url: str = (
+        ""  # AI Hub 地址，按环境切换（测试服 http://111.229.103.94:30080）
+    )
+    ai_hub_app_code: str = ""  # 应用管理里注册的 app_code（= aihelms）
+    ai_hub_admin_role: str = "aihelms-admin"  # 拥有此 app_roles 标签 = AIHelms 管理员
+
     # 成本计算
     usd_to_cny_rate: float = 7.0  # LiteLLM spend(美元) → 人民币汇率
 

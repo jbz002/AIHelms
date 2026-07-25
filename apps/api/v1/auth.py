@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_current_user, get_db
 from exceptions import NotFoundError, UnauthorizedError
-from models.auth import ChangePasswordRequest, LoginRequest
+from models.auth import ChangePasswordRequest, LoginRequest, OAuth2CodeRequest
 from services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -41,6 +41,25 @@ async def get_me(
     except NotFoundError:
         raise HTTPException(status_code=404, detail="用户不存在")
     return {"code": 200, "message": "ok", "data": user_info}
+
+
+@router.post("/login/oauth2", summary="AI Hub OAuth2 登录")
+async def oauth2_login(req: OAuth2CodeRequest, session: AsyncSession = Depends(get_db)):
+    try:
+        token, _user = await auth_service.oauth2_login(session, req.code)
+    except UnauthorizedError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    return {
+        "code": 200,
+        "message": "登录成功",
+        "data": {"access_token": token, "token_type": "bearer"},
+    }
+
+
+@router.post("/logout", summary="退出登录")
+async def logout():
+    # 本地 JWT 无状态，登出由前端清 token；后端仅返回成功
+    return {"code": 200, "message": "已退出登录", "data": {}}
 
 
 @router.put("/password", summary="修改密码")

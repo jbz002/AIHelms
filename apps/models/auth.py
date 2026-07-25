@@ -14,3 +14,7 @@ class TokenResponse(BaseModel):
 class ChangePasswordRequest(BaseModel):
     old_password: str = Field(..., min_length=1)
     new_password: str = Field(..., min_length=6, max_length=128)
+
+
+class OAuth2CodeRequest(BaseModel):
+    code: str = Field(..., min_length=1)
