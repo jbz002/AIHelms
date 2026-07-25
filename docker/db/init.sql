@@ -1312,7 +1312,9 @@ INSERT INTO aihelms.permissions (code, name, resource, action, description) VALU
     ('cli_token:delete', '撤销 CLI 令牌', 'cli_token', 'delete', '撤销 CLI 令牌'),
     ('usage_log:read', '查看使用日志', 'usage_log', 'read', '查看 LLM/MCP/Skill/智能体调用日志'),
     ('efficiency:read', '查看AI效能', 'efficiency', 'read', '查看AI效能分析数据和报告'),
-    ('efficiency:write', '管理AI效能', 'efficiency', 'write', '生成报告、更新建议状态')
+    ('efficiency:write', '管理AI效能', 'efficiency', 'write', '生成报告、更新建议状态'),
+    ('publish_review:read', '查看发布审核', 'publish_review', 'read', '查看发布审核申请列表和详情'),
+    ('publish_review:approve', '审核发布申请', 'publish_review', 'approve', '审核通过或驳回发布申请')
 ON CONFLICT (code) DO NOTHING;
 
 -- super_admin 拥有所有权限
