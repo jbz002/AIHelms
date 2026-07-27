@@ -83,6 +83,20 @@ async def mark_ingested(session: AsyncSession, page_ids: list[int]) -> None:
     await session.flush()
 
 
+async def mark_duplicate(session: AsyncSession, page_ids: list[int]) -> None:
+    """标记页面内容重复（未实际入库），get_for_ingest 不再取这些页。"""
+    from sqlalchemy import update
+
+    if not page_ids:
+        return
+    await session.execute(
+        update(CrawledPage)
+        .where(CrawledPage.id.in_(page_ids))
+        .values(ingest_status="duplicate")
+    )
+    await session.flush()
+
+
 async def delete_by_task_id(session: AsyncSession, crawl_task_id: int) -> None:
     from sqlalchemy import delete
 

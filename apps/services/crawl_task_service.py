@@ -356,53 +356,83 @@ async def ingest_crawl_task(
 
     try:
         for batch in _chunk_by_bytes(pages, INGEST_BYTE_BUDGET):
-            documents = [
-                {
-                    "url": p.url,
-                    "title": p.title,
-                    "contentType": p.content_type or "text/markdown",
-                    "content": p.text_content,
-                }
-                for p in batch
-            ]
-            await docs_mcp_client.ingest_raw(
-                library=task.library,
-                version=task.version or None,
-                documents=documents,
-            )
-            await crawled_page_repo.mark_ingested(session, [p.id for p in batch])
-
-            # 同步文档记录到平台 DB：翻转 crawl 阶段建立的 pending Document
+            # 页级判重：同 library+version+content_hash 已入库成功 → 标 duplicate，不调 docs-mcp
+            to_ingest: list[CrawledPage] = []
+            dup_page_ids: list[int] = []
             for p in batch:
-                existing = await document_repo.find_by_source(session, "crawl", p.id)
-                chunk_count = len(p.chunks or [])
-                if existing is None:
-                    # 兜底：crawl 阶段未建 Document（023 之前的旧数据）时补建为 ingested
-                    content_hash = hashlib.sha256(
-                        (p.text_content or "").encode("utf-8")
-                    ).hexdigest()
-                    doc = Document(
-                        title=p.title or p.url,
-                        content=p.text_content or "",
-                        library=task.library,
-                        version=task.version or "",
-                        source_type="crawl",
-                        source_id=p.id,
-                        chunk_count=chunk_count,
-                        ingest_status="ingested",
-                        content_hash=content_hash,
-                        created_by=task.created_by,
-                        metadata_={
-                            "url": p.url,
-                            "crawl_task_id": p.crawl_task_id,
-                            "depth": p.depth,
-                        },
-                    )
-                    await document_repo.create(session, doc)
+                content_hash = hashlib.sha256(
+                    (p.text_content or "").encode("utf-8")
+                ).hexdigest()
+                if await document_repo.find_duplicate_by_hash(
+                    session, task.library, task.version or "", content_hash
+                ):
+                    dup_page_ids.append(p.id)
                 else:
+                    to_ingest.append(p)
+
+            # 重复页：Document 翻 duplicate，crawled_page 标 duplicate（不再被 get_for_ingest 取）
+            for pid in dup_page_ids:
+                dup_doc = await document_repo.find_by_source(session, "crawl", pid)
+                if dup_doc is not None:
                     await document_repo.update_ingest_status(
-                        session, existing.id, "ingested", chunk_count=chunk_count
+                        session, dup_doc.id, "duplicate", chunk_count=0
                     )
+            if dup_page_ids:
+                await crawled_page_repo.mark_duplicate(session, dup_page_ids)
+
+            # 非重复页：批量入库
+            if to_ingest:
+                documents = [
+                    {
+                        "url": p.url,
+                        "title": p.title,
+                        "contentType": p.content_type or "text/markdown",
+                        "content": p.text_content,
+                    }
+                    for p in to_ingest
+                ]
+                await docs_mcp_client.ingest_raw(
+                    library=task.library,
+                    version=task.version or None,
+                    documents=documents,
+                )
+                await crawled_page_repo.mark_ingested(
+                    session, [p.id for p in to_ingest]
+                )
+
+                # 同步文档记录到平台 DB：翻转 crawl 阶段建立的 pending Document
+                for p in to_ingest:
+                    existing = await document_repo.find_by_source(
+                        session, "crawl", p.id
+                    )
+                    chunk_count = len(p.chunks or [])
+                    if existing is None:
+                        # 兜底：crawl 阶段未建 Document（023 之前的旧数据）时补建为 ingested
+                        content_hash = hashlib.sha256(
+                            (p.text_content or "").encode("utf-8")
+                        ).hexdigest()
+                        doc = Document(
+                            title=p.title or p.url,
+                            content=p.text_content or "",
+                            library=task.library,
+                            version=task.version or "",
+                            source_type="crawl",
+                            source_id=p.id,
+                            chunk_count=chunk_count,
+                            ingest_status="ingested",
+                            content_hash=content_hash,
+                            created_by=task.created_by,
+                            metadata_={
+                                "url": p.url,
+                                "crawl_task_id": p.crawl_task_id,
+                                "depth": p.depth,
+                            },
+                        )
+                        await document_repo.create(session, doc)
+                    else:
+                        await document_repo.update_ingest_status(
+                            session, existing.id, "ingested", chunk_count=chunk_count
+                        )
 
             await crawl_task_repo.update_progress(
                 session,

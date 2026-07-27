@@ -99,14 +99,16 @@ def _extract_plain_text(file_bytes: bytes, file_name: str) -> str:
 async def _extract_binary(file_bytes: bytes, file_name: str) -> str:
     """二进制文件通过 docling-serve 转换为 Markdown。"""
     from services.docling_client import docling_client
+    from services.markdown_enricher import enrich_markdown
 
     content_type = _detect_content_type(file_name)
-    return await docling_client.convert_file(
+    md = await docling_client.convert_file(
         file_bytes=file_bytes,
         file_name=file_name,
         content_type=content_type,
         do_ocr=True,
     )
+    return enrich_markdown(md)
 
 
 def _serialize_record(record: DocUploadRecord) -> dict:
@@ -164,6 +166,32 @@ async def _run_extraction_and_ingest(
                 )
             except DocsMcpError as e:
                 logger.warning("split_text failed (extract-only): %s", str(e))
+
+        # 重复检测：同 library+version+content_hash 已入库成功 → 标 duplicate，不调 docs-mcp
+        content_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        if await document_repo.find_duplicate_by_hash(
+            session, record.library, record.version or "", content_hash
+        ):
+            await document_repo.upsert_by_source(
+                session,
+                "upload",
+                record.id,
+                title=record.file_name,
+                content=content,
+                library=record.library,
+                version=record.version or "",
+                created_by=record.created_by,
+                chunk_count=0,
+                metadata_={
+                    "file_name": record.file_name,
+                    "content_type": record.content_type,
+                    "file_size": record.file_size,
+                },
+                force_status="duplicate",
+            )
+            await doc_upload_repo.update_status(session, record.id, "duplicate")
+            await session.refresh(record)
+            return _serialize_record(record)
 
         # 同步建立 Document（ingest_status='pending'），让文档列表/统计可见入库状态
         await document_repo.upsert_by_source(

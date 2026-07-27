@@ -32,6 +32,31 @@ async def find_by_source(
     return result.scalar_one_or_none()
 
 
+async def find_duplicate_by_hash(
+    session: AsyncSession,
+    library: str,
+    version: str,
+    content_hash: str,
+) -> Document | None:
+    """查同 library+version+content_hash 且已入库成功的 Document。
+
+    供上传/爬取判重：命中表示该内容已在库中存在，新提交标记 duplicate，
+    不再向 docs-mcp 重复入库（docs-mcp 端按 url 覆盖，aihelms 按 content 判重）。
+    """
+    stmt = (
+        select(Document)
+        .where(
+            func.lower(Document.library) == library.lower(),
+            Document.version == version,
+            Document.content_hash == content_hash,
+            Document.ingest_status == "ingested",
+        )
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def list_by_library(
     session: AsyncSession,
     library: str,
@@ -50,7 +75,10 @@ async def list_by_library(
 
 
 async def count_by_library(session: AsyncSession, library: str) -> int:
-    stmt = select(func.count()).where(func.lower(Document.library) == library.lower())
+    stmt = select(func.count()).where(
+        func.lower(Document.library) == library.lower(),
+        Document.ingest_status != "duplicate",
+    )
     result = await session.execute(stmt)
     return result.scalar_one()
 
@@ -86,6 +114,7 @@ async def upsert_by_source(
     chunk_count: int = 0,
     metadata_: dict,
     reset_to_pending_on_content_change: bool = True,
+    force_status: str | None = None,
 ) -> Document:
     """幂等 upsert：按 (source_type, source_id) 维护 Document。
 
@@ -105,7 +134,7 @@ async def upsert_by_source(
             source_type=source_type,
             source_id=source_id,
             chunk_count=chunk_count,
-            ingest_status="pending",
+            ingest_status=force_status or "pending",
             content_hash=content_hash,
             created_by=created_by,
             metadata_=metadata_,
@@ -121,7 +150,10 @@ async def upsert_by_source(
     existing.chunk_count = chunk_count
     existing.metadata_ = metadata_
     existing.content_hash = content_hash
-    if (
+    if force_status:
+        existing.ingest_status = force_status
+        existing.error_message = ""
+    elif (
         reset_to_pending_on_content_change
         and content_changed
         and existing.ingest_status == "ingested"
@@ -207,11 +239,15 @@ async def count_grouped_by_status(
     library: str | None = None,
     version: str | None = None,
 ) -> list[dict]:
-    stmt = select(
-        Document.ingest_status,
-        func.count().label("count"),
-        func.coalesce(func.sum(Document.chunk_count), 0).label("total_chunks"),
-    ).group_by(Document.ingest_status)
+    stmt = (
+        select(
+            Document.ingest_status,
+            func.count().label("count"),
+            func.coalesce(func.sum(Document.chunk_count), 0).label("total_chunks"),
+        )
+        .where(Document.ingest_status != "duplicate")
+        .group_by(Document.ingest_status)
+    )
     if library:
         stmt = stmt.where(func.lower(Document.library) == library.lower())
     if version is not None:
@@ -236,15 +272,19 @@ async def count_grouped_by_library_source_status(
     by_status/total_documents 以及按 library 细分的同维度指标。library 用
     func.lower 归一化，避免与 docs-mcp 库名大小写漂移导致前端漏匹配。
     """
-    stmt = select(
-        func.lower(Document.library).label("library"),
-        Document.source_type,
-        Document.ingest_status,
-        func.count().label("count"),
-    ).group_by(
-        func.lower(Document.library),
-        Document.source_type,
-        Document.ingest_status,
+    stmt = (
+        select(
+            func.lower(Document.library).label("library"),
+            Document.source_type,
+            Document.ingest_status,
+            func.count().label("count"),
+        )
+        .where(Document.ingest_status != "duplicate")
+        .group_by(
+            func.lower(Document.library),
+            Document.source_type,
+            Document.ingest_status,
+        )
     )
     result = await session.execute(stmt)
     return [

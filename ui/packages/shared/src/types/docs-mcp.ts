@@ -217,7 +217,7 @@ export interface Document {
   source_type: string
   source_id: number | null
   chunk_count: number
-  ingest_status: 'pending' | 'ingesting' | 'ingested' | 'failed'
+  ingest_status: 'pending' | 'ingesting' | 'ingested' | 'failed' | 'duplicate'
   content_hash: string
   error_message: string
   created_by: number | null

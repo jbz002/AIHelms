@@ -87,6 +87,7 @@ const ingestStatusOptions = [
   { value: 'ingesting', label: '入库中' },
   { value: 'ingested', label: '已入库' },
   { value: 'failed', label: '失败' },
+  { value: 'duplicate', label: '触发重复' },
 ]
 
 const sourceOptions = [
@@ -100,6 +101,7 @@ const statusConfig: Record<string, { label: string; cls: string }> = {
   ingesting: { label: '入库中', cls: 'bg-blue-100 text-blue-700' },
   ingested: { label: '已入库', cls: 'bg-green-100 text-green-700' },
   failed: { label: '失败', cls: 'bg-red-100 text-red-700' },
+  duplicate: { label: '触发重复', cls: 'bg-gray-100 text-gray-500' },
 }
 
 const pendingCount = computed(() => stats.value?.by_status?.pending ?? 0)
