@@ -226,6 +226,25 @@ export interface Document {
   metadata: Record<string, unknown>
 }
 
+export interface DocumentApiExtractStatus {
+  id: number
+  spec_id: string
+  document_id: number
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  model_id: number | null
+  model_name: string
+  endpoint_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  summary: { progress?: { value: number; completed: number; total: number; step: string }; warning?: string }
+  error_message: string
+  created_by: number | null
+  started_at: string | null
+  finished_at: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface DocumentListResult {
   items: Document[]
   total: number

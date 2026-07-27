@@ -1581,6 +1581,80 @@ class Document(Base):
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
 
 
+class DocumentApiSpec(Base):
+    """AI 接口提取任务（异步）：queued/running/completed/failed。"""
+
+    __tablename__ = "document_api_specs"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    spec_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    document_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("aihelms.documents.id", ondelete="CASCADE"), nullable=False
+    )
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    model_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.models.id", ondelete="SET NULL"), nullable=True
+    )
+    model_name: Mapped[str] = mapped_column(String(200), default="")
+    endpoint_count: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    summary: Mapped[dict] = mapped_column(JSONB, default=dict)
+    raw_output: Mapped[dict] = mapped_column(JSONB, default=dict)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DocumentApiEndpoint(Base):
+    """结构化接口（source of truth）：method/path 等核心字段独立列。"""
+
+    __tablename__ = "document_api_endpoints"
+    __table_args__ = (
+        UniqueConstraint(
+            "document_id",
+            "method",
+            "path",
+            name="uq_document_api_endpoints_doc_method_path",
+        ),
+        {"schema": "aihelms"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    document_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("aihelms.documents.id", ondelete="CASCADE"), nullable=False
+    )
+    method: Mapped[str] = mapped_column(String(10), nullable=False)
+    path: Mapped[str] = mapped_column(String(500), nullable=False)
+    summary: Mapped[str] = mapped_column(String(500), default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+    operation_id: Mapped[str] = mapped_column(String(200), default="")
+    tags: Mapped[list] = mapped_column(JSONB, default=list)
+    parameters: Mapped[list] = mapped_column(JSONB, default=list)
+    request_body: Mapped[dict] = mapped_column(JSONB, default=dict)
+    responses: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class PublishReview(Base):
     __tablename__ = "publish_reviews"
     __table_args__ = {"schema": "aihelms"}

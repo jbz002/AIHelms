@@ -92,6 +92,9 @@ class Settings(BaseSettings):
     # AI Policies
     ai_policies_scanner_url: str = "http://127.0.0.1:8010"
     ai_policies_timeout_seconds: int = 600
+
+    # 文档接口提取（AI）
+    api_extract_timeout_seconds: int = 300
     # AI Policies S2（多 analyzer + 策略 + Verdict）
     ai_policies_signatures_path: str = "security_rules/signatures.yaml"
     ai_policies_default_policy: str = "balanced"  # strict | balanced | permissive

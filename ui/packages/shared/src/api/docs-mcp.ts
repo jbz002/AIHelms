@@ -22,6 +22,7 @@ import type {
   IngestStats,
   IngestBatchParams,
   DocumentDashboardSummary,
+  DocumentApiExtractStatus,
 } from '../types/docs-mcp'
 
 export function getDocsMcpStats() {
@@ -249,6 +250,23 @@ export function getDocuments(
 
 export function getDocument(documentId: number) {
   return request<Document>(`/api/v1/documents/${documentId}`)
+}
+
+export function getDocumentSpec(documentId: number) {
+  return request<Record<string, unknown>>(`/api/v1/documents/${documentId}/spec`)
+}
+
+export function getDocumentExtractStatus(documentId: number) {
+  return request<DocumentApiExtractStatus | null>(
+    `/api/v1/documents/${documentId}/extract-status`,
+  )
+}
+
+export function extractDocumentInterfaces(documentId: number, modelId: number) {
+  return request<DocumentApiExtractStatus>(
+    `/api/v1/documents/${documentId}/extract-interfaces`,
+    { method: 'POST', body: { model_id: modelId } },
+  )
 }
 
 export function updateDocument(

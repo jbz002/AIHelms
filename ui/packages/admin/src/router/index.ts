@@ -153,6 +153,12 @@ const router = createRouter({
           meta: { permission: 'document:read' },
         },
         {
+          path: 'lab/docs/:libraryName/documents/:docId/interfaces',
+          name: 'DocumentInterfaces',
+          component: () => import('../views/docs-mcp/DocumentInterfaces.vue'),
+          meta: { permission: 'document:read' },
+        },
+        {
           path: 'agents',
           name: 'AgentList',
           component: () => import('../views/agents/AgentList.vue'),

@@ -5,7 +5,7 @@ import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import type { Document } from '@aihelms/shared'
 import { getDocument, updateDocument, toast } from '@aihelms/shared'
-import { ArrowLeft, Save, X, Loader2, Pencil } from 'lucide-vue-next'
+import { ArrowLeft, Save, X, Loader2, Pencil, Code2 } from 'lucide-vue-next'
 import { MarkdownRenderer } from '@aihelms/shared'
 
 const route = useRoute()
@@ -104,7 +104,15 @@ onMounted(loadDocument)
           · {{ doc.chunk_count }} 分块
         </span>
         <span class="text-xs text-gray-400">{{ fmtTime(doc.updated_at) }}</span>
-        <div class="ml-auto">
+        <div class="ml-auto flex items-center gap-2">
+          <button
+            v-if="!isEditing"
+            class="flex items-center gap-1 rounded-md bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100"
+            @click="router.push({ name: 'DocumentInterfaces', params: { libraryName, docId } })"
+          >
+            <Code2 class="h-3 w-3" />
+            接口
+          </button>
           <button
             v-if="!isEditing"
             class="flex items-center gap-1 rounded-md bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"

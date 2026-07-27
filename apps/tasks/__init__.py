@@ -2,6 +2,7 @@ from tasks.ai_policies_tasks import *  # noqa: F401, F403
 from tasks.audit_log_tasks import *  # noqa: F401, F403
 from tasks.builtin_skills_tasks import *  # noqa: F401, F403
 from tasks.doc_tasks import *  # noqa: F401, F403
+from tasks.document_api_tasks import *  # noqa: F401, F403
 from tasks.efficiency_tasks import *  # noqa: F401, F403
 from tasks.export_task_tasks import *  # noqa: F401, F403
 from tasks.llm_log_tasks import *  # noqa: F401, F403

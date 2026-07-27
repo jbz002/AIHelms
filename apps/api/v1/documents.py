@@ -5,8 +5,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_db, require_permission
-from exceptions import ConflictError, NotFoundError
-from services import document_library_service, document_service
+from exceptions import ConflictError, NotFoundError, ValidationError
+from services import document_api_service, document_library_service, document_service
 
 router = APIRouter(tags=["AI实验室"])
 
@@ -30,6 +30,10 @@ class UpdateDocumentRequest(BaseModel):
     title: str | None = Field(default=None, max_length=500)
     content: str | None = None
     metadata_: dict | None = Field(default=None, description="文档元数据")
+
+
+class ExtractInterfacesRequest(BaseModel):
+    model_id: int = Field(..., description="提取所用模型 ID")
 
 
 # ── 知识库 CRUD ──
@@ -204,6 +208,52 @@ async def get_document(
     except NotFoundError:
         raise HTTPException(status_code=404, detail="文档不存在")
     return {"code": 200, "message": "ok", "data": result}
+
+
+@document_router.get("/{document_id}/spec")
+async def get_document_spec(
+    document_id: int,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("document:read")),
+):
+    """返回文档的 OpenAPI spec，供前端 Scalar 渲染接口调试页。"""
+    try:
+        result = await document_api_service.build_openapi_spec(session, document_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    return {"code": 200, "message": "ok", "data": result}
+
+
+@document_router.get("/{document_id}/extract-status")
+async def get_extract_status(
+    document_id: int,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("document:read")),
+):
+    """返回文档最近一次接口提取任务状态（前端轮询用）。"""
+    result = await document_api_service.get_extract_status(session, document_id)
+    return {"code": 200, "message": "ok", "data": result}
+
+
+@document_router.post("/{document_id}/extract-interfaces", summary="提取文档接口")
+async def extract_interfaces(
+    document_id: int,
+    req: ExtractInterfacesRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_permission("document:extract")),
+):
+    """AI 提取文档中的 API 接口，异步任务。"""
+    try:
+        result = await document_api_service.create_extraction(
+            session, document_id, req.model_id, current_user
+        )
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    except ConflictError:
+        raise HTTPException(status_code=409, detail="该文档已有接口提取任务在进行中")
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "接口提取任务已提交", "data": result}
 
 
 @document_router.put("/{document_id}", summary="更新文档")
