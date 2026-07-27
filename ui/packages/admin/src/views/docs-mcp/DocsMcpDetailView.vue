@@ -187,7 +187,7 @@ onUnmounted(() => {
       <SearchCard :versions="library.versions" @search="handleSearch" />
       <SearchResultList v-if="hasSearched" :results="searchResults" :loading="searchLoading" />
 
-      <div>
+      <div class="rounded-lg border border-gray-200 bg-white p-4">
         <h3 class="mb-3 text-sm font-semibold text-gray-700">
           版本列表
           <span class="font-normal text-gray-400">({{ library.versions.length }})</span>
