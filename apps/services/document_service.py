@@ -263,16 +263,14 @@ async def get_ingest_stats(
 
 
 async def get_dashboard_summary(session: AsyncSession) -> dict:
-    """仪表盘汇总：全局入库/来源/上传存储 + 按 library 细分。
+    """仪表盘汇总：全局来源/文档数 + 按 library 细分。
 
     一次 SQL 拿 (library, source_type, ingest_status, count) 行，本地累加成
     global 与 by_library 两份视图。library 键全部小写，对齐 document_repo 的
     func.lower 归一化，供前端按 docs-mcp 库名小写后查表筛选。
     """
     rows = await document_repo.count_grouped_by_library_source_status(session)
-    upload_storage_bytes = await doc_upload_repo.sum_file_size_total(session)
 
-    global_by_status: dict[str, int] = {}
     global_by_source: dict[str, int] = {}
     global_total = 0
     by_library: dict[str, dict] = {}
@@ -281,7 +279,6 @@ async def get_dashboard_summary(session: AsyncSession) -> dict:
         lib, src, status = row["library"], row["source_type"], row["ingest_status"]
         count = int(row["count"])
 
-        global_by_status[status] = global_by_status.get(status, 0) + count
         global_by_source[src] = global_by_source.get(src, 0) + count
         global_total += count
 
@@ -294,10 +291,8 @@ async def get_dashboard_summary(session: AsyncSession) -> dict:
 
     return {
         "global": {
-            "by_status": global_by_status,
             "by_source": global_by_source,
             "total_documents": global_total,
-            "upload_storage_bytes": upload_storage_bytes,
         },
         "by_library": by_library,
     }

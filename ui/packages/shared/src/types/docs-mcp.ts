@@ -246,10 +246,8 @@ export interface IngestBatchParams {
 }
 
 export interface DocumentDashboardSummaryGlobal {
-  by_status: Record<string, number>
   by_source: Record<string, number>
   total_documents: number
-  upload_storage_bytes: number
 }
 
 export interface DocumentDashboardLibraryBreakdown {

@@ -69,13 +69,6 @@ async def count_all(session: AsyncSession) -> int:
     return result.scalar_one()
 
 
-async def sum_file_size_total(session: AsyncSession) -> int:
-    """所有上传记录 file_size 总和（字节），无记录返回 0。"""
-    stmt = select(func.coalesce(func.sum(DocUploadRecord.file_size), 0))
-    result = await session.execute(stmt)
-    return int(result.scalar_one())
-
-
 async def update_status(
     session: AsyncSession,
     record_id: int,

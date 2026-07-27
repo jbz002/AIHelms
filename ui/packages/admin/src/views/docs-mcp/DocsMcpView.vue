@@ -161,7 +161,7 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <AnalyticsCards :stats="stats" :summary="summary" :libraries="libraries" />
+    <AnalyticsCards :stats="stats" :summary="summary" />
 
     <FetchUrlPanel />
 
