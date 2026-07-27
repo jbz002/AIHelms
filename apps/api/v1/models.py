@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_current_user, get_db, require_permission
 from exceptions import ConflictError, NotFoundError
-from services import model_service
+from services import model_registry, model_service
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -16,6 +16,15 @@ class CreateModelRequest(BaseModel):
     capabilities: list[str] = Field(default_factory=list)
     description: str = Field("", max_length=500)
     logo_provider_type: str | None = Field(None, max_length=50)
+    max_input_tokens: int | None = Field(None, ge=1)
+    max_output_tokens: int | None = Field(None, ge=1)
+    supports_vision: bool | None = None
+    supports_function_calling: bool | None = None
+    supports_reasoning: bool | None = None
+    supports_response_schema: bool | None = None
+    supports_parallel_function_calling: bool | None = None
+    supports_tool_choice: bool | None = None
+    litellm_provider: str | None = Field(None, max_length=64)
 
 
 class UpdateModelRequest(BaseModel):
@@ -26,6 +35,15 @@ class UpdateModelRequest(BaseModel):
     description: str | None = None
     logo_provider_type: str | None = Field(None, max_length=50)
     is_active: bool | None = None
+    max_input_tokens: int | None = Field(None, ge=1)
+    max_output_tokens: int | None = Field(None, ge=1)
+    supports_vision: bool | None = None
+    supports_function_calling: bool | None = None
+    supports_reasoning: bool | None = None
+    supports_response_schema: bool | None = None
+    supports_parallel_function_calling: bool | None = None
+    supports_tool_choice: bool | None = None
+    litellm_provider: str | None = Field(None, max_length=64)
 
 
 class CreateDeploymentRequest(BaseModel):
@@ -107,6 +125,15 @@ async def get_active_models(
     return {"code": 200, "message": "ok", "data": models}
 
 
+@router.get("/registry-lookup", summary="查询模型注册表")
+async def registry_lookup(
+    name: str = Query(..., min_length=1, max_length=128),
+    _: dict = Depends(require_permission("user:read")),
+):
+    entry = model_registry.lookup(name)
+    return {"code": 200, "message": "ok", "data": entry}
+
+
 @router.post("", summary="创建模型")
 async def create_model(
     req: CreateModelRequest,
@@ -122,6 +149,15 @@ async def create_model(
             capabilities=req.capabilities,
             description=req.description,
             logo_provider_type=req.logo_provider_type,
+            max_input_tokens=req.max_input_tokens,
+            max_output_tokens=req.max_output_tokens,
+            supports_vision=req.supports_vision,
+            supports_function_calling=req.supports_function_calling,
+            supports_reasoning=req.supports_reasoning,
+            supports_response_schema=req.supports_response_schema,
+            supports_parallel_function_calling=req.supports_parallel_function_calling,
+            supports_tool_choice=req.supports_tool_choice,
+            litellm_provider=req.litellm_provider,
         )
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -159,6 +195,15 @@ async def update_model(
             description=req.description,
             logo_provider_type=req.logo_provider_type,
             is_active=req.is_active,
+            max_input_tokens=req.max_input_tokens,
+            max_output_tokens=req.max_output_tokens,
+            supports_vision=req.supports_vision,
+            supports_function_calling=req.supports_function_calling,
+            supports_reasoning=req.supports_reasoning,
+            supports_response_schema=req.supports_response_schema,
+            supports_parallel_function_calling=req.supports_parallel_function_calling,
+            supports_tool_choice=req.supports_tool_choice,
+            litellm_provider=req.litellm_provider,
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="模型不存在")

@@ -96,6 +96,15 @@ async def create_model(
     capabilities: list[str] | None = None,
     description: str = "",
     logo_provider_type: str | None = None,
+    max_input_tokens: int | None = None,
+    max_output_tokens: int | None = None,
+    supports_vision: bool | None = None,
+    supports_function_calling: bool | None = None,
+    supports_reasoning: bool | None = None,
+    supports_response_schema: bool | None = None,
+    supports_parallel_function_calling: bool | None = None,
+    supports_tool_choice: bool | None = None,
+    litellm_provider: str | None = None,
 ) -> dict:
     effective_model_id = model_id.strip() or None
     if effective_model_id:
@@ -110,6 +119,15 @@ async def create_model(
         capabilities=capabilities or [],
         description=description,
         logo_provider_type=logo_provider_type or "",
+        max_input_tokens=max_input_tokens,
+        max_output_tokens=max_output_tokens,
+        supports_vision=supports_vision or False,
+        supports_function_calling=supports_function_calling or False,
+        supports_reasoning=supports_reasoning or False,
+        supports_response_schema=supports_response_schema or False,
+        supports_parallel_function_calling=supports_parallel_function_calling or False,
+        supports_tool_choice=supports_tool_choice or False,
+        litellm_provider=litellm_provider or "",
     )
     model = await model_repo.create(session, model)
     await session.commit()
@@ -127,6 +145,15 @@ async def update_model(
     description: str | None = None,
     logo_provider_type: str | None = None,
     is_active: bool | None = None,
+    max_input_tokens: int | None = None,
+    max_output_tokens: int | None = None,
+    supports_vision: bool | None = None,
+    supports_function_calling: bool | None = None,
+    supports_reasoning: bool | None = None,
+    supports_response_schema: bool | None = None,
+    supports_parallel_function_calling: bool | None = None,
+    supports_tool_choice: bool | None = None,
+    litellm_provider: str | None = None,
 ) -> dict:
     model = await model_repo.find_by_id(session, model_id)
     if not model:
@@ -154,6 +181,24 @@ async def update_model(
         model.logo_provider_type = logo_provider_type
     if is_active is not None:
         model.is_active = is_active
+    if max_input_tokens is not None:
+        model.max_input_tokens = max_input_tokens
+    if max_output_tokens is not None:
+        model.max_output_tokens = max_output_tokens
+    if supports_vision is not None:
+        model.supports_vision = supports_vision
+    if supports_function_calling is not None:
+        model.supports_function_calling = supports_function_calling
+    if supports_reasoning is not None:
+        model.supports_reasoning = supports_reasoning
+    if supports_response_schema is not None:
+        model.supports_response_schema = supports_response_schema
+    if supports_parallel_function_calling is not None:
+        model.supports_parallel_function_calling = supports_parallel_function_calling
+    if supports_tool_choice is not None:
+        model.supports_tool_choice = supports_tool_choice
+    if litellm_provider is not None:
+        model.litellm_provider = litellm_provider
 
     if renamed:
         await _sync_model_rename(session, model, old_model_id)
@@ -886,6 +931,18 @@ def _serialize_model(model: Model) -> dict:
         "is_active": model.is_active,
         "is_published": model.is_published,
         "visibility_type": model.visibility_type,
+        "max_input_tokens": model.max_input_tokens,
+        "max_output_tokens": model.max_output_tokens,
+        "supports_vision": model.supports_vision,
+        "supports_function_calling": model.supports_function_calling,
+        "supports_reasoning": model.supports_reasoning,
+        "supports_response_schema": model.supports_response_schema,
+        "supports_parallel_function_calling": model.supports_parallel_function_calling,
+        "supports_tool_choice": model.supports_tool_choice,
+        "litellm_provider": model.litellm_provider,
+        "registry_synced_at": (
+            model.registry_synced_at.isoformat() if model.registry_synced_at else None
+        ),
         "deployment_count": len(model.deployments) if model.deployments else 0,
         "created_at": model.created_at.isoformat() if model.created_at else None,
         "updated_at": model.updated_at.isoformat() if model.updated_at else None,

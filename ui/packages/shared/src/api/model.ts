@@ -16,6 +16,7 @@ import type {
   ModelVisibility,
   UpdateModelPublishParams,
   ResyncAnthropicResult,
+  RegistryEntry,
 } from '../types/model'
 
 export function getModels(page: number = 1, pageSize: number = 50, category?: string): Promise<ModelListResult> {
@@ -42,6 +43,12 @@ export function updateModel(id: number, params: UpdateModelParams): Promise<Mode
 
 export function deleteModel(id: number): Promise<null> {
   return request<null>(`/api/v1/models/${id}`, { method: 'DELETE' })
+}
+
+export function registryLookup(name: string): Promise<RegistryEntry | null> {
+  return request<RegistryEntry | null>('/api/v1/models/registry-lookup', {
+    params: { name },
+  })
 }
 
 export function createDeployment(modelId: number, params: CreateDeploymentParams): Promise<Deployment> {

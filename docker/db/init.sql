@@ -338,6 +338,17 @@ CREATE TABLE IF NOT EXISTS aihelms.models (
     is_published BOOLEAN DEFAULT false,       -- 是否发布到用户端
     visibility_type VARCHAR(20) DEFAULT 'all', -- 'all' | 'selected'
     requires_approval BOOLEAN DEFAULT false,  -- 用户领用是否需要审批
+    -- 模型基本属性（注册表快照回填，平台 DB 为唯一数据源）
+    max_input_tokens INT,
+    max_output_tokens INT,
+    supports_vision BOOLEAN DEFAULT false,
+    supports_function_calling BOOLEAN DEFAULT false,
+    supports_reasoning BOOLEAN DEFAULT false,
+    supports_response_schema BOOLEAN DEFAULT false,
+    supports_parallel_function_calling BOOLEAN DEFAULT false,
+    supports_tool_choice BOOLEAN DEFAULT false,
+    litellm_provider VARCHAR(64) DEFAULT '',
+    registry_synced_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

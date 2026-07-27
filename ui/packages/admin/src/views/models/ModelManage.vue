@@ -20,6 +20,7 @@ import {
   updateRouterSettings,
   getModelVisibility,
   updateModelPublish,
+  registryLookup,
   type ModelInfo,
   type Deployment,
   type Provider,
@@ -29,6 +30,7 @@ import {
   type RouterSettings,
   type UpdateRouterSettingsParams,
   type ModelVisibility,
+  type RegistryEntry,
 } from '@aihelms/shared'
 import { usePermission } from '@aihelms/shared'
 import { getDepartmentTree, type DeptTreeNode } from '@aihelms/shared'
@@ -114,6 +116,20 @@ const showModelAdvanced = ref(false)
 const formProviderId = ref<number | null>(null)
 const formCredentialId = ref<number | null>(null)
 const formDeployModelName = ref('')
+// 模型基本属性(注册表回填 / 手填)
+const formRegistryName = ref('')
+const registryLoading = ref(false)
+const formMaxInputTokens = ref('')
+const formMaxOutputTokens = ref('')
+const formLitellmProvider = ref('')
+const formSupports = ref({
+  vision: false,
+  function_calling: false,
+  reasoning: false,
+  response_schema: false,
+  parallel_function_calling: false,
+  tool_choice: false,
+})
 
 // Deployment form — simplified
 const deployModelIdStr = ref('')  // 平台模型 ID（用户请求时使用）
@@ -181,6 +197,15 @@ const categoryTags: Record<string, { value: string; label: string }[]> = {
 const modelTags = computed(() => {
   return categoryTags[formCategory.value] || []
 })
+
+const capabilityBits: { key: keyof typeof formSupports.value; label: string }[] = [
+  { key: 'vision', label: '视觉' },
+  { key: 'function_calling', label: '工具调用' },
+  { key: 'reasoning', label: '推理' },
+  { key: 'response_schema', label: '结构化输出' },
+  { key: 'parallel_function_calling', label: '并行工具' },
+  { key: 'tool_choice', label: '工具选择' },
+]
 
 const formFilteredCredentials = computed(() => {
   if (!formProviderId.value) return []
@@ -417,6 +442,18 @@ function handleCreateModel(): void {
   formProviderId.value = null
   formCredentialId.value = null
   formDeployModelName.value = ''
+  formRegistryName.value = ''
+  formMaxInputTokens.value = ''
+  formMaxOutputTokens.value = ''
+  formLitellmProvider.value = ''
+  formSupports.value = {
+    vision: false,
+    function_calling: false,
+    reasoning: false,
+    response_schema: false,
+    parallel_function_calling: false,
+    tool_choice: false,
+  }
   showModelAdvanced.value = false
   errorMessage.value = ''
   showModelForm.value = true
@@ -431,11 +468,68 @@ function handleEditModel(): void {
   formTags.value = [...selectedModel.value.capabilities]
   formDescription.value = selectedModel.value.description
   formLogoProviderType.value = selectedModel.value.logo_provider_type || ''
+  formRegistryName.value = selectedModel.value.model_id || ''
+  formMaxInputTokens.value =
+    selectedModel.value.max_input_tokens != null
+      ? String(selectedModel.value.max_input_tokens)
+      : ''
+  formMaxOutputTokens.value =
+    selectedModel.value.max_output_tokens != null
+      ? String(selectedModel.value.max_output_tokens)
+      : ''
+  formLitellmProvider.value = selectedModel.value.litellm_provider || ''
+  formSupports.value = {
+    vision: !!selectedModel.value.supports_vision,
+    function_calling: !!selectedModel.value.supports_function_calling,
+    reasoning: !!selectedModel.value.supports_reasoning,
+    response_schema: !!selectedModel.value.supports_response_schema,
+    parallel_function_calling: !!selectedModel.value.supports_parallel_function_calling,
+    tool_choice: !!selectedModel.value.supports_tool_choice,
+  }
   showLogoOptions.value = false
   logoSearch.value = ''
   showModelAdvanced.value = false
   errorMessage.value = ''
   showModelForm.value = true
+}
+
+async function handleRegistryFill(): Promise<void> {
+  const name = formRegistryName.value.trim()
+  if (!name) {
+    errorMessage.value = '请填写 LiteLLM 模型名'
+    return
+  }
+  errorMessage.value = ''
+  registryLoading.value = true
+  try {
+    const entry: RegistryEntry | null = await registryLookup(name)
+    if (!entry) {
+      errorMessage.value = `注册表无「${name}」,请手动填写下方属性`
+      return
+    }
+    const maxIn = entry.max_input_tokens ?? entry.max_tokens
+    if (maxIn != null) {
+      formMaxInputTokens.value = String(maxIn)
+    }
+    if (entry.max_output_tokens != null) {
+      formMaxOutputTokens.value = String(entry.max_output_tokens)
+    }
+    if (entry.litellm_provider) {
+      formLitellmProvider.value = entry.litellm_provider
+    }
+    formSupports.value = {
+      vision: !!entry.supports_vision,
+      function_calling: !!entry.supports_function_calling,
+      reasoning: !!entry.supports_reasoning,
+      response_schema: !!entry.supports_response_schema,
+      parallel_function_calling: !!entry.supports_parallel_function_calling,
+      tool_choice: !!entry.supports_tool_choice,
+    }
+  } catch (e) {
+    errorMessage.value = e instanceof Error ? e.message : '查询失败'
+  } finally {
+    registryLoading.value = false
+  }
 }
 
 async function handleSubmitModel(): Promise<void> {
@@ -453,6 +547,15 @@ async function handleSubmitModel(): Promise<void> {
         capabilities: formTags.value,
         description: formDescription.value,
         logo_provider_type: formLogoProviderType.value,
+        max_input_tokens: formMaxInputTokens.value ? Number(formMaxInputTokens.value) : null,
+        max_output_tokens: formMaxOutputTokens.value ? Number(formMaxOutputTokens.value) : null,
+        supports_vision: formSupports.value.vision,
+        supports_function_calling: formSupports.value.function_calling,
+        supports_reasoning: formSupports.value.reasoning,
+        supports_response_schema: formSupports.value.response_schema,
+        supports_parallel_function_calling: formSupports.value.parallel_function_calling,
+        supports_tool_choice: formSupports.value.tool_choice,
+        litellm_provider: formLitellmProvider.value || undefined,
       })
       await fetchModelDetail(selectedModel.value.id)
     } else {
@@ -463,6 +566,15 @@ async function handleSubmitModel(): Promise<void> {
         capabilities: formTags.value,
         description: formDescription.value,
         logo_provider_type: formLogoProviderType.value,
+        max_input_tokens: formMaxInputTokens.value ? Number(formMaxInputTokens.value) : null,
+        max_output_tokens: formMaxOutputTokens.value ? Number(formMaxOutputTokens.value) : null,
+        supports_vision: formSupports.value.vision,
+        supports_function_calling: formSupports.value.function_calling,
+        supports_reasoning: formSupports.value.reasoning,
+        supports_response_schema: formSupports.value.response_schema,
+        supports_parallel_function_calling: formSupports.value.parallel_function_calling,
+        supports_tool_choice: formSupports.value.tool_choice,
+        litellm_provider: formLitellmProvider.value || undefined,
       })
     }
     showModelForm.value = false
@@ -1297,6 +1409,42 @@ onMounted(() => {
                   @change="toggleTag(tag.value)"
                 />
                 {{ tag.label }}
+              </label>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">从注册表回填属性</label>
+            <div class="flex gap-2">
+              <input v-model="formRegistryName" placeholder="LiteLLM 模型名,如 glm-4.7" class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
+              <button type="button" :disabled="registryLoading" class="shrink-0 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-50" @click="handleRegistryFill">{{ registryLoading ? '查询中' : '查询' }}</button>
+            </div>
+            <p class="mt-1 text-xs text-slate-400">平台内置注册表快照,未覆盖模型请手填下方属性</p>
+          </div>
+          <div class="mb-3 grid grid-cols-2 gap-2">
+            <div>
+              <label class="mb-1.5 block text-sm font-medium text-slate-700">最大输入(tokens)</label>
+              <input v-model="formMaxInputTokens" type="number" placeholder="如 200000" class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
+            </div>
+            <div>
+              <label class="mb-1.5 block text-sm font-medium text-slate-700">最大输出(tokens)</label>
+              <input v-model="formMaxOutputTokens" type="number" placeholder="可选" class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">能力位</label>
+            <div class="flex flex-wrap gap-2">
+              <label
+                v-for="bit in capabilityBits"
+                :key="bit.key"
+                class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition-colors"
+                :class="formSupports[bit.key] ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'"
+              >
+                <input
+                  type="checkbox"
+                  v-model="formSupports[bit.key]"
+                  class="h-3.5 w-3.5 rounded border-slate-300 text-purple-600 focus:ring-purple-500/20"
+                />
+                {{ bit.label }}
               </label>
             </div>
           </div>

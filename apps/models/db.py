@@ -345,6 +345,18 @@ class Model(Base):
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     visibility_type: Mapped[str] = mapped_column(String(20), default="all")
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
+    max_input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    max_output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    supports_vision: Mapped[bool] = mapped_column(Boolean, default=False)
+    supports_function_calling: Mapped[bool] = mapped_column(Boolean, default=False)
+    supports_reasoning: Mapped[bool] = mapped_column(Boolean, default=False)
+    supports_response_schema: Mapped[bool] = mapped_column(Boolean, default=False)
+    supports_parallel_function_calling: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )
+    supports_tool_choice: Mapped[bool] = mapped_column(Boolean, default=False)
+    litellm_provider: Mapped[str] = mapped_column(String(64), default="")
+    registry_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()

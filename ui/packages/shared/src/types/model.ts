@@ -10,6 +10,15 @@ export interface ModelInfo {
   is_active: boolean
   is_published: boolean
   visibility_type: string
+  max_input_tokens?: number | null
+  max_output_tokens?: number | null
+  supports_vision?: boolean
+  supports_function_calling?: boolean
+  supports_reasoning?: boolean
+  supports_response_schema?: boolean
+  supports_parallel_function_calling?: boolean
+  supports_tool_choice?: boolean
+  litellm_provider?: string
   deployment_count: number
   created_at: string | null
   updated_at: string | null
@@ -40,6 +49,15 @@ export interface CreateModelParams {
   capabilities?: string[]
   description?: string
   logo_provider_type?: string
+  max_input_tokens?: number | null
+  max_output_tokens?: number | null
+  supports_vision?: boolean
+  supports_function_calling?: boolean
+  supports_reasoning?: boolean
+  supports_response_schema?: boolean
+  supports_parallel_function_calling?: boolean
+  supports_tool_choice?: boolean
+  litellm_provider?: string
 }
 
 export interface UpdateModelParams {
@@ -50,6 +68,15 @@ export interface UpdateModelParams {
   description?: string
   logo_provider_type?: string
   is_active?: boolean
+  max_input_tokens?: number | null
+  max_output_tokens?: number | null
+  supports_vision?: boolean
+  supports_function_calling?: boolean
+  supports_reasoning?: boolean
+  supports_response_schema?: boolean
+  supports_parallel_function_calling?: boolean
+  supports_tool_choice?: boolean
+  litellm_provider?: string
 }
 
 export interface CreateDeploymentParams {
@@ -93,6 +120,35 @@ export interface ActiveModel {
   is_published?: boolean
   requires_approval?: boolean
   has_anthropic_deployment?: boolean
+  max_input_tokens?: number | null
+  max_output_tokens?: number | null
+  supports_vision?: boolean
+  supports_function_calling?: boolean
+  supports_reasoning?: boolean
+  supports_response_schema?: boolean
+  supports_parallel_function_calling?: boolean
+  supports_tool_choice?: boolean
+  litellm_provider?: string
+}
+
+export interface RegistryEntry {
+  model_name: string
+  litellm_provider?: string
+  mode?: string
+  max_tokens?: number
+  max_input_tokens?: number
+  max_output_tokens?: number
+  supports_vision?: boolean
+  supports_function_calling?: boolean
+  supports_parallel_function_calling?: boolean
+  supports_reasoning?: boolean
+  supports_response_schema?: boolean
+  supports_tool_choice?: boolean
+  supports_system_messages?: boolean
+  supports_prompt_caching?: boolean
+  input_cost_per_token?: number
+  output_cost_per_token?: number
+  cache_read_input_token_cost?: number
 }
 
 export interface AccessGroup {
