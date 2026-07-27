@@ -90,3 +90,8 @@ docs/测试.docx
 
 # Code graph (local tool database)
 .codegraph/
+# Local secret notes (never commit)
+docs/模型.txt
+
+# CLI test home (local artifact)
+ui/packages/cli/.cli-test-home/
