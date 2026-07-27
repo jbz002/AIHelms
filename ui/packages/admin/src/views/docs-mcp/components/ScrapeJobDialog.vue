@@ -13,6 +13,7 @@ interface Props {
   defaultUrl?: string
   defaultLibrary?: string
   defaultVersion?: string
+  lockTarget?: boolean
 }
 
 interface Emits {
@@ -126,6 +127,10 @@ watch([library, url], () => {
 
 watch(() => props.visible, (v) => {
   if (v) {
+    if (props.lockTarget) {
+      library.value = props.defaultLibrary ?? ''
+      version.value = props.defaultVersion ?? ''
+    }
     libraryCheckState.value = 'idle'
     urlCheckState.value = 'idle'
     urlCheckLibName.value = ''
@@ -219,7 +224,14 @@ function handleSubmit(): void {
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">库名 *</label>
-              <input v-model="library" type="text" placeholder="my-docs" :class="inputCls" />
+              <input
+                v-model="library"
+                type="text"
+                placeholder="my-docs"
+                :disabled="lockTarget"
+                :class="inputCls"
+                class="disabled:bg-slate-50 disabled:text-slate-400"
+              />
               <div v-if="libraryCheckState === 'exists'" class="mt-1 flex items-center gap-1 text-xs text-amber-600">
                 <AlertTriangle class="h-3 w-3" />
                 该文档库已存在，爬取将新增版本
@@ -230,7 +242,14 @@ function handleSubmit(): void {
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">版本</label>
-              <input v-model="version" type="text" placeholder="留空或完整版本号，如 1.0.0" :class="inputCls" />
+              <input
+                v-model="version"
+                type="text"
+                :placeholder="lockTarget && !version ? '默认版本' : '留空或完整版本号，如 1.0.0'"
+                :disabled="lockTarget"
+                :class="inputCls"
+                class="disabled:bg-slate-50 disabled:text-slate-400"
+              />
             </div>
           </div>
           <div class="rounded-md border border-gray-200">

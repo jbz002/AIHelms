@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { Document, IngestStats } from '@aihelms/shared'
+import type { Document, IngestStats, DocsMcpScrapeOptions } from '@aihelms/shared'
 import {
   getDocuments,
   getDocument,
@@ -9,6 +9,8 @@ import {
   ingestDocument,
   ingestDocumentBatch,
   deleteDocument,
+  createCrawlTask,
+  getDocsMcpEventSourceUrl,
   toast,
 } from '@aihelms/shared'
 import {
@@ -20,7 +22,11 @@ import {
   Loader2,
   RefreshCw,
   BarChart3,
+  Plus,
+  Upload,
 } from 'lucide-vue-next'
+import ScrapeJobDialog from './components/ScrapeJobDialog.vue'
+import UploadDialog from './components/UploadDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -38,6 +44,9 @@ const statusFilter = ref<string>('')
 const ingestingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
 const batchIngesting = ref(false)
+const showScrapeDialog = ref(false)
+const showUploadDialog = ref(false)
+let eventSource: EventSource | null = null
 
 const ingestStatusOptions = [
   { value: '', label: '全部状态' },
@@ -181,6 +190,58 @@ async function handleDelete(doc: Document): Promise<void> {
   }
 }
 
+async function handleSubmitJob(params: {
+  url: string
+  library: string
+  version: string
+  options: DocsMcpScrapeOptions
+  ingestMode: string
+}): Promise<void> {
+  try {
+    await createCrawlTask({
+      url: params.url,
+      library: params.library,
+      version: params.version,
+      options: params.options,
+      auto_ingest: params.ingestMode === 'direct',
+    })
+    toast.success('爬取任务已创建')
+    showScrapeDialog.value = false
+    await loadDocuments()
+    await loadStats()
+  } catch (e) {
+    toast.error((e as Error).message || '创建失败')
+  }
+}
+
+async function handleUploaded(): Promise<void> {
+  await loadDocuments()
+  await loadStats()
+}
+
+function connectSSE(): void {
+  const url = getDocsMcpEventSourceUrl()
+  eventSource = new EventSource(url)
+  eventSource.addEventListener('job-status-change', () => {
+    loadDocuments()
+    loadStats()
+  })
+  eventSource.addEventListener('job-progress', () => {
+    loadDocuments()
+    loadStats()
+  })
+  eventSource.addEventListener('job-list-change', () => {
+    loadDocuments()
+    loadStats()
+  })
+  eventSource.onerror = () => {
+    if (eventSource) {
+      eventSource.close()
+      setTimeout(connectSSE, 5000)
+    }
+  }
+}
+
 watch([sourceFilter, statusFilter], () => {
   page.value = 1
   loadDocuments()
@@ -189,6 +250,14 @@ watch([sourceFilter, statusFilter], () => {
 onMounted(() => {
   loadDocuments()
   loadStats()
+  connectSSE()
+})
+
+onUnmounted(() => {
+  if (eventSource) {
+    eventSource.close()
+    eventSource = null
+  }
 })
 </script>
 
@@ -202,6 +271,22 @@ onMounted(() => {
         <ArrowLeft class="h-4 w-4" />
       </button>
       <h2 class="text-lg font-semibold text-gray-900">{{ libraryName }} — 文档列表</h2>
+      <div class="ml-auto flex items-center gap-2">
+        <button
+          class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          @click="showScrapeDialog = true"
+        >
+          <Plus class="h-4 w-4" />
+          爬取增量
+        </button>
+        <button
+          class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
+          @click="showUploadDialog = true"
+        >
+          <Upload class="h-4 w-4" />
+          上传增量
+        </button>
+      </div>
     </div>
 
     <div v-if="stats" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -341,5 +426,22 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <ScrapeJobDialog
+      :visible="showScrapeDialog"
+      :default-library="libraryName"
+      :default-version="currentVersion"
+      :lock-target="true"
+      @close="showScrapeDialog = false"
+      @submit="handleSubmitJob"
+    />
+    <UploadDialog
+      :visible="showUploadDialog"
+      :default-library="libraryName"
+      :default-version="currentVersion"
+      :lock-target="true"
+      @close="showUploadDialog = false"
+      @uploaded="handleUploaded"
+    />
   </div>
 </template>

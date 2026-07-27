@@ -10,6 +10,8 @@ type IngestMode = 'direct' | 'extract-only'
 interface Props {
   visible: boolean
   defaultLibrary?: string
+  defaultVersion?: string
+  lockTarget?: boolean
 }
 
 interface Emits {
@@ -21,7 +23,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const library = ref(props.defaultLibrary ?? '')
-const version = ref('')
+const version = ref(props.defaultVersion ?? '')
 const files = ref<File[]>([])
 const ingestMode = ref<IngestMode>('direct')
 const uploading = ref(false)
@@ -29,6 +31,10 @@ const submitError = ref<string | null>(null)
 
 watch(() => props.visible, (v) => {
   if (v) {
+    if (props.lockTarget) {
+      library.value = props.defaultLibrary ?? ''
+      version.value = props.defaultVersion ?? ''
+    }
     ingestMode.value = 'direct'
   }
 })
@@ -127,11 +133,25 @@ function formatFileSize(bytes: number): string {
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">文档库 *</label>
-              <input v-model="library" type="text" placeholder="my-docs" :class="inputCls" />
+              <input
+                v-model="library"
+                type="text"
+                placeholder="my-docs"
+                :disabled="lockTarget"
+                :class="inputCls"
+                class="disabled:bg-slate-50 disabled:text-slate-400"
+              />
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">版本</label>
-              <input v-model="version" type="text" placeholder="留空或完整版本号，如 1.0.0" :class="inputCls" />
+              <input
+                v-model="version"
+                type="text"
+                :placeholder="lockTarget && !version ? '默认版本' : '留空或完整版本号，如 1.0.0'"
+                :disabled="lockTarget"
+                :class="inputCls"
+                class="disabled:bg-slate-50 disabled:text-slate-400"
+              />
             </div>
           </div>
 
