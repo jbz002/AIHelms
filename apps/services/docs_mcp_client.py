@@ -94,9 +94,10 @@ class DocsMcpClient:
         version: str | None = None,
         limit: int = 10,
     ) -> list[dict]:
-        # 未指定版本时，先解析到实际版本（否则 search 只查无版本号文档）
+        # 未指定版本或显式锁定 latest 时，先解析到实际版本：
+        # 前者避免只查无版本号文档，后者实现 URL 持续锁定当时 semver 最新版
         resolved_version: str | None = version
-        if version is None:
+        if version is None or version.lower() == "latest":
             try:
                 best = await self.find_best_version(library)
                 resolved_version = (

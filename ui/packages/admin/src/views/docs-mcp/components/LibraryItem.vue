@@ -11,7 +11,11 @@ const props = defineProps<Props>()
 const router = useRouter()
 
 function goToDetail(): void {
-  router.push({ name: 'DocsMcpDetail', params: { libraryName: props.library.library } })
+  router.push({
+    name: 'DocumentList',
+    params: { libraryName: props.library.library },
+    query: { version: 'latest' },
+  })
 }
 </script>
 

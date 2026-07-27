@@ -136,12 +136,6 @@ const router = createRouter({
         },
         {
           path: 'lab/docs/:libraryName',
-          name: 'DocsMcpDetail',
-          component: () => import('../views/docs-mcp/DocsMcpDetailView.vue'),
-          meta: { permission: 'efficiency:read' },
-        },
-        {
-          path: 'lab/docs/:libraryName/documents',
           name: 'DocumentList',
           component: () => import('../views/docs-mcp/DocumentList.vue'),
           meta: { permission: 'document:read' },

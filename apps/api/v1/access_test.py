@@ -59,7 +59,7 @@ async def test_access(
         model_obj = await model_repo.find_by_model_id(session, model_id.split("/")[-1])
     category = model_obj.category if model_obj else "chat"
     test_model = model_obj.model_id if model_obj and model_obj.model_id else model_id
-    user_key, error_detail = await precheck_access_test(
+    user_api_key, error_detail = await precheck_access_test(
         session,
         current_user["id"],
         model_obj,
@@ -68,7 +68,6 @@ async def test_access(
     )
     if error_detail:
         return _build_error_response(error_detail, category, req.stream)
-    user_api_key = user_key.litellm_key_id if user_key else ""
 
     if category == "embedding":
         text = (
@@ -154,7 +153,7 @@ async def test_embedding(
     current_user: dict = Depends(get_current_user),
 ):
     model_obj, test_model = await _resolve_model(session, req.model)
-    user_key, error_detail = await precheck_access_test(
+    user_api_key, error_detail = await precheck_access_test(
         session,
         current_user["id"],
         model_obj,
@@ -170,7 +169,7 @@ async def test_embedding(
     result = await access_test_service.test_embedding(
         model=test_model,
         text=req.text,
-        api_key=user_key.litellm_key_id if user_key else "",
+        api_key=user_api_key,
     )
     return {"code": 200, "message": "Embedding 测试完成", "data": result}
 
@@ -182,7 +181,7 @@ async def test_rerank(
     current_user: dict = Depends(get_current_user),
 ):
     model_obj, test_model = await _resolve_model(session, req.model)
-    user_key, error_detail = await precheck_access_test(
+    user_api_key, error_detail = await precheck_access_test(
         session,
         current_user["id"],
         model_obj,
@@ -199,6 +198,6 @@ async def test_rerank(
         model=test_model,
         query=req.query,
         documents=req.documents,
-        api_key=user_key.litellm_key_id if user_key else "",
+        api_key=user_api_key,
     )
     return {"code": 200, "message": "Rerank 测试完成", "data": result}

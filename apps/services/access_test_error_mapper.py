@@ -16,6 +16,10 @@ ERROR_TEMPLATES: dict[str, AccessTestErrorTemplate] = {
             "改为「启用」。"
         ),
     ),
+    "no_platform_key": AccessTestErrorTemplate(
+        title="测试失败：平台未配置 LLM 主密钥",
+        message="请联系管理员在平台环境变量中设置 LITELLM_MASTER_KEY 后重试。",
+    ),
     "model_not_authorized": AccessTestErrorTemplate(
         title="测试失败：当前用户的 AI 身份未包含该模型",
         message=(

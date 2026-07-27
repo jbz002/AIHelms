@@ -6,8 +6,8 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from repositories import ai_key_repo, model_repo, user_repo
-from services import litellm_client
+from repositories import model_repo, user_repo
+from services import litellm_client, platform_llm
 
 MAX_REVIEW_FILES = 8
 MAX_FILE_CHARS = 3000
@@ -743,7 +743,7 @@ def _response_state(response: dict, content: str) -> dict:
     }
 
 
-def _review_metadata(audit: Any, user: Any, key: Any) -> dict:
+def _review_metadata(audit: Any, user: Any) -> dict:
     return {
         "aihelms_feature": "ai_policies_skill_audit",
         "aihelms_audit_id": getattr(audit, "audit_id", ""),
@@ -751,8 +751,7 @@ def _review_metadata(audit: Any, user: Any, key: Any) -> dict:
         "aihelms_skill_name": getattr(audit, "skill_name", ""),
         "aihelms_user_id": getattr(user, "id", None),
         "aihelms_username": getattr(user, "username", ""),
-        "aihelms_ai_key_id": getattr(key, "id", None),
-        "aihelms_ai_key_alias": getattr(key, "litellm_key_alias", ""),
+        "aihelms_credential": "platform_master_key",
     }
 
 
@@ -891,19 +890,14 @@ async def run_llm_review(
     )
     if not user or not getattr(user, "is_active", False):
         return {"status": "skipped", "message": "发起审查的管理员账号不可用"}
-    key = await ai_key_repo.find_personal_main(session, user.id)
-    if not key or not key.is_active or not key.litellm_key_id:
+    platform_key = platform_llm.get_platform_api_key()
+    if not platform_key:
         return {
             "status": "skipped",
-            "message": "发起审查的管理员未配置可用的个人主 Key",
+            "message": "平台未配置 LLM 主密钥(LITELLM_MASTER_KEY)",
         }
-    if "*" not in (key.models or []) and model_name not in (key.models or []):
-        return {
-            "status": "skipped",
-            "message": "发起审查的管理员主 Key 无权访问审查模型",
-        }
-    litellm_user_id = user.litellm_user_id or f"aihelms_user_{user.id}"
-    metadata = _review_metadata(audit, user, key)
+    litellm_user_id = platform_llm.platform_user(user)
+    metadata = _review_metadata(audit, user)
 
     reviewable_findings = [item for item in findings if not item.get("redline")][:10]
     finding_briefs = [
@@ -940,7 +934,7 @@ async def run_llm_review(
     }
     selected_files, selection_result = await _select_review_files(
         model_name,
-        key.litellm_key_id,
+        platform_key,
         litellm_user_id,
         metadata,
         selection_payload,
@@ -962,7 +956,7 @@ async def run_llm_review(
     }
     intent_analysis, intent_state = await _run_intent_analysis(
         model_name,
-        key.litellm_key_id,
+        platform_key,
         litellm_user_id,
         metadata,
         intent_payload,
@@ -973,7 +967,7 @@ async def run_llm_review(
         review_result = await _chat_json(
             model_name,
             _review_prompt(prompt_payload),
-            key.litellm_key_id,
+            platform_key,
             litellm_user_id,
             metadata,
             max_tokens=2200,
@@ -983,7 +977,7 @@ async def run_llm_review(
         review_result = await _chat_json(
             model_name,
             _review_prompt(prompt_payload, retry=True),
-            key.litellm_key_id,
+            platform_key,
             litellm_user_id,
             metadata,
             True,

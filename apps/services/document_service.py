@@ -63,6 +63,32 @@ def _serialize_document(doc: Document) -> dict:
     }
 
 
+async def _resolve_latest_version(library: str) -> str | None:
+    """把 "latest" 解析为当时 semver 最新版本号。
+
+    实现持续锁定：URL 带 version=latest 时，每次查询都重新解析，新增版本后
+    自动跟进。解析失败回退 None（不按版本过滤），避免误命中空版本桶。
+    """
+    try:
+        best = await docs_mcp_client.find_best_version(library)
+        return best.get("bestMatch") if isinstance(best, dict) else None
+    except DocsMcpError:
+        logger.warning(
+            "resolve latest version failed, fallback to no-version filter",
+            extra={"library": library},
+        )
+        return None
+
+
+async def _normalize_version_filter(
+    library: str | None, version: str | None
+) -> str | None:
+    """version="latest" 时解析为具体版本号；其余原样返回。library 为空时无法解析。"""
+    if version and version.lower() == "latest" and library:
+        return await _resolve_latest_version(library)
+    return version
+
+
 async def get_document_by_id(session: AsyncSession, document_id: int) -> dict:
     """根据 ID 获取文档详情。"""
     doc = await document_repo.find_by_id(session, document_id)
@@ -83,6 +109,7 @@ async def list_documents(
     page_size: int = 20,
 ) -> dict:
     """查询文档列表，支持多条件过滤和分页。"""
+    version = await _normalize_version_filter(library, version)
     total = await document_repo.count_all(
         session, library, source_type, ingest_status, version
     )
@@ -250,6 +277,7 @@ async def get_ingest_stats(
     version: str | None = None,
 ) -> dict:
     """获取文档入库统计。"""
+    version = await _normalize_version_filter(library, version)
     rows = await document_repo.count_grouped_by_status(session, library, version)
     by_status = {r["ingest_status"]: r["count"] for r in rows}
     total_documents = sum(r["count"] for r in rows)

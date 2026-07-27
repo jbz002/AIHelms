@@ -299,23 +299,14 @@ async def test_run_llm_review_uses_platform_model_and_returns_category_reviews(
             litellm_user_id=f"aihelms_user_{user_id}",
         )
 
-    async def fake_find_personal_main(session, user_id):
-        return SimpleNamespace(
-            id=47,
-            is_active=True,
-            litellm_key_id="sk-user-main",
-            litellm_key_alias="user:testadmin/main",
-            models=["qwen-audit"],
-        )
-
     monkeypatch.setattr(ai_policies_llm.model_repo, "find_by_id", fake_find_by_id)
     monkeypatch.setattr(
         ai_policies_llm.user_repo, "find_user_by_id", fake_find_user_by_id
     )
     monkeypatch.setattr(
-        ai_policies_llm.ai_key_repo,
-        "find_personal_main",
-        fake_find_personal_main,
+        ai_policies_llm.platform_llm,
+        "get_platform_api_key",
+        lambda: "sk-platform",
     )
     monkeypatch.setattr(
         ai_policies_llm.litellm_client,
@@ -361,10 +352,10 @@ async def test_run_llm_review_uses_platform_model_and_returns_category_reviews(
     assert result["category_reviews"] == []
     assert result["intent_analysis"]["consistency"] == "基本一致"
     assert result["selected_files"] == ["SKILL.md"]
-    assert captured_kwargs["api_key"] == "sk-user-main"
+    assert captured_kwargs["api_key"] == "sk-platform"
     assert captured_kwargs["user"] == "aihelms_user_48"
     assert captured_kwargs["metadata"]["aihelms_user_id"] == 48
-    assert captured_kwargs["metadata"]["aihelms_ai_key_id"] == 47
+    assert captured_kwargs["metadata"]["aihelms_credential"] == "platform_master_key"
 
 
 @pytest.mark.asyncio
@@ -395,15 +386,6 @@ async def test_run_llm_review_generates_intent_analysis_without_findings(
             username="testadmin",
             is_active=True,
             litellm_user_id=f"aihelms_user_{user_id}",
-        )
-
-    async def fake_find_personal_main(session, user_id):
-        return SimpleNamespace(
-            id=47,
-            is_active=True,
-            litellm_key_id="sk-user-main",
-            litellm_key_alias="user:testadmin/main",
-            models=["qwen-audit"],
         )
 
     async def fake_chat_completion(model, messages, **kwargs):
@@ -446,9 +428,9 @@ async def test_run_llm_review_generates_intent_analysis_without_findings(
         ai_policies_llm.user_repo, "find_user_by_id", fake_find_user_by_id
     )
     monkeypatch.setattr(
-        ai_policies_llm.ai_key_repo,
-        "find_personal_main",
-        fake_find_personal_main,
+        ai_policies_llm.platform_llm,
+        "get_platform_api_key",
+        lambda: "sk-platform",
     )
     monkeypatch.setattr(
         ai_policies_llm.litellm_client,
@@ -514,23 +496,14 @@ async def test_run_llm_review_does_not_fake_category_reviews_when_unparsed(
             litellm_user_id=f"aihelms_user_{user_id}",
         )
 
-    async def fake_find_personal_main(session, user_id):
-        return SimpleNamespace(
-            id=47,
-            is_active=True,
-            litellm_key_id="sk-user-main",
-            litellm_key_alias="user:testadmin/main",
-            models=["qwen-audit"],
-        )
-
     monkeypatch.setattr(ai_policies_llm.model_repo, "find_by_id", fake_find_by_id)
     monkeypatch.setattr(
         ai_policies_llm.user_repo, "find_user_by_id", fake_find_user_by_id
     )
     monkeypatch.setattr(
-        ai_policies_llm.ai_key_repo,
-        "find_personal_main",
-        fake_find_personal_main,
+        ai_policies_llm.platform_llm,
+        "get_platform_api_key",
+        lambda: "sk-platform",
     )
     monkeypatch.setattr(
         ai_policies_llm.litellm_client,
@@ -618,7 +591,7 @@ def test_llm_review_normalizes_common_enum_values() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_llm_review_skips_without_current_admin_ai_identity(
+async def test_run_llm_review_skips_without_platform_key(
     monkeypatch,
 ) -> None:
     async def fake_find_by_id(session, model_id):
@@ -644,20 +617,17 @@ async def test_run_llm_review_skips_without_current_admin_ai_identity(
             litellm_user_id=f"aihelms_user_{user_id}",
         )
 
-    async def fake_find_personal_main(session, user_id):
-        return None
-
     async def fake_chat_completion(model, messages, **kwargs):
-        raise AssertionError("LLM 调用不应在缺少管理员 AI 身份时发生")
+        raise AssertionError("LLM 调用不应在缺少平台主密钥时发生")
 
     monkeypatch.setattr(ai_policies_llm.model_repo, "find_by_id", fake_find_by_id)
     monkeypatch.setattr(
         ai_policies_llm.user_repo, "find_user_by_id", fake_find_user_by_id
     )
     monkeypatch.setattr(
-        ai_policies_llm.ai_key_repo,
-        "find_personal_main",
-        fake_find_personal_main,
+        ai_policies_llm.platform_llm,
+        "get_platform_api_key",
+        lambda: "",
     )
     monkeypatch.setattr(
         ai_policies_llm.litellm_client,
@@ -683,7 +653,7 @@ async def test_run_llm_review_skips_without_current_admin_ai_identity(
 
     assert result == {
         "status": "skipped",
-        "message": "发起审查的管理员未配置可用的个人主 Key",
+        "message": "平台未配置 LLM 主密钥(LITELLM_MASTER_KEY)",
     }
 
 

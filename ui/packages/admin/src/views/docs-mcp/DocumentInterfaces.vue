@@ -213,9 +213,36 @@ onUnmounted(stopPolling)
 
     <div
       v-else
-      class="h-[calc(100vh-8rem)] overflow-hidden rounded-lg border border-gray-200 bg-white"
+      class="scalar-host h-[calc(100vh-8rem)] overflow-hidden rounded-lg border border-gray-200 bg-white"
     >
-      <ApiReference :configuration="{ content: spec, layout: 'modern' }" />
+      <ApiReference
+        :configuration="{
+          content: spec,
+          layout: 'modern',
+          localization: { locale: 'zh-CN' },
+        }"
+      />
     </div>
   </div>
 </template>
+
+<style scoped>
+/*
+ 仅覆写 scalar 主题变量，使 scalar 面板的字号/强调色/文字色/圆角与本系统周围页面对齐。
+ scalar 默认正文 16px、accent #09f 蓝、中性灰文字，与本模块（text-sm 14px、purple-600 紫色、gray 标度）不一致。
+ scalar UI 仅支持 CSS 变量定制，无 Tailwind 等价写法，故破例用 scoped style。
+*/
+.scalar-host {
+  --scalar-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    'Segoe UI Symbol', 'Noto Color Emoji';
+  --scalar-font-code: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+  --scalar-font-size-2: 14px;
+  --scalar-radius: 8px;
+  --scalar-color-accent: #9333ea;
+  --scalar-color-1: #111827;
+  --scalar-color-2: #4b5563;
+  --scalar-heading-1: 20px;
+}
+</style>

@@ -4,7 +4,8 @@
 process_extraction → LLM 提取 → 结构化落 document_api_endpoints → build_openapi_spec
 聚合给前端 Scalar 渲染。
 
-凭据链复用 ai_policies 已验证方案：job 行 created_by → user → 个人主 AiKey → litellm。
+LLM 调用走平台 key（services/platform_llm.py，复用 LITELLM_MASTER_KEY），
+管理员无感，无需个人 AiKey。
 """
 
 import json
@@ -19,13 +20,12 @@ from core.database import get_worker_session_factory
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import Document, DocumentApiEndpoint, DocumentApiSpec
 from repositories import (
-    ai_key_repo,
     document_api_repo,
     document_repo,
     model_repo,
     user_repo,
 )
-from services import litellm_client
+from services import litellm_client, platform_llm
 
 logger = logging.getLogger(__name__)
 
@@ -266,22 +266,15 @@ async def create_extraction(
 # ── worker 体 ─────────────────────────────────────────────────────────────────
 
 
-async def _resolve_credentials(
-    session: AsyncSession, spec: DocumentApiSpec
-) -> tuple[object, object, str] | None:
-    """复用 ai_policies 凭据链：created_by → user → 个人主 Key。失败返回 None。"""
+async def _resolve_actor(session: AsyncSession, spec: DocumentApiSpec) -> object | None:
+    """解析发起人（LiteLLM user 归属 + metadata）。不在/停用返回 None。
+
+    平台 key 调用不需要个人 AiKey；发起人仅作日志归属。
+    """
     user = await user_repo.find_user_by_id(session, int(spec.created_by or 0))
     if not user or not getattr(user, "is_active", False):
         return None
-    key = await ai_key_repo.find_personal_main(session, user.id)
-    if (
-        not key
-        or not getattr(key, "is_active", False)
-        or not getattr(key, "litellm_key_id", "")
-    ):
-        return None
-    litellm_user_id = getattr(user, "litellm_user_id", "") or f"aihelms_user_{user.id}"
-    return user, key, litellm_user_id
+    return user
 
 
 async def process_extraction(session: AsyncSession, spec_pk: int) -> dict:
@@ -295,11 +288,15 @@ async def process_extraction(session: AsyncSession, spec_pk: int) -> dict:
     await session.commit()
 
     try:
-        creds = await _resolve_credentials(session, spec)
-        if creds is None:
-            await _fail_spec(session, spec, "发起账号未配置可用的个人主 Key")
+        user = await _resolve_actor(session, spec)
+        if user is None:
+            await _fail_spec(session, spec, "发起账号不存在或已停用")
             return _serialize_spec(spec)
-        user, key, litellm_user_id = creds
+        platform_key = platform_llm.get_platform_api_key()
+        if not platform_key:
+            await _fail_spec(session, spec, "平台未配置 LLM 主密钥(LITELLM_MASTER_KEY)")
+            return _serialize_spec(spec)
+        litellm_user_id = platform_llm.platform_user(user)
 
         model = (
             await model_repo.find_by_id(session, spec.model_id)
@@ -312,10 +309,6 @@ async def process_extraction(session: AsyncSession, spec_pk: int) -> dict:
         model_name = getattr(model, "model_id", "") or getattr(model, "name", "")
         if not model_name:
             await _fail_spec(session, spec, "所选模型不可用")
-            return _serialize_spec(spec)
-        key_models = getattr(key, "models", []) or []
-        if "*" not in key_models and model_name not in key_models:
-            await _fail_spec(session, spec, "发起账号的个人主 Key 无权访问该模型")
             return _serialize_spec(spec)
 
         doc = await document_repo.find_by_id(session, spec.document_id)
@@ -332,10 +325,10 @@ async def process_extraction(session: AsyncSession, spec_pk: int) -> dict:
             "aihelms_spec_id": spec.spec_id,
             "aihelms_document_id": spec.document_id,
             "aihelms_user_id": user.id,
-            "aihelms_ai_key_id": key.id,
+            "aihelms_credential": "platform_master_key",
         }
         data, usage, truncated = await _run_llm_extraction(
-            spec, doc, model_name, key.litellm_key_id, litellm_user_id, metadata
+            spec, doc, model_name, platform_key, litellm_user_id, metadata
         )
         if data is None:
             await _fail_spec(session, spec, "模型输出无法解析为合法 JSON")
@@ -363,6 +356,7 @@ async def process_extraction(session: AsyncSession, spec_pk: int) -> dict:
         spec.raw_output = data
         spec.summary = summary
         await session.commit()
+        await session.refresh(spec)
         return _serialize_spec(spec)
     except Exception as exc:
         logger.exception("document api extraction failed: spec_pk=%s", spec_pk)
@@ -407,6 +401,7 @@ async def _fail_spec(
     spec.finished_at = _now()
     spec.summary = {**spec.summary, "progress": _progress(100, 4, "失败")}
     await session.commit()
+    await session.refresh(spec)
 
 
 async def fail_spec_by_id(spec_pk: int, message: str) -> None:

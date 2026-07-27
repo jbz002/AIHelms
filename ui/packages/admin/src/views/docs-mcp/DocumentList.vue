@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { Document, IngestStats, DocsMcpScrapeOptions } from '@aihelms/shared'
+import type {
+  Document,
+  IngestStats,
+  DocsMcpScrapeOptions,
+  DocsMcpLibrary,
+  DocsMcpSearchResult,
+} from '@aihelms/shared'
 import {
   getDocuments,
   getDocument,
@@ -11,6 +17,8 @@ import {
   deleteDocument,
   createCrawlTask,
   getDocsMcpEventSourceUrl,
+  getDocsMcpLibraryDetail,
+  searchDocsMcp,
   toast,
 } from '@aihelms/shared'
 import {
@@ -27,6 +35,8 @@ import {
 } from 'lucide-vue-next'
 import ScrapeJobDialog from './components/ScrapeJobDialog.vue'
 import UploadDialog from './components/UploadDialog.vue'
+import SearchCard from './components/SearchCard.vue'
+import SearchResultList from './components/SearchResultList.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -46,7 +56,30 @@ const deletingId = ref<number | null>(null)
 const batchIngesting = ref(false)
 const showScrapeDialog = ref(false)
 const showUploadDialog = ref(false)
+const library = ref<DocsMcpLibrary | null>(null)
+const libraryLoading = ref(false)
+const searchResults = ref<DocsMcpSearchResult[]>([])
+const searchLoading = ref(false)
+const hasSearched = ref(false)
+const showAddVersionDialog = ref(false)
 let eventSource: EventSource | null = null
+
+// 版本下拉：latest 持续锁定最新 + 库内全部版本
+const versionOptions = computed(() => [
+  { value: 'latest', label: '最新' },
+  ...(library.value?.versions ?? []).map((v) => ({
+    value: v.ref.version || '',
+    label: v.ref.version || '默认',
+  })),
+])
+
+// select v-model 代理：写时 router.replace 更新 query，读时取 currentVersion
+const selectedVersion = computed<string>({
+  get: () => currentVersion.value || 'latest',
+  set: (val: string) => {
+    router.replace({ query: { ...route.query, version: val } })
+  },
+})
 
 const ingestStatusOptions = [
   { value: '', label: '全部状态' },
@@ -102,6 +135,34 @@ async function loadStats(): Promise<void> {
     stats.value = await getDocumentStats(libraryName.value, currentVersion.value || undefined)
   } catch {
     stats.value = null
+  }
+}
+
+async function loadLibrary(): Promise<void> {
+  libraryLoading.value = true
+  try {
+    library.value = await getDocsMcpLibraryDetail(libraryName.value)
+  } catch (e) {
+    toast.error((e as Error).message || '加载文档库失败')
+  } finally {
+    libraryLoading.value = false
+  }
+}
+
+async function handleSearch(query: string): Promise<void> {
+  searchLoading.value = true
+  hasSearched.value = true
+  try {
+    searchResults.value = await searchDocsMcp(
+      libraryName.value,
+      query,
+      currentVersion.value || undefined,
+      20,
+    )
+  } catch (e) {
+    toast.error((e as Error).message || '搜索失败')
+  } finally {
+    searchLoading.value = false
   }
 }
 
@@ -207,6 +268,8 @@ async function handleSubmitJob(params: {
     })
     toast.success('爬取任务已创建')
     showScrapeDialog.value = false
+    showAddVersionDialog.value = false
+    await loadLibrary()
     await loadDocuments()
     await loadStats()
   } catch (e) {
@@ -223,14 +286,17 @@ function connectSSE(): void {
   const url = getDocsMcpEventSourceUrl()
   eventSource = new EventSource(url)
   eventSource.addEventListener('job-status-change', () => {
+    loadLibrary()
     loadDocuments()
     loadStats()
   })
   eventSource.addEventListener('job-progress', () => {
+    loadLibrary()
     loadDocuments()
     loadStats()
   })
   eventSource.addEventListener('job-list-change', () => {
+    loadLibrary()
     loadDocuments()
     loadStats()
   })
@@ -247,7 +313,14 @@ watch([sourceFilter, statusFilter], () => {
   loadDocuments()
 })
 
+watch(currentVersion, () => {
+  page.value = 1
+  loadDocuments()
+  loadStats()
+})
+
 onMounted(() => {
+  loadLibrary()
   loadDocuments()
   loadStats()
   connectSSE()
@@ -266,12 +339,27 @@ onUnmounted(() => {
     <div class="flex items-center gap-3">
       <button
         class="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-        @click="router.push({ name: 'DocsMcpDetail', params: { libraryName } })"
+        @click="router.push({ name: 'DocsMcp' })"
       >
         <ArrowLeft class="h-4 w-4" />
       </button>
-      <h2 class="text-lg font-semibold text-gray-900">{{ libraryName }} — 文档列表</h2>
+      <h2 class="text-lg font-semibold text-gray-900">{{ libraryName }}</h2>
+      <select
+        v-model="selectedVersion"
+        :disabled="libraryLoading"
+        class="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+        title="切换版本"
+      >
+        <option v-for="o in versionOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
+      </select>
       <div class="ml-auto flex items-center gap-2">
+        <button
+          class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          @click="showAddVersionDialog = true"
+        >
+          <Plus class="h-4 w-4" />
+          新增版本
+        </button>
         <button
           class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
           @click="showScrapeDialog = true"
@@ -288,6 +376,9 @@ onUnmounted(() => {
         </button>
       </div>
     </div>
+
+    <SearchCard @search="handleSearch" />
+    <SearchResultList v-if="hasSearched" :results="searchResults" :loading="searchLoading" />
 
     <div v-if="stats" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <div class="rounded-lg border border-gray-200 bg-white p-3">
@@ -427,6 +518,12 @@ onUnmounted(() => {
       </div>
     </div>
 
+    <ScrapeJobDialog
+      :visible="showAddVersionDialog"
+      :default-library="libraryName"
+      @close="showAddVersionDialog = false"
+      @submit="handleSubmitJob"
+    />
     <ScrapeJobDialog
       :visible="showScrapeDialog"
       :default-library="libraryName"

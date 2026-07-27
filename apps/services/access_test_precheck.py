@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import AiKey, Model, ModelDeployment
 from repositories import ai_key_repo, model_repo
-from services import ai_key_service
+from services import platform_llm
 from services.access_test_error_mapper import build_error_detail
 
 
@@ -19,53 +19,50 @@ async def precheck_access_test(
     model: Model | None,
     test_model: str,
     is_admin: bool,
-) -> tuple[AiKey | None, dict[str, object] | None]:
+) -> tuple[str | None, dict[str, object] | None]:
+    """返回 (api_key, error_detail)。成功时 api_key 非空、error_detail 为 None。
+
+    管理员走平台 key（LITELLM_MASTER_KEY），无需个人 AiKey；普通用户走个人主 Key
+    并校验模型授权/发布状态。
+    """
+    if is_admin:
+        return await _precheck_admin(session, model)
+    return await _precheck_user(session, user_id, model, test_model)
+
+
+async def _precheck_admin(
+    session: AsyncSession, model: Model | None
+) -> tuple[str | None, dict[str, object] | None]:
+    platform_key = platform_llm.get_platform_api_key()
+    if not platform_key:
+        return None, build_error_detail("no_platform_key")
+    if not model:
+        return platform_key, None
+    if not model.is_active:
+        return None, build_error_detail("no_active_deployment")
+    deployments = await model_repo.find_deployments_by_model(session, model.id)
+    if not any(_deployment_available(deployment) for deployment in deployments):
+        return None, build_error_detail("no_active_deployment")
+    return platform_key, None
+
+
+async def _precheck_user(
+    session: AsyncSession,
+    user_id: int,
+    model: Model | None,
+    test_model: str,
+) -> tuple[str | None, dict[str, object] | None]:
     key = await resolve_test_identity(session, user_id)
     if not key:
         return None, build_error_detail("no_identity")
-
-    if not model:
-        return key, None
-
-    if is_admin:
-        if not model.is_active:
-            return key, build_error_detail("no_active_deployment")
-
-        deployments = await model_repo.find_deployments_by_model(session, model.id)
-        if not any(_deployment_available(deployment) for deployment in deployments):
-            return key, build_error_detail("no_active_deployment")
-
-        await _ensure_admin_authorized(session, key, model)
-        return key, None
-
     if not _model_authorized(key, test_model):
-        return key, build_error_detail("model_not_authorized")
-
-    if not model.is_active or not model.is_published:
-        return key, build_error_detail("model_not_published")
-
+        return None, build_error_detail("model_not_authorized")
+    if not model or not model.is_active or not model.is_published:
+        return None, build_error_detail("model_not_published")
     deployments = await model_repo.find_deployments_by_model(session, model.id)
     if not any(_deployment_available(deployment) for deployment in deployments):
-        return key, build_error_detail("no_active_deployment")
-
-    return key, None
-
-
-async def _ensure_admin_authorized(
-    session: AsyncSession,
-    key: AiKey,
-    model: Model,
-) -> None:
-    existing = key.models or []
-    if "*" in existing or model.model_id in existing:
-        return
-
-    await ai_key_service.update_key(
-        session,
-        key_id=key.id,
-        models=[*existing, model.model_id],
-        update_rate_limit=False,
-    )
+        return None, build_error_detail("no_active_deployment")
+    return key.litellm_key_id, None
 
 
 def _model_authorized(key: AiKey, model_id: str) -> bool:

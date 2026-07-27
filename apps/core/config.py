@@ -21,7 +21,12 @@ class Settings(BaseSettings):
     litellm_url: str = ""
     litellm_host: str = "localhost"
     litellm_port: int = 4000
+    # LiteLLM 全权 key：兼作管理 API 鉴权与平台业务 LLM 调用 key。
+    # 管理员发起的平台运维调用（接口提取 / 安全审查 / 模型连通性测试）统一走此 key，
+    # 对管理员无感，无需配置个人 AI 身份。见 services/platform_llm.py。
     litellm_master_key: str = ""
+    # 平台 LLM 调用在 LiteLLM 的 user 字段归属标识（发起人无 litellm_user_id 时兜底）
+    platform_llm_user: str = "aihelms_platform"
     # 对外暴露给用户客户端的 LiteLLM 地址
     # （自动由 NGINX_SERVER_NAME + LITELLM_PORT 拼接）
     litellm_public_url: str = ""
