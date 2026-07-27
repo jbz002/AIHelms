@@ -521,6 +521,7 @@ onUnmounted(() => {
     <ScrapeJobDialog
       :visible="showAddVersionDialog"
       :default-library="libraryName"
+      :lock-library="true"
       @close="showAddVersionDialog = false"
       @submit="handleSubmitJob"
     />
@@ -528,7 +529,8 @@ onUnmounted(() => {
       :visible="showScrapeDialog"
       :default-library="libraryName"
       :default-version="currentVersion"
-      :lock-target="true"
+      :lock-library="true"
+      :lock-version="true"
       @close="showScrapeDialog = false"
       @submit="handleSubmitJob"
     />
@@ -536,7 +538,8 @@ onUnmounted(() => {
       :visible="showUploadDialog"
       :default-library="libraryName"
       :default-version="currentVersion"
-      :lock-target="true"
+      :lock-library="true"
+      :lock-version="true"
       @close="showUploadDialog = false"
       @uploaded="handleUploaded"
     />

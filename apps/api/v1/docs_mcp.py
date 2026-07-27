@@ -106,6 +106,10 @@ async def create_job(body: dict, _: dict = Depends(get_current_user)):
             **additional_options,
         }
 
+        # latest 哨兵解析为当时最新版本，落具体版本桶（enqueue 前同步 options）
+        version = await docs_mcp_client.resolve_version(library, version)
+        scraper_options["version"] = version or ""
+
         logger.info("create_job: library=%s, version=%s", library, version)
 
         result = await docs_mcp_client.enqueue_scrape_job(
@@ -198,14 +202,24 @@ async def delete_version(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        local_version = "" if version.lower() == "latest" else version
-        await docs_mcp_client.remove_version(library_name, version)
-        await doc_upload_repo.delete_by_library_version(db, library_name, local_version)
+        # latest 解析为当时最高 semver（无 semver 时落 unversioned），
+        # 不依赖 docs-mcp 的 latest→unversioned 翻译，避免误删默认桶
+        resolved = version
+        if version.lower() == "latest":
+            resolved = await docs_mcp_client.resolve_version(library_name, version)
+            if resolved is None:
+                return {
+                    "code": 404,
+                    "message": "无法解析最新版本（库为空或无可用版本）",
+                    "data": None,
+                }
+        await docs_mcp_client.remove_version(library_name, resolved)
+        await doc_upload_repo.delete_by_library_version(db, library_name, resolved)
         await crawled_page_repo.delete_by_library_version(
-            db, library_name, local_version
+            db, library_name, resolved
         )
-        await crawl_task_repo.delete_by_library_version(db, library_name, local_version)
-        await document_repo.delete_by_library_version(db, library_name, local_version)
+        await crawl_task_repo.delete_by_library_version(db, library_name, resolved)
+        await document_repo.delete_by_library_version(db, library_name, resolved)
         await db.commit()
         return {"code": 200, "message": "版本已删除", "data": None}
     except DocsMcpError as e:
@@ -224,12 +238,20 @@ async def delete_version_documents(
 ):
     """删除版本下所有文档，保留版本记录本身。适用于清除后重新抓取。"""
     try:
-        local_version = "" if version.lower() == "latest" else version
-        await docs_mcp_client.remove_version_documents(library_name, version)
+        resolved = version
+        if version.lower() == "latest":
+            resolved = await docs_mcp_client.resolve_version(library_name, version)
+            if resolved is None:
+                return {
+                    "code": 404,
+                    "message": "无法解析最新版本（库为空或无可用版本）",
+                    "data": None,
+                }
+        await docs_mcp_client.remove_version_documents(library_name, resolved)
         await crawled_page_repo.delete_by_library_version(
-            db, library_name, local_version
+            db, library_name, resolved
         )
-        await document_repo.delete_by_library_version(db, library_name, local_version)
+        await document_repo.delete_by_library_version(db, library_name, resolved)
         await db.commit()
         return {"code": 200, "message": "文档已清除", "data": None}
     except DocsMcpError as e:

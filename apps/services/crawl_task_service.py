@@ -83,9 +83,12 @@ async def create_crawl_task(
     """创建 crawl-only 任务：先 enqueue 拿 job_id（crawlOnly=true），再写平台 DB。
 
     job_id 为 NOT NULL，必须先拿到再落库。
+    latest 哨兵在此解析为具体版本，确保任务落到当时最新版本桶。
     """
+    version = await docs_mcp_client.resolve_version(library, version)
     options = dict(scraper_options)
     options["crawlOnly"] = True
+    options["version"] = version or ""
 
     try:
         result = await docs_mcp_client.enqueue_scrape_job(

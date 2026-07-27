@@ -171,9 +171,8 @@ async def list_all(
         stmt = stmt.where(Document.source_type == source_type)
     if ingest_status:
         stmt = stmt.where(Document.ingest_status == ingest_status)
-    if version:
-        normalized = "" if version.lower() == "latest" else version
-        stmt = stmt.where(Document.version == normalized)
+    if version is not None:
+        stmt = stmt.where(Document.version == version)
     stmt = (
         stmt.order_by(Document.id.desc())
         .limit(page_size)
@@ -197,9 +196,8 @@ async def count_all(
         stmt = stmt.where(Document.source_type == source_type)
     if ingest_status:
         stmt = stmt.where(Document.ingest_status == ingest_status)
-    if version:
-        normalized = "" if version.lower() == "latest" else version
-        stmt = stmt.where(Document.version == normalized)
+    if version is not None:
+        stmt = stmt.where(Document.version == version)
     result = await session.execute(stmt)
     return result.scalar_one()
 
@@ -216,9 +214,8 @@ async def count_grouped_by_status(
     ).group_by(Document.ingest_status)
     if library:
         stmt = stmt.where(func.lower(Document.library) == library.lower())
-    if version:
-        normalized = "" if version.lower() == "latest" else version
-        stmt = stmt.where(Document.version == normalized)
+    if version is not None:
+        stmt = stmt.where(Document.version == version)
     result = await session.execute(stmt)
     return [
         {

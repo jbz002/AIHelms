@@ -24,7 +24,9 @@ def normalize_docs_version(version: str | None) -> str | None:
 
 
 def is_valid_docs_version(version: str | None) -> bool:
-    """None（unversioned）合法；非空必须匹配 X.Y.Z（可选 v 前缀）。"""
+    """None（unversioned）合法；"latest" 哨兵合法（写入时由 service 解析）；其余须匹配 X.Y.Z。"""
     if version is None:
+        return True
+    if version.lower() == "latest":
         return True
     return bool(DOCS_VERSION_RE.match(version))

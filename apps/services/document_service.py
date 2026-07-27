@@ -64,20 +64,13 @@ def _serialize_document(doc: Document) -> dict:
 
 
 async def _resolve_latest_version(library: str) -> str | None:
-    """把 "latest" 解析为当时 semver 最新版本号。
+    """把 "latest" 解析为当时最新版本（持续锁定）。
 
-    实现持续锁定：URL 带 version=latest 时，每次查询都重新解析，新增版本后
-    自动跟进。解析失败回退 None（不按版本过滤），避免误命中空版本桶。
+    复用 docs_mcp_client.resolve_version：bestMatch 非空→最高 semver；
+    bestMatch=null 且 hasUnversioned→""（落 unversioned，与 search 一致）；
+    库空/解析失败→None（不按版本过滤，保底）。
     """
-    try:
-        best = await docs_mcp_client.find_best_version(library)
-        return best.get("bestMatch") if isinstance(best, dict) else None
-    except DocsMcpError:
-        logger.warning(
-            "resolve latest version failed, fallback to no-version filter",
-            extra={"library": library},
-        )
-        return None
+    return await docs_mcp_client.resolve_version(library, "latest")
 
 
 async def _normalize_version_filter(

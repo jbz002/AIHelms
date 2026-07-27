@@ -230,7 +230,9 @@ async def upload_document(
 
     若 auto_ingest=True，提取后自动调用 ingest_upload 入库。
     若 auto_ingest=False，仅提取并保存，返回 status=extracted 供后续手动入库。
+    latest 哨兵在此解析为具体版本，确保上传落到当时最新版本桶。
     """
+    version = await docs_mcp_client.resolve_version(library, version)
     content_type = _detect_content_type(file_name)
 
     record = DocUploadRecord(
@@ -264,7 +266,9 @@ async def create_batch_records(
     files: [(file_bytes, file_name), ...]，调用方已完成扩展名/空字节校验。
     仅建记录 + 落盘，不做提取（快路径）；提取由 process_upload 在后台完成。
     返回序列化记录列表（含 id 供调用方派发 Celery）。
+    latest 哨兵在此解析为具体版本，确保批量上传落到当时最新版本桶。
     """
+    version = await docs_mcp_client.resolve_version(library, version)
     import os
 
     import aiofiles

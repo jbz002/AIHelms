@@ -87,6 +87,34 @@ class DocsMcpClient:
             "GET", f"/api/libraries/{library}/versions/best", params=params
         )
 
+    async def resolve_version(
+        self, library: str, version: str | None
+    ) -> str | None:
+        """把 "latest" 哨兵解析为具体版本号，查询/写入/删除复用。
+
+        - 非 latest（含 None/具体版本）：原样返回
+        - latest 且 bestMatch 非空：返回最高 semver
+        - latest 且 bestMatch=null 但 hasUnversioned：返回 ""（落 unversioned 桶）
+        - latest 且库空/解析失败：返回 None
+        """
+        if not version or version.lower() != "latest":
+            return version
+        try:
+            best = await self.find_best_version(library)
+            if isinstance(best, dict):
+                best_match = best.get("bestMatch")
+                if best_match:
+                    return best_match
+                if best.get("hasUnversioned"):
+                    return ""
+            return None
+        except DocsMcpError:
+            logger.warning(
+                "resolve latest version failed",
+                extra={"library": library},
+            )
+            return None
+
     async def search(
         self,
         library: str,

@@ -13,7 +13,8 @@ interface Props {
   defaultUrl?: string
   defaultLibrary?: string
   defaultVersion?: string
-  lockTarget?: boolean
+  lockLibrary?: boolean
+  lockVersion?: boolean
 }
 
 interface Emits {
@@ -127,8 +128,10 @@ watch([library, url], () => {
 
 watch(() => props.visible, (v) => {
   if (v) {
-    if (props.lockTarget) {
+    if (props.lockLibrary) {
       library.value = props.defaultLibrary ?? ''
+    }
+    if (props.lockVersion) {
       version.value = props.defaultVersion ?? ''
     }
     libraryCheckState.value = 'idle'
@@ -160,7 +163,8 @@ function onExcludePatternsInput(e: Event): void {
 function handleSubmit(): void {
   if (!url.value || !library.value) return
   const versionInput = version.value.trim()
-  if (versionInput && !DOCS_VERSION_RE.test(versionInput)) {
+  // lockVersion 模式下 version 来自父级（可能 "latest" 哨兵，后端解析），跳过格式校验
+  if (!props.lockVersion && versionInput && !DOCS_VERSION_RE.test(versionInput)) {
     toast.error('版本号格式无效，请留空或填写完整版本号（如 1.0.0）')
     return
   }
@@ -228,7 +232,7 @@ function handleSubmit(): void {
                 v-model="library"
                 type="text"
                 placeholder="my-docs"
-                :disabled="lockTarget"
+                :disabled="lockLibrary"
                 :class="inputCls"
                 class="disabled:bg-slate-50 disabled:text-slate-400"
               />
@@ -245,8 +249,8 @@ function handleSubmit(): void {
               <input
                 v-model="version"
                 type="text"
-                :placeholder="lockTarget && !version ? '默认版本' : '留空或完整版本号，如 1.0.0'"
-                :disabled="lockTarget"
+                :placeholder="lockVersion && !version ? '默认版本' : '留空或完整版本号，如 1.0.0'"
+                :disabled="lockVersion"
                 :class="inputCls"
                 class="disabled:bg-slate-50 disabled:text-slate-400"
               />
