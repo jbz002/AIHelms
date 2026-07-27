@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ApiReference } from '@scalar/api-reference'
-import '@scalar/api-reference/style.css'
-import type { ActiveModel, Document, DocumentApiExtractStatus } from '@aihelms/shared'
+import type { ActiveModel, Document, DocumentApiExtractStatus, OpenApiSpec } from '@aihelms/shared'
+import InterfaceDebugger from './interface-debugger/InterfaceDebugger.vue'
 import {
   extractDocumentInterfaces,
   getActiveModels,
@@ -20,7 +19,7 @@ const libraryName = computed(() => route.params.libraryName as string)
 const docId = computed(() => Number(route.params.docId))
 
 const doc = ref<Document | null>(null)
-const spec = ref<Record<string, unknown> | null>(null)
+const spec = ref<OpenApiSpec | null>(null)
 const status = ref<DocumentApiExtractStatus | null>(null)
 const models = ref<ActiveModel[]>([])
 const loading = ref(false)
@@ -29,7 +28,7 @@ const showPicker = ref(false)
 const selectedModelId = ref<number | null>(null)
 let pollTimer: number | null = null
 
-const hasEndpoints = computed(() => Object.keys((spec.value?.paths as object) ?? {}).length > 0)
+const hasEndpoints = computed(() => Object.keys(spec.value?.paths ?? {}).length > 0)
 const isExtracting = computed(
   () => status.value?.status === 'queued' || status.value?.status === 'running',
 )
@@ -211,38 +210,6 @@ onUnmounted(stopPolling)
       </button>
     </div>
 
-    <div
-      v-else
-      class="scalar-host h-[calc(100vh-8rem)] overflow-hidden rounded-lg border border-gray-200 bg-white"
-    >
-      <ApiReference
-        :configuration="{
-          content: spec,
-          layout: 'modern',
-          localization: { locale: 'zh-CN' },
-        }"
-      />
-    </div>
+    <InterfaceDebugger v-else-if="spec" :spec="spec" :doc-id="docId" />
   </div>
 </template>
-
-<style scoped>
-/*
- 仅覆写 scalar 主题变量，使 scalar 面板的字号/强调色/文字色/圆角与本系统周围页面对齐。
- scalar 默认正文 16px、accent #09f 蓝、中性灰文字，与本模块（text-sm 14px、purple-600 紫色、gray 标度）不一致。
- scalar UI 仅支持 CSS 变量定制，无 Tailwind 等价写法，故破例用 scoped style。
-*/
-.scalar-host {
-  --scalar-font: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
-    'Segoe UI Symbol', 'Noto Color Emoji';
-  --scalar-font-code: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
-    'Courier New', monospace;
-  --scalar-font-size-2: 14px;
-  --scalar-radius: 8px;
-  --scalar-color-accent: #9333ea;
-  --scalar-color-1: #111827;
-  --scalar-color-2: #4b5563;
-  --scalar-heading-1: 20px;
-}
-</style>

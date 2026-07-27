@@ -100,6 +100,9 @@ class Settings(BaseSettings):
 
     # 文档接口提取（AI）
     api_extract_timeout_seconds: int = 300
+    # 文档接口调试代理（Try-it-out 后端转发，规避浏览器 CORS）
+    document_proxy_timeout_seconds: int = 15
+    document_proxy_max_bytes: int = 1024 * 1024  # 响应体上限 1 MB，超则截断
     # AI Policies S2（多 analyzer + 策略 + Verdict）
     ai_policies_signatures_path: str = "security_rules/signatures.yaml"
     ai_policies_default_policy: str = "balanced"  # strict | balanced | permissive

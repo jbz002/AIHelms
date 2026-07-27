@@ -6,7 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_db, require_permission
 from exceptions import ConflictError, NotFoundError, ValidationError
-from services import document_api_service, document_library_service, document_service
+from services import (
+    document_api_service,
+    document_library_service,
+    document_proxy_service,
+    document_service,
+)
 
 router = APIRouter(tags=["AI实验室"])
 
@@ -34,6 +39,13 @@ class UpdateDocumentRequest(BaseModel):
 
 class ExtractInterfacesRequest(BaseModel):
     model_id: int = Field(..., description="提取所用模型 ID")
+
+
+class ProxyRequestRequest(BaseModel):
+    method: str = Field(..., max_length=10, description="HTTP 方法")
+    url: str = Field(..., max_length=2000, description="目标 URL")
+    headers: dict[str, str] = Field(default_factory=dict, description="自定义请求头")
+    body: str | None = Field(default=None, description="请求体原文")
 
 
 # ── 知识库 CRUD ──
@@ -233,6 +245,25 @@ async def get_extract_status(
     """返回文档最近一次接口提取任务状态（前端轮询用）。"""
     result = await document_api_service.get_extract_status(session, document_id)
     return {"code": 200, "message": "ok", "data": result}
+
+
+@document_router.post("/{document_id}/proxy", summary="调试代理请求")
+async def proxy_document_request(
+    document_id: int,
+    req: ProxyRequestRequest,
+    _: dict = Depends(require_permission("document:read")),
+):
+    """接口调试器 Try-it-out：后端转发请求以规避浏览器 CORS。"""
+    try:
+        result = await document_proxy_service.proxy_request(
+            method=req.method,
+            url=req.url,
+            headers=req.headers,
+            body=req.body,
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "代理请求完成", "data": result}
 
 
 @document_router.post("/{document_id}/extract-interfaces", summary="提取文档接口")

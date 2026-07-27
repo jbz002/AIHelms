@@ -1,0 +1,222 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import {
+  buildCurl,
+  proxyDocumentRequest,
+  toast,
+  type HttpMethod,
+  type Operation,
+  type Parameter,
+  type ProxyResult,
+} from '@aihelms/shared'
+import { Loader2, Send } from 'lucide-vue-next'
+import ResponseViewer from './ResponseViewer.vue'
+
+interface Props {
+  method: HttpMethod
+  path: string
+  operation: Operation
+  docId: number
+}
+const props = defineProps<Props>()
+
+type AuthType = 'none' | 'bearer' | 'apikey'
+
+const baseUrl = ref(localStorage.getItem(`debugger:baseurl:${props.docId}`) ?? '')
+watch(baseUrl, (v) => localStorage.setItem(`debugger:baseurl:${props.docId}`, v))
+
+const pathParamsList = computed(() => (props.operation.parameters ?? []).filter((p) => p.in === 'path'))
+const queryParamsList = computed(() => (props.operation.parameters ?? []).filter((p) => p.in === 'query'))
+const headerParamsList = computed(() => (props.operation.parameters ?? []).filter((p) => p.in === 'header'))
+const hasBody = computed(() => props.method !== 'get' && Boolean(props.operation.requestBody))
+
+const pathParams = ref<Record<string, string>>(initMap(pathParamsList.value))
+const queryParams = ref<Record<string, string>>(initMap(queryParamsList.value))
+const headerParams = ref<Record<string, string>>(initMap(headerParamsList.value))
+const bodyText = ref('')
+
+const authType = ref<AuthType>('none')
+const authValue = ref('')
+const apiKeyName = ref('X-API-Key')
+
+function initMap(list: Parameter[]): Record<string, string> {
+  return Object.fromEntries(list.map((p) => [p.name, '']))
+}
+
+const effectiveHeaders = computed<Record<string, string>>(() => {
+  const h: Record<string, string> = {}
+  for (const [k, v] of Object.entries(headerParams.value)) if (v) h[k] = v
+  if (authType.value === 'bearer' && authValue.value) h['Authorization'] = `Bearer ${authValue.value}`
+  if (authType.value === 'apikey' && authValue.value && apiKeyName.value) h[apiKeyName.value] = authValue.value
+  if (hasBody.value && bodyText.value && !h['Content-Type']) h['Content-Type'] = 'application/json'
+  return h
+})
+
+const filledPath = computed(() => {
+  let p = props.path
+  for (const { name } of pathParamsList.value) {
+    p = p.replace(`{${name}}`, encodeURIComponent(pathParams.value[name] ?? ''))
+  }
+  return p
+})
+const queryRecord = computed(() => {
+  const q: Record<string, string> = {}
+  for (const { name } of queryParamsList.value) {
+    const v = queryParams.value[name]
+    if (v) q[name] = v
+  }
+  return q
+})
+const fullUrl = computed(() => {
+  const base = baseUrl.value.trim().replace(/\/+$/, '')
+  return `${base}${filledPath.value}`
+})
+const urlWithQuery = computed(() => {
+  const qs = new URLSearchParams(queryRecord.value).toString()
+  return qs ? `${fullUrl.value}?${qs}` : fullUrl.value
+})
+
+const curlPreview = computed(() =>
+  buildCurl({
+    method: props.method,
+    url: fullUrl.value,
+    queryParams: queryRecord.value,
+    headers: effectiveHeaders.value,
+    body: hasBody.value ? bodyText.value || null : null,
+  }),
+)
+
+const sending = ref(false)
+const result = ref<ProxyResult | null>(null)
+const error = ref<string | null>(null)
+
+async function send(): Promise<void> {
+  if (!baseUrl.value.trim()) {
+    toast.error('请填写 Base URL')
+    return
+  }
+  sending.value = true
+  error.value = null
+  result.value = null
+  try {
+    result.value = await proxyDocumentRequest(props.docId, {
+      method: props.method,
+      url: urlWithQuery.value,
+      headers: effectiveHeaders.value,
+      body: hasBody.value ? bodyText.value || null : null,
+    })
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    sending.value = false
+  }
+}
+
+async function copyCurl(): Promise<void> {
+  await navigator.clipboard.writeText(curlPreview.value)
+  toast.success('curl 已复制')
+}
+</script>
+
+<template>
+  <div class="space-y-3">
+    <!-- Base URL -->
+    <div>
+      <label class="mb-1 block text-xs font-medium text-slate-500">Base URL</label>
+      <input
+        v-model="baseUrl"
+        placeholder="https://api.example.com"
+        class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:border-purple-400 focus:outline-none"
+      />
+    </div>
+
+    <!-- 鉴权 -->
+    <div class="flex flex-wrap items-end gap-2">
+      <div>
+        <label class="mb-1 block text-xs font-medium text-slate-500">鉴权</label>
+        <select v-model="authType" class="rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:outline-none">
+          <option value="none">无</option>
+          <option value="bearer">Bearer Token</option>
+          <option value="apikey">API Key (Header)</option>
+        </select>
+      </div>
+      <input
+        v-if="authType === 'apikey'"
+        v-model="apiKeyName"
+        placeholder="Header 名"
+        class="w-32 rounded-md border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:outline-none"
+      />
+      <input
+        v-if="authType !== 'none'"
+        v-model="authValue"
+        :type="authType === 'bearer' ? 'text' : 'text'"
+        placeholder="凭据值"
+        class="flex-1 rounded-md border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:outline-none"
+      />
+    </div>
+
+    <!-- 路径参数 -->
+    <div v-if="pathParamsList.length" class="grid grid-cols-2 gap-2">
+      <div v-for="p in pathParamsList" :key="`p-${p.name}`">
+        <label class="mb-1 block text-xs font-medium text-slate-500">{{ p.name }} <span class="text-red-500">*</span></label>
+        <input v-model="pathParams[p.name]" class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:outline-none" />
+      </div>
+    </div>
+
+    <!-- 查询参数 -->
+    <div v-if="queryParamsList.length" class="grid grid-cols-2 gap-2">
+      <div v-for="p in queryParamsList" :key="`q-${p.name}`">
+        <label class="mb-1 block text-xs font-medium text-slate-500">{{ p.name }}</label>
+        <input v-model="queryParams[p.name]" class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:outline-none" />
+      </div>
+    </div>
+
+    <!-- 请求头参数 -->
+    <div v-if="headerParamsList.length" class="grid grid-cols-2 gap-2">
+      <div v-for="p in headerParamsList" :key="`h-${p.name}`">
+        <label class="mb-1 block text-xs font-medium text-slate-500">{{ p.name }}</label>
+        <input v-model="headerParams[p.name]" class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:outline-none" />
+      </div>
+    </div>
+
+    <!-- 请求体 -->
+    <div v-if="hasBody">
+      <label class="mb-1 block text-xs font-medium text-slate-500">请求体 (JSON)</label>
+      <textarea
+        v-model="bodyText"
+        rows="4"
+        placeholder='{ "key": "value" }'
+        class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:outline-none"
+      />
+    </div>
+
+    <!-- 发送 -->
+    <div class="flex items-center gap-2">
+      <button
+        type="button"
+        class="flex items-center gap-1.5 rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+        :disabled="sending"
+        @click="send"
+      >
+        <Loader2 v-if="sending" class="h-4 w-4 animate-spin" />
+        <Send v-else class="h-4 w-4" />
+        发送请求
+      </button>
+    </div>
+
+    <!-- curl 预览 -->
+    <div>
+      <div class="mb-1 flex items-center justify-between">
+        <span class="text-xs font-medium text-slate-500">curl</span>
+        <button type="button" class="text-xs text-purple-500 hover:text-purple-600" @click="copyCurl">复制</button>
+      </div>
+      <pre class="overflow-auto rounded-md bg-slate-900 p-3 font-mono text-xs leading-relaxed text-slate-100">{{ curlPreview }}</pre>
+    </div>
+
+    <!-- 响应 -->
+    <div>
+      <div class="mb-1 text-xs font-medium text-slate-500">响应</div>
+      <ResponseViewer :result="result" :error="error" />
+    </div>
+  </div>
+</template>

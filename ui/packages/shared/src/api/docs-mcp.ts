@@ -24,6 +24,7 @@ import type {
   DocumentDashboardSummary,
   DocumentApiExtractStatus,
 } from '../types/docs-mcp'
+import type { OpenApiSpec, ProxyRequestPayload, ProxyResult } from '../types/openapi-subset'
 
 export function getDocsMcpStats() {
   return request<DocsMcpStats>('/api/v1/docs-mcp/stats')
@@ -253,7 +254,14 @@ export function getDocument(documentId: number) {
 }
 
 export function getDocumentSpec(documentId: number) {
-  return request<Record<string, unknown>>(`/api/v1/documents/${documentId}/spec`)
+  return request<OpenApiSpec>(`/api/v1/documents/${documentId}/spec`)
+}
+
+export function proxyDocumentRequest(documentId: number, payload: ProxyRequestPayload) {
+  return request<ProxyResult>(`/api/v1/documents/${documentId}/proxy`, {
+    method: 'POST',
+    body: payload,
+  })
 }
 
 export function getDocumentExtractStatus(documentId: number) {
