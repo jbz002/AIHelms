@@ -87,9 +87,7 @@ class DocsMcpClient:
             "GET", f"/api/libraries/{library}/versions/best", params=params
         )
 
-    async def resolve_version(
-        self, library: str, version: str | None
-    ) -> str | None:
+    async def resolve_version(self, library: str, version: str | None) -> str | None:
         """把 "latest" 哨兵解析为具体版本号，查询/写入/删除复用。
 
         - 非 latest（含 None/具体版本）：原样返回
@@ -212,6 +210,18 @@ class DocsMcpClient:
         """删除版本下所有文档（保留版本记录）。"""
         await self._call(
             "DELETE", f"/api/libraries/{library}/versions/{version}/documents"
+        )
+
+    async def remove_document(self, library: str, version: str, url: str) -> None:
+        """删除版本下指定 url 的单文档（及其全部向量，docs-mcp trigger 自动清）。
+
+        docs-mcp 找不到对应 page 时返回 deleted=false（200），不抛异常——
+        用于历史数据 url 不匹配时静默放行。
+        """
+        await self._call(
+            "DELETE",
+            f"/api/libraries/{library}/versions/{version}/document",
+            params={"url": url},
         )
 
     async def fetch_url(

@@ -30,17 +30,38 @@ async def _sync_source_status(
         )
 
 
-def _ingest_url(doc: Document) -> str:
-    """推导文档入库时提交给 docs-mcp 的 url（必填，min 1 字符）。
+def build_ingest_url(
+    source_type: str,
+    source_id: int | None,
+    metadata: dict | None,
+    doc_id: int | None = None,
+) -> str:
+    """计算文档入库提交给 docs-mcp 的 url（定位 page 的唯一钥匙，必填）。
 
-    crawl 文档取 metadata.url；upload 取 local://文件名；都没有用稳定占位。
+    upload: local://uploads/{source_id}/{file_name} — 带 record_id 避免同名碰撞。
+    crawl: metadata.url（每页唯一）。
+    兜底: aihelms://document/{doc_id}；无 doc_id 退化到 source 维度。
     """
-    meta = doc.metadata_ or {}
-    if doc.source_type == "crawl" and meta.get("url"):
+    meta = metadata or {}
+    if source_type == "crawl" and meta.get("url"):
         return str(meta["url"])
-    if doc.source_type == "upload" and meta.get("file_name"):
-        return f"local://{meta['file_name']}"
-    return f"aihelms://document/{doc.id}"
+    if source_type == "upload" and source_id and meta.get("file_name"):
+        return f"local://uploads/{source_id}/{meta['file_name']}"
+    if doc_id is not None:
+        return f"aihelms://document/{doc_id}"
+    if source_id is not None:
+        return f"aihelms://{source_type}/{source_id}"
+    return "aihelms://document/unknown"
+
+
+def _resolve_ingest_url(doc: Document) -> str:
+    """入库时取 url：优先读 ingest_url 列（终身稳定），空则回退推导。
+
+    reingest 读列保证覆盖 docs-mcp 同一 page（url 不漂移），不产生孤儿向量。
+    """
+    if doc.ingest_url:
+        return doc.ingest_url
+    return build_ingest_url(doc.source_type, doc.source_id, doc.metadata_, doc.id)
 
 
 def _serialize_document(doc: Document) -> dict:
@@ -142,12 +163,29 @@ async def update_document(
 
 
 async def delete_document(session: AsyncSession, document_id: int) -> None:
-    """删除文档。"""
+    """删除文档。平台 DB 先删并 commit，再尽力同步 docs-mcp 删该文档向量。
+
+    外部失败仅记日志不回滚（平台 DB 是唯一数据源），留孤儿向量由重试/对账清理。
+    """
     doc = await document_repo.find_by_id(session, document_id)
     if doc is None:
         raise NotFoundError("document", document_id)
+    library = doc.library
+    version = doc.version or ""
+    ingest_url = _resolve_ingest_url(doc)
     await document_repo.delete_document(session, document_id)
     await session.commit()
+    try:
+        await docs_mcp_client.remove_document(library, version, ingest_url)
+    except DocsMcpError:
+        logger.warning(
+            "docs-mcp remove_document failed during document delete",
+            extra={
+                "document_id": document_id,
+                "library": library,
+                "version": version,
+            },
+        )
 
 
 async def ingest_document(
@@ -182,7 +220,7 @@ async def ingest_document(
             version=doc.version or None,
             documents=[
                 {
-                    "url": _ingest_url(doc),
+                    "url": _resolve_ingest_url(doc),
                     "title": doc.title or "untitled",
                     "contentType": "text/markdown",
                     "content": doc.content,
@@ -238,7 +276,7 @@ async def ingest_batch(
                 version=doc.version or None,
                 documents=[
                     {
-                        "url": _ingest_url(doc),
+                        "url": _resolve_ingest_url(doc),
                         "title": doc.title or "untitled",
                         "contentType": "text/markdown",
                         "content": doc.content,

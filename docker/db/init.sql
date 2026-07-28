@@ -1472,6 +1472,7 @@ CREATE TABLE IF NOT EXISTS aihelms.documents (
     ingest_status VARCHAR(20) NOT NULL DEFAULT 'pending',
     content_hash VARCHAR(64) NOT NULL DEFAULT '',
     error_message TEXT NOT NULL DEFAULT '',
+    ingest_url TEXT NOT NULL DEFAULT '',
     created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),

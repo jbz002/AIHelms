@@ -9,6 +9,7 @@ from models.db import Document, DocUploadRecord
 from repositories import doc_upload_repo, document_repo
 from services import document_library_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
+from services.document_service import build_ingest_url
 
 logger = logging.getLogger(__name__)
 
@@ -187,6 +188,9 @@ async def _run_extraction_and_ingest(
                     "content_type": record.content_type,
                     "file_size": record.file_size,
                 },
+                ingest_url=build_ingest_url(
+                    "upload", record.id, {"file_name": record.file_name}
+                ),
                 force_status="duplicate",
             )
             await doc_upload_repo.update_status(session, record.id, "duplicate")
@@ -209,6 +213,9 @@ async def _run_extraction_and_ingest(
                 "content_type": record.content_type,
                 "file_size": record.file_size,
             },
+            ingest_url=build_ingest_url(
+                "upload", record.id, {"file_name": record.file_name}
+            ),
         )
 
         if auto_ingest:
@@ -392,7 +399,9 @@ async def ingest_upload(session: AsyncSession, record_id: int) -> dict:
     try:
         documents = [
             {
-                "url": f"local://{record.file_name}",
+                "url": build_ingest_url(
+                    "upload", record.id, {"file_name": record.file_name}
+                ),
                 "title": record.file_name,
                 "contentType": record.content_type,
                 "content": record.extracted_content,
@@ -434,6 +443,9 @@ async def ingest_upload(session: AsyncSession, record_id: int) -> dict:
                 chunk_count=num_chunks,
                 ingest_status="ingested",
                 content_hash=content_hash,
+                ingest_url=build_ingest_url(
+                    "upload", record.id, {"file_name": record.file_name}
+                ),
                 created_by=record.created_by,
                 metadata_={
                     "file_name": record.file_name,

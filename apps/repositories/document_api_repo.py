@@ -267,3 +267,25 @@ async def find_latest_category_by_library(
         .limit(1)
     )
     return result.scalar_one_or_none()
+
+
+# ── 库级任务清理（删整库时调用）─────────────────────────────────────────────
+
+
+async def delete_jobs_by_library(session: AsyncSession, library_name: str) -> None:
+    """删除该库的全部库级任务（批量提取 + AI 分类）。
+
+    两表的 library 是弱关联字符串（非 FK），删整库时不清理会成孤儿。
+    注意：两表无 version 列，版本级删除不应调用此方法（库级任务无版本概念）。
+    """
+    await session.execute(
+        delete(DocumentApiBatchJob).where(
+            func.lower(DocumentApiBatchJob.library) == library_name.lower()
+        )
+    )
+    await session.execute(
+        delete(DocumentApiCategoryJob).where(
+            func.lower(DocumentApiCategoryJob.library) == library_name.lower()
+        )
+    )
+    await session.flush()

@@ -1573,6 +1573,7 @@ class Document(Base):
     ingest_status: Mapped[str] = mapped_column(String(20), default="pending")
     content_hash: Mapped[str] = mapped_column(String(64), default="")
     error_message: Mapped[str] = mapped_column(Text, default="")
+    ingest_url: Mapped[str] = mapped_column(Text, default="")
     created_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
     )

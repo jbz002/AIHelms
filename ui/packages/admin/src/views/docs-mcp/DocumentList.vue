@@ -14,6 +14,7 @@ import {
   ingestDocument,
   ingestDocumentBatch,
   deleteDocument,
+  deleteDocsMcpVersion,
   createCrawlTask,
   getDocsMcpEventSourceUrl,
   getDocsMcpLibraryDetail,
@@ -24,13 +25,13 @@ import {
   Eye,
   Pencil,
   ArrowDownToLine,
-  Trash2,
   Loader2,
   RefreshCw,
   BarChart3,
   Plus,
   Upload,
   Code2,
+  Trash2,
 } from 'lucide-vue-next'
 import ScrapeJobDialog from './components/ScrapeJobDialog.vue'
 import UploadDialog from './components/UploadDialog.vue'
@@ -45,13 +46,14 @@ const currentVersion = computed(() => (route.query.version as string) || '')
 const documents = ref<Document[]>([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(10)
 const loading = ref(false)
 const stats = ref<IngestStats | null>(null)
 const sourceFilter = ref<string>('')
 const statusFilter = ref<string>('')
 const ingestingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
+const deletingVersion = ref(false)
 const batchIngesting = ref(false)
 const showScrapeDialog = ref(false)
 const showUploadDialog = ref(false)
@@ -71,6 +73,11 @@ const versionOptions = computed(() => [
     label: v.ref.version || '默认',
   })),
 ])
+
+// 是否最后一个版本：删它 = 删整个文档库（docs-mcp 库随末版本消失）
+const isLastVersion = computed(
+  () => (library.value?.versions ?? []).length <= 1,
+)
 
 // select v-model 代理：写时 router.replace 更新 query，读时取 currentVersion
 const selectedVersion = computed<string>({
@@ -200,6 +207,48 @@ async function handleIngest(doc: Document): Promise<void> {
   }
 }
 
+async function handleDelete(doc: Document): Promise<void> {
+  if (!window.confirm('确认删除该文档？将同时删除其检索向量。')) return
+  if (deletingId.value) return
+  deletingId.value = doc.id
+  try {
+    await deleteDocument(doc.id)
+    toast.success('删除成功')
+    await loadDocuments()
+    await loadStats()
+  } catch (e) {
+    toast.error((e as Error).message || '删除失败')
+  } finally {
+    deletingId.value = null
+  }
+}
+
+async function handleDeleteVersion(): Promise<void> {
+  if (deletingVersion.value) return
+  const ver = currentVersion.value || 'latest'
+  const confirmMsg = isLastVersion.value
+    ? `这是最后一个版本。删除后将移除整个文档库「${libraryName.value}」及其全部数据，且不可恢复。确定删除？`
+    : `确认删除版本「${ver}」？该版本下所有文档及检索向量将被删除。`
+  if (!window.confirm(confirmMsg)) return
+  deletingVersion.value = true
+  try {
+    await deleteDocsMcpVersion(libraryName.value, ver)
+    if (isLastVersion.value) {
+      toast.success('文档库已删除')
+      router.push({ name: 'DocsMcp' })
+      return
+    }
+    toast.success('版本已删除')
+    await loadLibrary()
+    // 切回 latest：watch(currentVersion) 自动重载文档列表与统计
+    await router.replace({ query: { ...route.query, version: 'latest' } })
+  } catch (e) {
+    toast.error((e as Error).message || '删除版本失败')
+  } finally {
+    deletingVersion.value = false
+  }
+}
+
 async function pollBatchStatus(): Promise<void> {
   const maxAttempts = 60
   for (let i = 0; i < maxAttempts; i++) {
@@ -223,21 +272,6 @@ async function handleBatchIngest(): Promise<void> {
     toast.error((e as Error).message || '提交批量入库失败')
   } finally {
     batchIngesting.value = false
-  }
-}
-
-async function handleDelete(doc: Document): Promise<void> {
-  if (deletingId.value) return
-  deletingId.value = doc.id
-  try {
-    await deleteDocument(doc.id)
-    toast.success('文档已删除')
-    await loadDocuments()
-    await loadStats()
-  } catch (e) {
-    toast.error((e as Error).message || '删除失败')
-  } finally {
-    deletingId.value = null
   }
 }
 
@@ -354,6 +388,16 @@ onUnmounted(() => {
       >
         <Plus class="h-4 w-4" />
         新增版本
+      </button>
+      <button
+        class="inline-flex items-center gap-1.5 rounded-md border border-red-300 bg-white px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+        :disabled="deletingVersion || libraryLoading || !library"
+        :title="isLastVersion ? '删除最后一个版本将删除整个文档库' : '删除当前版本'"
+        @click="handleDeleteVersion"
+      >
+        <Loader2 v-if="deletingVersion" class="h-4 w-4 animate-spin" />
+        <Trash2 v-else class="h-4 w-4" />
+        删除版本
       </button>
       <div class="ml-auto flex items-center gap-2">
         <button
@@ -495,7 +539,7 @@ onUnmounted(() => {
                     <ArrowDownToLine v-else class="h-4 w-4" />
                   </button>
                   <button
-                    class="rounded-md p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500"
+                    class="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-red-600"
                     title="删除"
                     :disabled="deletingId === doc.id"
                     @click="handleDelete(doc)"

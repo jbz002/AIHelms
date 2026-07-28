@@ -24,14 +24,18 @@ async def test_list_documents_latest_resolves_to_best_version(monkeypatch) -> No
         captured["version"] = version
         return 1
 
-    async def fake_list(session, library, source_type, ingest_status, version, page, page_size):
+    async def fake_list(
+        session, library, source_type, ingest_status, version, page, page_size
+    ):
         return []
 
     monkeypatch.setattr(docs_mcp_client, "find_best_version", fake_best)
     monkeypatch.setattr(document_repo, "count_all", fake_count)
     monkeypatch.setattr(document_repo, "list_all", fake_list)
 
-    await document_service.list_documents(FakeSession(), library="fastapi", version="latest")
+    await document_service.list_documents(
+        FakeSession(), library="fastapi", version="latest"
+    )
 
     assert captured["version"] == "2.1.0"
 
@@ -50,14 +54,18 @@ async def test_list_documents_concrete_version_not_resolved(monkeypatch) -> None
         captured["version"] = version
         return 0
 
-    async def fake_list(session, library, source_type, ingest_status, version, page, page_size):
+    async def fake_list(
+        session, library, source_type, ingest_status, version, page, page_size
+    ):
         return []
 
     monkeypatch.setattr(docs_mcp_client, "find_best_version", fake_best)
     monkeypatch.setattr(document_repo, "count_all", fake_count)
     monkeypatch.setattr(document_repo, "list_all", fake_list)
 
-    await document_service.list_documents(FakeSession(), library="fastapi", version="1.2.3")
+    await document_service.list_documents(
+        FakeSession(), library="fastapi", version="1.2.3"
+    )
 
     assert called == []  # 具体版本不触发 best 解析
     assert captured["version"] == "1.2.3"
@@ -74,14 +82,18 @@ async def test_list_documents_latest_resolution_failure_falls_back(monkeypatch) 
         captured["version"] = version
         return 0
 
-    async def fake_list(session, library, source_type, ingest_status, version, page, page_size):
+    async def fake_list(
+        session, library, source_type, ingest_status, version, page, page_size
+    ):
         return []
 
     monkeypatch.setattr(docs_mcp_client, "find_best_version", fake_best)
     monkeypatch.setattr(document_repo, "count_all", fake_count)
     monkeypatch.setattr(document_repo, "list_all", fake_list)
 
-    await document_service.list_documents(FakeSession(), library="fastapi", version="latest")
+    await document_service.list_documents(
+        FakeSession(), library="fastapi", version="latest"
+    )
 
     # 解析失败回退 None（不按版本过滤），避免误命中空版本桶
     assert captured["version"] is None
@@ -101,7 +113,9 @@ async def test_get_ingest_stats_latest_resolves(monkeypatch) -> None:
     monkeypatch.setattr(docs_mcp_client, "find_best_version", fake_best)
     monkeypatch.setattr(document_repo, "count_grouped_by_status", fake_grouped)
 
-    await document_service.get_ingest_stats(FakeSession(), library="fastapi", version="latest")
+    await document_service.get_ingest_stats(
+        FakeSession(), library="fastapi", version="latest"
+    )
 
     assert captured["version"] == "3.0.0"
 
@@ -116,7 +130,9 @@ async def test_resolve_version_latest_returns_best_match(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolve_version_latest_only_unversioned_returns_empty(monkeypatch) -> None:
+async def test_resolve_version_latest_only_unversioned_returns_empty(
+    monkeypatch,
+) -> None:
     async def fake_best(library):
         return {"bestMatch": None, "hasUnversioned": True}
 
@@ -154,14 +170,18 @@ async def test_list_documents_latest_only_unversioned_targets_empty_bucket(
         captured["version"] = version
         return 0
 
-    async def fake_list(session, library, source_type, ingest_status, version, page, page_size):
+    async def fake_list(
+        session, library, source_type, ingest_status, version, page, page_size
+    ):
         return []
 
     monkeypatch.setattr(docs_mcp_client, "find_best_version", fake_best)
     monkeypatch.setattr(document_repo, "count_all", fake_count)
     monkeypatch.setattr(document_repo, "list_all", fake_list)
 
-    await document_service.list_documents(FakeSession(), library="lib", version="latest")
+    await document_service.list_documents(
+        FakeSession(), library="lib", version="latest"
+    )
 
     # bestMatch=null + hasUnversioned → 落 unversioned 桶（""），不再跨版本返回
     assert captured["version"] == ""
@@ -194,7 +214,9 @@ async def test_create_crawl_task_latest_resolved_before_enqueue(monkeypatch) -> 
     monkeypatch.setattr(docs_mcp_client, "find_best_version", fake_best)
     monkeypatch.setattr(docs_mcp_client, "enqueue_scrape_job", fake_enqueue)
     monkeypatch.setattr(crawl_task_service.crawl_task_repo, "create", fake_create)
-    monkeypatch.setattr(crawl_task_service.crawl_task_repo, "update_status", fake_update_status)
+    monkeypatch.setattr(
+        crawl_task_service.crawl_task_repo, "update_status", fake_update_status
+    )
     monkeypatch.setattr(
         crawl_task_service.document_library_service,
         "ensure_library_exists",

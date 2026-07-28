@@ -113,6 +113,7 @@ async def upsert_by_source(
     created_by: int | None,
     chunk_count: int = 0,
     metadata_: dict,
+    ingest_url: str = "",
     reset_to_pending_on_content_change: bool = True,
     force_status: str | None = None,
 ) -> Document:
@@ -136,6 +137,7 @@ async def upsert_by_source(
             chunk_count=chunk_count,
             ingest_status=force_status or "pending",
             content_hash=content_hash,
+            ingest_url=ingest_url,
             created_by=created_by,
             metadata_=metadata_,
         )

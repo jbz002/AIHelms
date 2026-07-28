@@ -10,6 +10,7 @@ from models.db import CrawledPage, CrawlTask, Document
 from repositories import crawl_task_repo, crawled_page_repo, document_repo
 from services import document_library_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
+from services.document_service import build_ingest_url
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +218,7 @@ async def handle_page_scraped(
             "crawl_task_id": crawled.crawl_task_id,
             "depth": crawled.depth,
         },
+        ingest_url=build_ingest_url("crawl", crawled.id, {"url": crawled.url}),
     )
     # 内容变更导致 Document 回退 pending 时，同步重置 crawled_page，
     # 否则批量入库（get_for_ingest 只取 pending 页）会跳过它
@@ -384,7 +386,7 @@ async def ingest_crawl_task(
             if to_ingest:
                 documents = [
                     {
-                        "url": p.url,
+                        "url": build_ingest_url("crawl", p.id, {"url": p.url}),
                         "title": p.title,
                         "contentType": p.content_type or "text/markdown",
                         "content": p.text_content,
@@ -421,6 +423,7 @@ async def ingest_crawl_task(
                             chunk_count=chunk_count,
                             ingest_status="ingested",
                             content_hash=content_hash,
+                            ingest_url=build_ingest_url("crawl", p.id, {"url": p.url}),
                             created_by=task.created_by,
                             metadata_={
                                 "url": p.url,

@@ -6,7 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from exceptions import ConflictError, NotFoundError
 from models.db import DocumentLibrary
-from repositories import document_library_repo, document_repo
+from repositories import (
+    crawl_task_repo,
+    crawled_page_repo,
+    doc_upload_repo,
+    document_api_repo,
+    document_library_repo,
+    document_repo,
+)
+from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
 logger = logging.getLogger(__name__)
 
@@ -132,15 +140,46 @@ async def update_library(
 
 
 async def delete_library(session: AsyncSession, library_id: int) -> None:
-    """删除知识库及其下所有文档。"""
+    """删除知识库及其全部关联数据。
+
+    平台 DB 先批量级联删除并 commit，再尽力同步 docs-mcp（外部失败仅记日志，
+    不回滚——平台 DB 是唯一数据源）。document_count 随库删除，无需 refresh。
+    specs/endpoints 跟随 documents 的 ondelete=CASCADE 自动清除。
+    """
     library = await document_library_repo.find_by_id(session, library_id)
     if library is None:
         raise NotFoundError("document_library", library_id)
-    # 先删该知识库下所有文档
-    docs = await document_repo.list_by_library(
-        session, library.name, page=1, page_size=999999
-    )
-    for doc in docs:
-        await document_repo.delete_document(session, doc.id)
+    name = library.name
+    await document_repo.delete_by_library(session, name)
+    await doc_upload_repo.delete_by_library(session, name)
+    await crawled_page_repo.delete_by_library(session, name)
+    await crawl_task_repo.delete_by_library(session, name)
+    await document_api_repo.delete_jobs_by_library(session, name)
     await document_library_repo.delete_library(session, library_id)
     await session.commit()
+    await _remove_docs_mcp_library(name)
+
+
+async def _remove_docs_mcp_library(library_name: str) -> None:
+    """尽力清理 docs-mcp 中该库的全部版本向量，失败不阻断删除流程。"""
+    try:
+        libraries = await docs_mcp_client.list_libraries()
+    except DocsMcpError:
+        logger.warning(
+            "docs-mcp list_libraries failed during library delete",
+            extra={"library": library_name},
+        )
+        return
+    for lib in libraries:
+        if lib.get("library") != library_name:
+            continue
+        for ver in lib.get("versions", []):
+            ref = ver.get("ref") or {}
+            version = ref.get("version") or ""
+            try:
+                await docs_mcp_client.remove_version(library_name, version)
+            except DocsMcpError:
+                logger.warning(
+                    "docs-mcp remove_version failed during library delete",
+                    extra={"library": library_name, "version": version},
+                )

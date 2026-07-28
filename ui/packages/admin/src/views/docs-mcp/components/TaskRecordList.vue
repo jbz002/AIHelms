@@ -6,10 +6,10 @@ import {
   getCrawlPages,
   ingestCrawlTask,
   ingestUploadRecord,
-  deleteCrawlTask,
-  deleteUploadRecord,
   getUploadRecordContent,
   syncCrawlTaskStatus,
+  deleteCrawlTask,
+  deleteUploadRecord,
   toast,
 } from '@aihelms/shared'
 import {
@@ -19,13 +19,13 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
-  Trash2,
   ArrowDownToLine,
   AlertCircle,
   RefreshCw,
   RotateCcw,
   Copy,
   Check,
+  Trash2,
 } from 'lucide-vue-next'
 
 const props = defineProps<{ libraryName?: string }>()
@@ -34,7 +34,7 @@ const emit = defineEmits<{ refresh: [] }>()
 const tasks = ref<DocTask[]>([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(10)
 const loading = ref(false)
 const sourceFilter = ref<'' | DocTaskSource>('')
 const statusFilter = ref<'' | DocTaskStatus>('')
@@ -43,8 +43,8 @@ const expandedKey = ref<string | null>(null)
 const expandedPages = ref<CrawledPage[]>([])
 const expandedPagesTotal = ref(0)
 const ingestingKey = ref<string | null>(null)
-const deletingKey = ref<string | null>(null)
 const syncingKey = ref<string | null>(null)
+const deletingKey = ref<string | null>(null)
 const contentExpandedKey = ref<string | null>(null)
 const contentLoadingKey = ref<string | null>(null)
 const contentCache = ref<Record<string, string>>({})
@@ -180,22 +180,6 @@ async function handleIngest(task: DocTask): Promise<void> {
   }
 }
 
-async function handleDelete(task: DocTask): Promise<void> {
-  if (deletingKey.value) return
-  deletingKey.value = task.key
-  try {
-    if (task.source === 'external_crawl') {
-      await deleteCrawlTask(task.raw_id)
-    } else {
-      await deleteUploadRecord(task.raw_id)
-    }
-    if (expandedKey.value === task.key) expandedKey.value = null
-    await loadTasks()
-  } finally {
-    deletingKey.value = null
-  }
-}
-
 async function handleSyncStatus(task: DocTask) {
   if (!task.key.startsWith('crawl-')) return
   const rawId = task.raw_id
@@ -209,6 +193,25 @@ async function handleSyncStatus(task: DocTask) {
     syncingKey.value = null
   }
   await loadTasks()
+}
+
+async function handleDelete(task: DocTask): Promise<void> {
+  if (deletingKey.value) return
+  deletingKey.value = task.key
+  try {
+    if (task.source === 'external_crawl') {
+      await deleteCrawlTask(task.raw_id)
+    } else {
+      await deleteUploadRecord(task.raw_id)
+    }
+    toast.success('删除成功')
+    await loadTasks()
+    emit('refresh')
+  } catch (e) {
+    toast.error((e as Error).message || '删除失败')
+  } finally {
+    deletingKey.value = null
+  }
 }
 
 async function ensureFullContent(task: DocTask): Promise<string> {
@@ -343,7 +346,12 @@ defineExpose({ loadTasks })
               <Loader2 v-if="ingestingKey === task.key" class="h-4 w-4 animate-spin" />
               <ArrowDownToLine v-else class="h-4 w-4" />
             </button>
-            <button class="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-500" title="删除" :disabled="deletingKey === task.key" @click="handleDelete(task)">
+            <button
+              class="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"
+              title="删除"
+              :disabled="deletingKey === task.key"
+              @click="handleDelete(task)"
+            >
               <Loader2 v-if="deletingKey === task.key" class="h-4 w-4 animate-spin" />
               <Trash2 v-else class="h-4 w-4" />
             </button>
