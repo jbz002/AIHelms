@@ -13,7 +13,6 @@ router = APIRouter(prefix="/ai-policies", tags=["ai-policies"])
 
 class UpdateAiPoliciesSettingsRequest(BaseModel):
     llm_review_enabled: bool = False
-    llm_review_model_id: int | None = Field(None)
     default_policy: str | None = None
     policy_overrides: dict[str, str] = Field(default_factory=dict)
     llm_consensus_runs: int | None = Field(None, ge=0, le=5)
@@ -114,7 +113,6 @@ async def update_settings(
         data = await ai_policies_service.update_settings(
             session,
             req.llm_review_enabled,
-            req.llm_review_model_id,
             current_user,
             req.default_policy,
             req.policy_overrides,

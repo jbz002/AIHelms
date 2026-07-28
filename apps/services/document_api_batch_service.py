@@ -16,8 +16,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.database import get_worker_session_factory
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import DocumentApiBatchJob, DocumentApiSpec
-from repositories import document_api_repo, document_repo, model_repo
-from services import document_api_service, platform_llm
+from repositories import document_api_repo, document_repo
+from services import document_api_service, platform_llm, platform_settings_service
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +71,7 @@ def _serialize_batch_job(job: DocumentApiBatchJob) -> dict:
 
 
 async def create_library_extraction(
-    session: AsyncSession, library_name: str, model_id: int, current_user: dict
+    session: AsyncSession, library_name: str, current_user: dict
 ) -> dict:
     docs = await document_repo.list_by_ingest_status(
         session, ["ingested"], library=library_name
@@ -80,14 +80,11 @@ async def create_library_extraction(
         raise ValidationError("该库无已入库文档，无法批量提取")
     if await document_api_repo.find_active_batch_by_library(session, library_name):
         raise ConflictError("该库已有批量提取任务在进行中")
-    if await model_repo.find_by_id(session, model_id) is None:
-        raise NotFoundError("model", model_id)
 
     job = DocumentApiBatchJob(
         job_id=f"DAB-{uuid4().hex[:12]}",
         library=library_name,
         status="queued",
-        model_id=model_id,
         total_documents=len(docs),
         created_by=int(current_user["id"]),
         summary={"progress": _progress(0, 0, "排队中")},
@@ -119,6 +116,11 @@ async def process_library_extraction(session: AsyncSession, job_pk: int) -> dict
         if not platform_llm.get_platform_api_key():
             await _fail_job(session, job, "平台未配置 LLM 主密钥(LITELLM_MASTER_KEY)")
             return _serialize_batch_job(job)
+        resolved = await platform_settings_service.resolve_default_model(session)
+        if resolved is None:
+            await _fail_job(session, job, "平台未配置默认模型，请在平台设置中配置")
+            return _serialize_batch_job(job)
+        job.model_id, job.model_name = resolved
 
         docs = await document_repo.list_by_ingest_status(
             session, ["ingested"], library=job.library
@@ -168,7 +170,6 @@ async def process_library_extraction(session: AsyncSession, job_pk: int) -> dict
                 spec_id=f"DAS-{uuid4().hex[:12]}",
                 document_id=doc.id,
                 status="queued",
-                model_id=job.model_id,
                 created_by=job.created_by,
                 summary={"progress": _progress(0, 0, "排队中")},
             )
@@ -233,13 +234,13 @@ async def _enqueue_auto_classify(
 ) -> None:
     """批量提取完成后自动派发库级分类（尽力而为，失败仅记日志）。
 
-    复用提取所用模型与发起人，分类失败不影响提取已完成的事实。
+    分类模型走平台默认模型，复用发起人，分类失败不影响提取已完成的事实。
     """
     try:
         from services import document_api_classify_service
 
         await document_api_classify_service.create_classification(
-            session, job.library, job.model_id, {"id": job.created_by}
+            session, job.library, {"id": job.created_by}
         )
         logger.info("auto classify enqueued: library=%s", job.library)
     except (ConflictError, NotFoundError, ValidationError) as exc:

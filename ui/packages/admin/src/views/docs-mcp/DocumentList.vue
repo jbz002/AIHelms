@@ -59,7 +59,7 @@ const library = ref<DocsMcpLibrary | null>(null)
 const libraryLoading = ref(false)
 const activeQuery = ref('')
 const searchNonce = ref(0)
-const hasSearched = ref(false)
+const showSummaryDrawer = ref(false)
 const showAddVersionDialog = ref(false)
 let eventSource: EventSource | null = null
 
@@ -151,7 +151,7 @@ async function loadLibrary(): Promise<void> {
 }
 
 function handleSearch(query: string): void {
-  hasSearched.value = true
+  showSummaryDrawer.value = true
   activeQuery.value = query
   searchNonce.value++
 }
@@ -381,13 +381,6 @@ onUnmounted(() => {
     </div>
 
     <SearchCard @search="handleSearch" />
-    <DocSummary
-      v-if="hasSearched"
-      :key="searchNonce"
-      :library-name="libraryName"
-      :version="currentVersion || undefined"
-      :query="activeQuery"
-    />
 
     <div v-if="stats" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <div class="rounded-lg border border-gray-200 bg-white p-3">
@@ -551,6 +544,15 @@ onUnmounted(() => {
       :lock-version="true"
       @close="showUploadDialog = false"
       @uploaded="handleUploaded"
+    />
+
+    <DocSummary
+      v-if="showSummaryDrawer"
+      :key="searchNonce"
+      :library-name="libraryName"
+      :version="currentVersion || undefined"
+      :query="activeQuery"
+      @close="showSummaryDrawer = false"
     />
   </div>
 </template>

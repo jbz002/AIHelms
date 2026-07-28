@@ -22,10 +22,9 @@ from models.db import Document, DocumentApiEndpoint, DocumentApiSpec
 from repositories import (
     document_api_repo,
     document_repo,
-    model_repo,
     user_repo,
 )
-from services import litellm_client, platform_llm
+from services import litellm_client, platform_llm, platform_settings_service
 
 logger = logging.getLogger(__name__)
 
@@ -232,7 +231,6 @@ def _build_endpoint(document_id: int, raw: dict) -> DocumentApiEndpoint | None:
 async def create_extraction(
     session: AsyncSession,
     document_id: int,
-    model_id: int,
     current_user: dict,
 ) -> dict:
     doc = await document_repo.find_by_id(session, document_id)
@@ -242,14 +240,11 @@ async def create_extraction(
         raise ValidationError("文档内容为空，无法提取接口")
     if await document_api_repo.find_active_by_document(session, document_id):
         raise ConflictError("该文档已有接口提取任务在进行中")
-    if await model_repo.find_by_id(session, model_id) is None:
-        raise NotFoundError("model", model_id)
 
     spec = DocumentApiSpec(
         spec_id=f"DAS-{uuid4().hex[:12]}",
         document_id=document_id,
         status="queued",
-        model_id=model_id,
         created_by=int(current_user["id"]),
         summary={"progress": _progress(0, 0, "排队中")},
     )
@@ -298,18 +293,12 @@ async def process_extraction(session: AsyncSession, spec_pk: int) -> dict:
             return _serialize_spec(spec)
         litellm_user_id = platform_llm.platform_user(user)
 
-        model = (
-            await model_repo.find_by_id(session, spec.model_id)
-            if spec.model_id
-            else None
-        )
-        if model is None:
-            await _fail_spec(session, spec, "所选模型不存在")
+        resolved = await platform_settings_service.resolve_default_model(session)
+        if resolved is None:
+            await _fail_spec(session, spec, "平台未配置默认模型，请在平台设置中配置")
             return _serialize_spec(spec)
-        model_name = getattr(model, "model_id", "") or getattr(model, "name", "")
-        if not model_name:
-            await _fail_spec(session, spec, "所选模型不可用")
-            return _serialize_spec(spec)
+        model_id, model_name = resolved
+        spec.model_id = model_id
 
         doc = await document_repo.find_by_id(session, spec.document_id)
         if doc is None or not (doc.content or "").strip():

@@ -11,12 +11,8 @@ from collections.abc import AsyncIterator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from services import (
-    docs_mcp_client,
-    litellm_client,
-    platform_llm,
-    platform_settings_service,
-)
+from services import litellm_client, platform_llm, platform_settings_service
+from services.docs_mcp_client import docs_mcp_client
 
 logger = logging.getLogger(__name__)
 

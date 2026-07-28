@@ -125,7 +125,6 @@ export interface AiPolicyRiskCatalogItem {
 
 export interface AiPolicySettings {
   llm_review_enabled: boolean
-  llm_review_model_id: number | null
   default_policy: AiPolicyName
   policy_overrides: Record<string, string>
   llm_consensus_runs: number

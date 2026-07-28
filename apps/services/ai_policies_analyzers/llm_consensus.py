@@ -79,7 +79,6 @@ class LlmConsensusAnalyzer:
     phase = "review"
 
     async def analyze(self, ctx: AnalyzerContext) -> AnalyzerResult:
-        model_id = ctx.settings_row.llm_review_model_id
         runs_target = max(1, int(ctx.policy.llm_consensus_runs or 1))
         timeout = ctx.settings.ai_policies_llm_consensus_timeout_seconds
 
@@ -91,7 +90,6 @@ class LlmConsensusAnalyzer:
                 run = await asyncio.wait_for(
                     ai_policies_llm.run_llm_review(
                         ctx.session,
-                        model_id,
                         ctx.audit,
                         ctx.findings_so_far,
                         ctx.category_labels,

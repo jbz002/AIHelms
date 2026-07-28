@@ -39,18 +39,6 @@ class UpdateDocumentRequest(BaseModel):
     metadata_: dict | None = Field(default=None, description="文档元数据")
 
 
-class ExtractInterfacesRequest(BaseModel):
-    model_id: int = Field(..., description="提取所用模型 ID")
-
-
-class LibraryExtractionRequest(BaseModel):
-    model_id: int = Field(..., description="批量提取所用模型 ID")
-
-
-class LibraryClassificationRequest(BaseModel):
-    model_id: int = Field(..., description="分类所用模型 ID")
-
-
 class ProxyRequestRequest(BaseModel):
     method: str = Field(..., max_length=10, description="HTTP 方法")
     url: str = Field(..., max_length=2000, description="目标 URL")
@@ -158,17 +146,14 @@ async def delete_library(
 @library_router.post("/{library_name}/extract-interfaces", summary="批量提取库接口")
 async def extract_library_interfaces(
     library_name: str,
-    req: LibraryExtractionRequest,
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("document:batch_extract")),
 ):
     """批量提取库内所有已入库文档的 API 接口，异步任务。"""
     try:
         result = await document_api_batch_service.create_library_extraction(
-            session, library_name, req.model_id, current_user
+            session, library_name, current_user
         )
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="模型不存在")
     except ConflictError:
         raise HTTPException(status_code=409, detail="该库已有批量提取任务在进行中")
     except ValidationError as e:
@@ -192,17 +177,14 @@ async def get_library_extract_status(
 @library_router.post("/{library_name}/classify-interfaces", summary="分类库接口")
 async def classify_library_interfaces(
     library_name: str,
-    req: LibraryClassificationRequest,
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("document:classify")),
 ):
     """AI 按业务模块对库内接口统一分类，异步任务。"""
     try:
         result = await document_api_classify_service.create_classification(
-            session, library_name, req.model_id, current_user
+            session, library_name, current_user
         )
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="模型不存在")
     except ConflictError:
         raise HTTPException(status_code=409, detail="该库已有分类任务在进行中")
     except ValidationError as e:
@@ -363,14 +345,13 @@ async def proxy_document_request(
 @document_router.post("/{document_id}/extract-interfaces", summary="提取文档接口")
 async def extract_interfaces(
     document_id: int,
-    req: ExtractInterfacesRequest,
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("document:extract")),
 ):
     """AI 提取文档中的 API 接口，异步任务。"""
     try:
         result = await document_api_service.create_extraction(
-            session, document_id, req.model_id, current_user
+            session, document_id, current_user
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="文档不存在")

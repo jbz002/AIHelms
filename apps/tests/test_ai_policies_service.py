@@ -230,20 +230,8 @@ async def test_run_llm_review_uses_platform_model_and_returns_category_reviews(
     captured_messages = []
     call_count = 0
 
-    async def fake_find_by_id(session, model_id):
-        credential = SimpleNamespace(
-            is_active=True,
-            credential_info={"format": "openai"},
-        )
-        deployment = SimpleNamespace(is_active=True, credential=credential)
-        return SimpleNamespace(
-            id=model_id,
-            model_id="qwen-audit",
-            name="Qwen",
-            is_active=True,
-            category="chat",
-            deployments=[deployment],
-        )
+    async def fake_resolve_default_model(session):
+        return (9, "Qwen")
 
     async def fake_chat_completion(model, messages, **kwargs):
         nonlocal call_count
@@ -299,7 +287,11 @@ async def test_run_llm_review_uses_platform_model_and_returns_category_reviews(
             litellm_user_id=f"aihelms_user_{user_id}",
         )
 
-    monkeypatch.setattr(ai_policies_llm.model_repo, "find_by_id", fake_find_by_id)
+    monkeypatch.setattr(
+        ai_policies_llm.platform_settings_service,
+        "resolve_default_model",
+        fake_resolve_default_model,
+    )
     monkeypatch.setattr(
         ai_policies_llm.user_repo, "find_user_by_id", fake_find_user_by_id
     )
@@ -329,7 +321,6 @@ async def test_run_llm_review_uses_platform_model_and_returns_category_reviews(
 
     result = await ai_policies_llm.run_llm_review(
         None,
-        9,
         audit,
         [
             {
@@ -365,20 +356,8 @@ async def test_run_llm_review_generates_intent_analysis_without_findings(
 ) -> None:
     call_count = 0
 
-    async def fake_find_by_id(session, model_id):
-        credential = SimpleNamespace(
-            is_active=True,
-            credential_info={"format": "openai"},
-        )
-        deployment = SimpleNamespace(is_active=True, credential=credential)
-        return SimpleNamespace(
-            id=model_id,
-            model_id="qwen-audit",
-            name="Qwen",
-            is_active=True,
-            category="chat",
-            deployments=[deployment],
-        )
+    async def fake_resolve_default_model(session):
+        return (9, "Qwen")
 
     async def fake_find_user_by_id(session, user_id):
         return SimpleNamespace(
@@ -423,7 +402,11 @@ async def test_run_llm_review_generates_intent_analysis_without_findings(
             ]
         }
 
-    monkeypatch.setattr(ai_policies_llm.model_repo, "find_by_id", fake_find_by_id)
+    monkeypatch.setattr(
+        ai_policies_llm.platform_settings_service,
+        "resolve_default_model",
+        fake_resolve_default_model,
+    )
     monkeypatch.setattr(
         ai_policies_llm.user_repo, "find_user_by_id", fake_find_user_by_id
     )
@@ -452,7 +435,6 @@ async def test_run_llm_review_generates_intent_analysis_without_findings(
 
     result = await ai_policies_llm.run_llm_review(
         None,
-        9,
         audit,
         [],
         CATEGORY_LABELS,
@@ -470,20 +452,8 @@ async def test_run_llm_review_generates_intent_analysis_without_findings(
 async def test_run_llm_review_does_not_fake_category_reviews_when_unparsed(
     monkeypatch,
 ) -> None:
-    async def fake_find_by_id(session, model_id):
-        credential = SimpleNamespace(
-            is_active=True,
-            credential_info={"format": "openai"},
-        )
-        deployment = SimpleNamespace(is_active=True, credential=credential)
-        return SimpleNamespace(
-            id=model_id,
-            model_id="qwen-audit",
-            name="Qwen",
-            is_active=True,
-            category="chat",
-            deployments=[deployment],
-        )
+    async def fake_resolve_default_model(session):
+        return (9, "Qwen")
 
     async def fake_chat_completion(model, messages, **kwargs):
         return {"choices": [{"message": {"content": "无法给出 JSON"}}]}
@@ -496,7 +466,11 @@ async def test_run_llm_review_does_not_fake_category_reviews_when_unparsed(
             litellm_user_id=f"aihelms_user_{user_id}",
         )
 
-    monkeypatch.setattr(ai_policies_llm.model_repo, "find_by_id", fake_find_by_id)
+    monkeypatch.setattr(
+        ai_policies_llm.platform_settings_service,
+        "resolve_default_model",
+        fake_resolve_default_model,
+    )
     monkeypatch.setattr(
         ai_policies_llm.user_repo, "find_user_by_id", fake_find_user_by_id
     )
@@ -513,7 +487,6 @@ async def test_run_llm_review_does_not_fake_category_reviews_when_unparsed(
 
     result = await ai_policies_llm.run_llm_review(
         None,
-        9,
         SimpleNamespace(
             audit_id="AIP-test",
             skill_name="demo-skill",
@@ -594,20 +567,8 @@ def test_llm_review_normalizes_common_enum_values() -> None:
 async def test_run_llm_review_skips_without_platform_key(
     monkeypatch,
 ) -> None:
-    async def fake_find_by_id(session, model_id):
-        credential = SimpleNamespace(
-            is_active=True,
-            credential_info={"format": "openai"},
-        )
-        deployment = SimpleNamespace(is_active=True, credential=credential)
-        return SimpleNamespace(
-            id=model_id,
-            model_id="qwen-audit",
-            name="Qwen",
-            is_active=True,
-            category="chat",
-            deployments=[deployment],
-        )
+    async def fake_resolve_default_model(session):
+        return (9, "Qwen")
 
     async def fake_find_user_by_id(session, user_id):
         return SimpleNamespace(
@@ -620,7 +581,11 @@ async def test_run_llm_review_skips_without_platform_key(
     async def fake_chat_completion(model, messages, **kwargs):
         raise AssertionError("LLM 调用不应在缺少平台主密钥时发生")
 
-    monkeypatch.setattr(ai_policies_llm.model_repo, "find_by_id", fake_find_by_id)
+    monkeypatch.setattr(
+        ai_policies_llm.platform_settings_service,
+        "resolve_default_model",
+        fake_resolve_default_model,
+    )
     monkeypatch.setattr(
         ai_policies_llm.user_repo, "find_user_by_id", fake_find_user_by_id
     )
@@ -637,7 +602,6 @@ async def test_run_llm_review_skips_without_platform_key(
 
     result = await ai_policies_llm.run_llm_review(
         None,
-        9,
         SimpleNamespace(
             audit_id="AIP-test",
             skill_name="demo-skill",

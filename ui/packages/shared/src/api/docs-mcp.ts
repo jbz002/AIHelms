@@ -386,19 +386,19 @@ export function getDocumentExtractStatus(documentId: number) {
   )
 }
 
-export function extractDocumentInterfaces(documentId: number, modelId: number) {
+export function extractDocumentInterfaces(documentId: number) {
   return request<DocumentApiExtractStatus>(
     `/api/v1/documents/${documentId}/extract-interfaces`,
-    { method: 'POST', body: { model_id: modelId } },
+    { method: 'POST' },
   )
 }
 
 // ── 库级接口提取与分类 ──
 
-export function extractLibraryInterfaces(libraryName: string, modelId: number) {
+export function extractLibraryInterfaces(libraryName: string) {
   return request<LibraryBatchExtractStatus>(
     `/api/v1/document-libraries/${encodeURIComponent(libraryName)}/extract-interfaces`,
-    { method: 'POST', body: { model_id: modelId } },
+    { method: 'POST' },
   )
 }
 
@@ -408,10 +408,10 @@ export function getLibraryExtractStatus(libraryName: string) {
   )
 }
 
-export function classifyLibraryInterfaces(libraryName: string, modelId: number) {
+export function classifyLibraryInterfaces(libraryName: string) {
   return request<LibraryClassifyStatus>(
     `/api/v1/document-libraries/${encodeURIComponent(libraryName)}/classify-interfaces`,
-    { method: 'POST', body: { model_id: modelId } },
+    { method: 'POST' },
   )
 }
 

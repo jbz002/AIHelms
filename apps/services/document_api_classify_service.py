@@ -15,10 +15,10 @@ from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_worker_session_factory
-from exceptions import ConflictError, NotFoundError, ValidationError
+from exceptions import ConflictError, ValidationError
 from models.db import DocumentApiCategoryJob, DocumentApiEndpoint
-from repositories import document_api_repo, model_repo, user_repo
-from services import document_api_service, platform_llm
+from repositories import document_api_repo, user_repo
+from services import document_api_service, platform_llm, platform_settings_service
 
 logger = logging.getLogger(__name__)
 
@@ -126,12 +126,10 @@ async def _run_llm_classify(
 
 
 async def create_classification(
-    session: AsyncSession, library_name: str, model_id: int, current_user: dict
+    session: AsyncSession, library_name: str, current_user: dict
 ) -> dict:
     if await document_api_repo.find_active_category_by_library(session, library_name):
         raise ConflictError("该库已有分类任务在进行中")
-    if await model_repo.find_by_id(session, model_id) is None:
-        raise NotFoundError("model", model_id)
     count = await document_api_repo.count_by_library(session, library_name)
     if count == 0:
         raise ValidationError("该库无已提取接口，请先批量提取接口")
@@ -140,7 +138,6 @@ async def create_classification(
         job_id=f"DAC-{uuid4().hex[:12]}",
         library=library_name,
         status="queued",
-        model_id=model_id,
         created_by=int(current_user["id"]),
         summary={"progress": _progress(0, "排队中")},
     )
@@ -178,16 +175,11 @@ async def process_classification(session: AsyncSession, job_pk: int) -> dict:
             return _serialize_category_job(job)
         litellm_user_id = platform_llm.platform_user(user)
 
-        model = (
-            await model_repo.find_by_id(session, job.model_id) if job.model_id else None
-        )
-        if model is None:
-            await _fail_job(session, job, "所选模型不存在")
+        resolved = await platform_settings_service.resolve_default_model(session)
+        if resolved is None:
+            await _fail_job(session, job, "平台未配置默认模型，请在平台设置中配置")
             return _serialize_category_job(job)
-        model_name = getattr(model, "model_id", "") or getattr(model, "name", "")
-        if not model_name:
-            await _fail_job(session, job, "所选模型不可用")
-            return _serialize_category_job(job)
+        job.model_id, model_name = resolved
 
         endpoints = await document_api_repo.list_by_library(session, job.library)
         if not endpoints:

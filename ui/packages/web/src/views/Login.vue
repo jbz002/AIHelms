@@ -3,6 +3,11 @@ import { useAuth } from '@aihelms/shared'
 
 const { redirectToAiHub } = useAuth()
 
+// 生产同源（nginx），dev 两 app 分端口（web 4002 / admin 4001），需跨端口跳转
+const adminLoginUrl = import.meta.env.DEV
+  ? `${location.protocol}//${location.hostname}:4001/admin/login`
+  : '/admin/login'
+
 function handleSso(): void {
   redirectToAiHub(
     import.meta.env.VITE_AI_HUB_URL,
@@ -37,7 +42,7 @@ function handleSso(): void {
       <!-- 底部切换 -->
       <p class="mt-6 text-center text-xs text-slate-400">
         管理员？
-        <a href="/admin/login" class="text-purple-600 hover:underline">切换到管理后台</a>
+        <a :href="adminLoginUrl" class="text-purple-600 hover:underline">切换到管理后台</a>
       </p>
     </div>
 

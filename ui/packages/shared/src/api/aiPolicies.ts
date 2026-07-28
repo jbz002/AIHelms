@@ -37,7 +37,6 @@ export function getAiPolicySettings(): Promise<AiPolicySettings> {
 
 export interface UpdateAiPolicySettingsParams {
   llm_review_enabled: boolean
-  llm_review_model_id: number | null
   default_policy?: string
   policy_overrides?: Record<string, string>
   llm_consensus_runs?: number

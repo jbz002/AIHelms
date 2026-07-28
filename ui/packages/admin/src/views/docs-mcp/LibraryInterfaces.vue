@@ -4,7 +4,6 @@ import { useRoute, useRouter } from 'vue-router'
 import type {
   LibraryEndpoint,
   LibraryInterfacesResult,
-  ActiveModel,
   LibraryBatchExtractStatus,
   LibraryClassifyStatus,
 } from '@aihelms/shared'
@@ -13,7 +12,6 @@ import {
   extractLibraryInterfaces,
   getLibraryExtractStatus,
   getLibraryClassifyStatus,
-  getActiveModels,
   toast,
 } from '@aihelms/shared'
 import { ArrowLeft, Loader2, Code2, Wand2 } from 'lucide-vue-next'
@@ -28,9 +26,6 @@ const loading = ref(false)
 const result = ref<LibraryInterfacesResult | null>(null)
 const selectedKey = ref<string | null>(null)
 
-const models = ref<ActiveModel[]>([])
-const showBatchPicker = ref(false)
-const selectedModelId = ref<number | null>(null)
 const submitting = ref(false)
 const batchStatus = ref<LibraryBatchExtractStatus | null>(null)
 const classifyStatus = ref<LibraryClassifyStatus | null>(null)
@@ -43,7 +38,7 @@ const isBatchRunning = computed(
 const isClassifyRunning = computed(
   () => classifyStatus.value?.status === 'queued' || classifyStatus.value?.status === 'running',
 )
-const isBusy = computed(() => isBatchRunning.value || isClassifyRunning.value)
+const isBusy = computed(() => isBatchRunning.value || isClassifyRunning.value || submitting.value)
 
 const items = computed(() =>
   (result.value?.endpoints ?? []).map((e) => ({
@@ -72,29 +67,11 @@ async function load(): Promise<void> {
   }
 }
 
-async function loadModels(): Promise<void> {
-  try {
-    models.value = await getActiveModels()
-  } catch {
-    models.value = []
-  }
-}
-
-function openBatchPicker(): void {
-  if (!models.value.length) {
-    toast.error('无可用模型，请先在模型管理中启用模型')
-    return
-  }
-  selectedModelId.value = models.value[0].id
-  showBatchPicker.value = true
-}
-
 async function confirmBatchExtract(): Promise<void> {
-  if (selectedModelId.value === null || submitting.value) return
+  if (submitting.value) return
   submitting.value = true
   try {
-    batchStatus.value = await extractLibraryInterfaces(libraryName.value, selectedModelId.value)
-    showBatchPicker.value = false
+    batchStatus.value = await extractLibraryInterfaces(libraryName.value)
     startBatchPoll()
     toast.success('批量提取任务已提交，完成后将自动分类')
   } catch (e) {
@@ -175,7 +152,6 @@ async function pollClassify(): Promise<void> {
 
 onMounted(() => {
   load()
-  loadModels()
   getLibraryExtractStatus(libraryName.value).then((s) => {
     batchStatus.value = s
     if (s && (s.status === 'queued' || s.status === 'running')) startBatchPoll()
@@ -209,9 +185,9 @@ onUnmounted(() => {
         <button
           class="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-60"
           :disabled="isBusy"
-          @click="openBatchPicker"
+          @click="confirmBatchExtract"
         >
-          <Loader2 v-if="isBatchRunning" class="h-4 w-4 animate-spin" />
+          <Loader2 v-if="isBatchRunning || submitting" class="h-4 w-4 animate-spin" />
           <Wand2 v-else class="h-4 w-4" />
           {{ isBatchRunning ? `提取中 ${batchStatus?.completed_documents ?? 0}/${batchStatus?.total_documents ?? 0}` : '批量提取接口' }}
         </button>
@@ -220,35 +196,6 @@ onUnmounted(() => {
           分类中
         </span>
       </div>
-    </div>
-
-    <div v-if="showBatchPicker" class="rounded-lg border border-gray-200 bg-white p-4">
-      <div class="flex items-end gap-3">
-        <div class="flex-1">
-          <label class="mb-1 block text-xs font-medium text-gray-600">选择批量提取模型</label>
-          <select
-            v-model.number="selectedModelId"
-            class="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none"
-          >
-            <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }}</option>
-          </select>
-        </div>
-        <button
-          class="flex items-center gap-1 rounded-md bg-purple-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-          :disabled="submitting"
-          @click="confirmBatchExtract"
-        >
-          <Loader2 v-if="submitting" class="h-3 w-3 animate-spin" />
-          开始提取
-        </button>
-        <button
-          class="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
-          @click="showBatchPicker = false"
-        >
-          取消
-        </button>
-      </div>
-      <p class="mt-2 text-xs text-gray-400">提取完成后将自动调用 AI 对接口进行分类</p>
     </div>
 
     <div v-if="loading" class="flex h-[60vh] items-center justify-center">

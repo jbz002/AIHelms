@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import type { ActiveModel, Document, DocumentApiExtractStatus, OpenApiSpec } from '@aihelms/shared'
+import type { Document, DocumentApiExtractStatus, OpenApiSpec } from '@aihelms/shared'
 import InterfaceDebugger from './interface-debugger/InterfaceDebugger.vue'
 import {
   extractDocumentInterfaces,
-  getActiveModels,
   getDocument,
   getDocumentExtractStatus,
   getDocumentSpec,
@@ -21,11 +20,8 @@ const docId = computed(() => Number(route.params.docId))
 const doc = ref<Document | null>(null)
 const spec = ref<OpenApiSpec | null>(null)
 const status = ref<DocumentApiExtractStatus | null>(null)
-const models = ref<ActiveModel[]>([])
 const loading = ref(false)
 const submitting = ref(false)
-const showPicker = ref(false)
-const selectedModelId = ref<number | null>(null)
 let pollTimer: number | null = null
 
 const hasEndpoints = computed(() => Object.keys(spec.value?.paths ?? {}).length > 0)
@@ -38,16 +34,14 @@ const progress = computed(() => status.value?.summary?.progress)
 async function loadAll(): Promise<void> {
   loading.value = true
   try {
-    const [docRes, specRes, statusRes, modelRes] = await Promise.all([
+    const [docRes, specRes, statusRes] = await Promise.all([
       getDocument(docId.value),
       getDocumentSpec(docId.value),
       getDocumentExtractStatus(docId.value),
-      getActiveModels(),
     ])
     doc.value = docRes
     spec.value = specRes
     status.value = statusRes
-    models.value = modelRes
     if (statusRes && (statusRes.status === 'queued' || statusRes.status === 'running')) {
       startPolling()
     }
@@ -89,22 +83,12 @@ async function pollOnce(): Promise<void> {
   }
 }
 
-function openPicker(): void {
-  if (!models.value.length) {
-    toast.error('无可用模型，请先在模型管理中启用模型')
-    return
-  }
-  selectedModelId.value = models.value[0].id
-  showPicker.value = true
-}
-
 async function confirmExtract(): Promise<void> {
-  if (selectedModelId.value === null || submitting.value) return
+  if (submitting.value) return
   submitting.value = true
   try {
-    const result = await extractDocumentInterfaces(docId.value, selectedModelId.value)
+    const result = await extractDocumentInterfaces(docId.value)
     status.value = result
-    showPicker.value = false
     startPolling()
     toast.success('接口提取任务已提交')
   } catch (e) {
@@ -135,41 +119,15 @@ onUnmounted(stopPolling)
           {{ { queued: '排队中', running: '提取中', completed: `已提取 ${status.endpoint_count} 个`, failed: '提取失败' }[status.status] }}
         </span>
         <button
-          v-if="!isExtracting && !showPicker"
-          class="flex items-center gap-1 rounded-md bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100"
-          @click="openPicker"
-        >
-          <Wand2 v-if="!hasEndpoints" class="h-3 w-3" />
-          <RefreshCw v-else class="h-3 w-3" />
-          {{ hasEndpoints ? '重新提取' : '提取接口' }}
-        </button>
-      </div>
-    </div>
-
-    <div v-if="showPicker" class="rounded-lg border border-gray-200 bg-white p-4">
-      <div class="flex items-end gap-3">
-        <div class="flex-1">
-          <label class="mb-1 block text-xs font-medium text-gray-600">选择提取模型</label>
-          <select
-            v-model.number="selectedModelId"
-            class="w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none"
-          >
-            <option v-for="m in models" :key="m.id" :value="m.id">{{ m.name }}</option>
-          </select>
-        </div>
-        <button
-          class="flex items-center gap-1 rounded-md bg-purple-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-purple-700 disabled:opacity-50"
+          v-if="!isExtracting"
+          class="flex items-center gap-1 rounded-md bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50"
           :disabled="submitting"
           @click="confirmExtract"
         >
           <Loader2 v-if="submitting" class="h-3 w-3 animate-spin" />
-          开始提取
-        </button>
-        <button
-          class="rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
-          @click="showPicker = false"
-        >
-          取消
+          <Wand2 v-else-if="!hasEndpoints" class="h-3 w-3" />
+          <RefreshCw v-else class="h-3 w-3" />
+          {{ hasEndpoints ? '重新提取' : '提取接口' }}
         </button>
       </div>
     </div>
@@ -202,10 +160,12 @@ onUnmounted(stopPolling)
         <p class="mt-3 text-sm text-gray-500">尚未提取接口</p>
       </template>
       <button
-        class="mt-4 flex items-center gap-1 rounded-md bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100"
-        @click="openPicker"
+        class="mt-4 flex items-center gap-1 rounded-md bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+        :disabled="submitting"
+        @click="confirmExtract"
       >
-        <Wand2 class="h-3 w-3" />
+        <Loader2 v-if="submitting" class="h-3 w-3 animate-spin" />
+        <Wand2 v-else class="h-3 w-3" />
         提取接口
       </button>
     </div>

@@ -5,8 +5,8 @@ LLM 提取与 Celery 派发依赖真实环境，留作 dev 手动验证（见 ro
 
 import pytest
 
-from exceptions import ConflictError, NotFoundError, ValidationError
-from repositories import document_api_repo, document_repo, model_repo
+from exceptions import ConflictError, ValidationError
+from repositories import document_api_repo, document_repo
 from services import document_api_batch_service, document_api_classify_service
 
 
@@ -31,7 +31,7 @@ async def test_batch_empty_library_raises_validation(monkeypatch) -> None:
 
     with pytest.raises(ValidationError):
         await document_api_batch_service.create_library_extraction(
-            FakeSession(), "api", 1, {"id": 1}
+            FakeSession(), "api", {"id": 1}
         )
 
 
@@ -50,30 +50,7 @@ async def test_batch_active_conflict_raises(monkeypatch) -> None:
 
     with pytest.raises(ConflictError):
         await document_api_batch_service.create_library_extraction(
-            FakeSession(), "api", 1, {"id": 1}
-        )
-
-
-@pytest.mark.asyncio
-async def test_batch_model_not_found_raises(monkeypatch) -> None:
-    """模型不存在 → NotFoundError。"""
-
-    async def fake_list(session, statuses, library=None, source_type=None):
-        return [object()]
-
-    async def fake_active(session, library):
-        return None
-
-    async def fake_model(session, mid):
-        return None
-
-    monkeypatch.setattr(document_repo, "list_by_ingest_status", fake_list)
-    monkeypatch.setattr(document_api_repo, "find_active_batch_by_library", fake_active)
-    monkeypatch.setattr(model_repo, "find_by_id", fake_model)
-
-    with pytest.raises(NotFoundError):
-        await document_api_batch_service.create_library_extraction(
-            FakeSession(), "api", 1, {"id": 1}
+            FakeSession(), "api", {"id": 1}
         )
 
 
@@ -83,8 +60,8 @@ async def test_auto_classify_enqueued_after_batch(monkeypatch) -> None:
 
     captured = {}
 
-    async def fake_create(session, library, mid, user):
-        captured["args"] = (library, mid, user)
+    async def fake_create(session, library, user):
+        captured["args"] = (library, user)
         return {}
 
     monkeypatch.setattr(
@@ -97,14 +74,14 @@ async def test_auto_classify_enqueued_after_batch(monkeypatch) -> None:
         {"library": "api", "model_id": 2, "created_by": 9, "total_endpoints": 3},
     )()
     await document_api_batch_service._enqueue_auto_classify(FakeSession(), job)
-    assert captured["args"] == ("api", 2, {"id": 9})
+    assert captured["args"] == ("api", {"id": 9})
 
 
 @pytest.mark.asyncio
 async def test_auto_classify_skipped_on_conflict(monkeypatch) -> None:
     """create_classification 抛 ConflictError → 静默跳过，不传播。"""
 
-    async def fake_create(session, library, mid, user):
+    async def fake_create(session, library, user):
         raise ConflictError("busy")
 
     monkeypatch.setattr(

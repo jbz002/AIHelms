@@ -4,14 +4,9 @@ import { useRouter } from 'vue-router'
 import {
   getAiPolicyAudits,
   getAiPolicySettings,
-  getCredentials,
-  getModelById,
-  getModels,
   toast,
   updateAiPolicySettings,
   type AiPolicyAuditSummary,
-  type Credential,
-  type ModelInfo,
 } from '@aihelms/shared'
 import {
   CalendarDays,
@@ -35,27 +30,16 @@ interface AuditProgress {
   step: string
 }
 
-interface ReviewModelOption {
-  id: number
-  name: string
-  model_id: string
-  deployments: string[]
-}
-
 const router = useRouter()
 const audits = ref<AiPolicyAuditSummary[]>([])
 const loading = ref(false)
 const showSettings = ref(false)
 const savingSettings = ref(false)
-const loadingReviewModels = ref(false)
 const llmEnabled = ref(false)
-const selectedModelId = ref<number | null>(null)
 const defaultPolicy = ref<'strict' | 'balanced' | 'permissive'>('balanced')
 const consensusRuns = ref(0)
 const regexEnabled = ref(true)
 const policyOverrides = ref<Record<string, string>>({})
-const reviewModelOptions = ref<ReviewModelOption[]>([])
-const reviewModelLoadError = ref('')
 const statusFilter = ref<StatusFilter>('all')
 const endTimeFilter = ref<EndTimeFilter>('all')
 const query = ref('')
@@ -93,67 +77,8 @@ const endTimeFilters: { key: EndTimeFilter; label: string }[] = [
   { key: 'unfinished', label: '未结束' },
 ]
 
-const selectedReviewModel = computed(() =>
-  reviewModelOptions.value.find((item) => item.id === selectedModelId.value) || null,
-)
-
-const reviewModelSelectOptions = computed(() => reviewModelOptions.value.map((model) => ({
-  value: model.id,
-  label: model.name,
-  searchText: `${model.model_id} ${model.deployments.join(' ')}`,
-})))
-
-const modelPlaceholder = computed(() => (llmEnabled.value ? '请选择审查模型' : '启用后选择审查模型'))
-
-function credentialFormat(credential: Credential | undefined): string {
-  return String(credential?.credential_info?.format || 'openai').toLowerCase()
-}
-
-function isOpenAiChatReviewModel(model: ModelInfo, credentialMap: Map<number, Credential>): ReviewModelOption | null {
-  if (!model.is_active || model.category !== 'chat') return null
-  const deployments = (model.deployments || []).filter((deployment) => {
-    if (!deployment.is_active || !deployment.credential_id) return false
-    const credential = credentialMap.get(deployment.credential_id)
-    return !!credential?.is_active && credentialFormat(credential) === 'openai'
-  })
-  if (deployments.length === 0) return null
-  return {
-    id: model.id,
-    name: model.name,
-    model_id: model.model_id,
-    deployments: deployments.map((item) => item.deploy_name || item.credential_name || `渠道 ${item.id}`),
-  }
-}
-
-async function loadReviewModelOptions(force = false): Promise<void> {
-  if (!force && reviewModelOptions.value.length > 0) return
-  loadingReviewModels.value = true
-  reviewModelLoadError.value = ''
-  try {
-    const [modelResult, credentialResult] = await Promise.all([
-      getModels(1, 100, 'chat'),
-      getCredentials(1, 100),
-    ])
-    const credentialMap = new Map(credentialResult.items.map((item) => [item.id, item]))
-    const details = await Promise.all(
-      modelResult.items
-        .filter((item) => item.is_active && item.category === 'chat')
-        .map(async (item) => getModelById(item.id)),
-    )
-    reviewModelOptions.value = details
-      .map((item) => isOpenAiChatReviewModel(item, credentialMap))
-      .filter((item): item is ReviewModelOption => !!item)
-  } catch (e) {
-    reviewModelLoadError.value = (e as { message?: string }).message || '模型列表加载失败'
-    toast.error(reviewModelLoadError.value)
-  } finally {
-    loadingReviewModels.value = false
-  }
-}
-
 function openSettings(): void {
   showSettings.value = true
-  if (llmEnabled.value) void loadReviewModelOptions()
 }
 
 function toDateInput(offsetDays: number): Date {
@@ -193,7 +118,6 @@ async function loadSettings(): Promise<void> {
   try {
     const settings = await getAiPolicySettings()
     llmEnabled.value = settings.llm_review_enabled
-    selectedModelId.value = settings.llm_review_model_id
     defaultPolicy.value = (settings.default_policy as 'strict' | 'balanced' | 'permissive') || 'balanced'
     consensusRuns.value = settings.llm_consensus_runs ?? 0
     regexEnabled.value = settings.regex_enabled
@@ -204,18 +128,10 @@ async function loadSettings(): Promise<void> {
 }
 
 async function saveSettings(): Promise<void> {
-  if (llmEnabled.value) {
-    await loadReviewModelOptions()
-    if (!selectedModelId.value || !selectedReviewModel.value) {
-      toast.error('请选择一个已启用的 OpenAI 格式对话模型')
-      return
-    }
-  }
   savingSettings.value = true
   try {
     await updateAiPolicySettings({
       llm_review_enabled: llmEnabled.value,
-      llm_review_model_id: llmEnabled.value ? selectedModelId.value || null : null,
       default_policy: defaultPolicy.value,
       llm_consensus_runs: consensusRuns.value,
       regex_enabled: regexEnabled.value,
@@ -298,15 +214,6 @@ watch([query, endTimeFilter], () => {
   queryTimer = window.setTimeout(loadAudits, 250)
 })
 
-watch(llmEnabled, (enabled) => {
-  if (enabled) {
-    void loadReviewModelOptions()
-  } else {
-    selectedModelId.value = ''
-    reviewModelLoadError.value = ''
-  }
-})
-
 onMounted(() => {
   loadAudits()
   loadSettings()
@@ -342,7 +249,7 @@ onMounted(() => {
     </div>
     <div v-if="showSettings" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
       <div class="w-full max-w-lg rounded-xl border border-slate-200 bg-white shadow-2xl"><div class="flex items-start justify-between border-b border-slate-100 p-5"><div><h2 class="text-lg font-semibold text-slate-900">LLM 审查引擎配置</h2><p class="mt-1 text-sm text-slate-500">启用后由平台调用所选模型，对规则扫描结果和受控摘录做语义研判。</p></div><button class="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700" @click="showSettings = false"><X class="h-5 w-5" /></button></div>
-        <div class="space-y-4 p-5"><label class="flex items-start justify-between gap-4 rounded-xl border border-slate-200 p-4"><span><span class="block text-sm font-semibold text-slate-900">启用 LLM 审查引擎</span><span class="mt-1 block text-xs text-slate-500">默认关闭；失败或超时不影响静态审查任务落库。</span></span><input v-model="llmEnabled" type="checkbox" class="mt-1 h-5 w-5 accent-purple-600" /></label><div><label class="mb-1 block text-sm font-medium text-slate-700">审查模型</label><select v-model="selectedModelId" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400" :disabled="!llmEnabled || loadingReviewModels"><option :value="null">{{ modelPlaceholder }}</option><option v-for="model in reviewModelOptions" :key="model.id" :value="model.id">{{ model.name }}</option></select><p v-if="reviewModelLoadError" class="mt-2 text-xs text-red-500">{{ reviewModelLoadError }}</p></div>
+        <div class="space-y-4 p-5"><label class="flex items-start justify-between gap-4 rounded-xl border border-slate-200 p-4"><span><span class="block text-sm font-semibold text-slate-900">启用 LLM 审查引擎</span><span class="mt-1 block text-xs text-slate-500">默认关闭；失败或超时不影响静态审查任务落库。</span></span><input v-model="llmEnabled" type="checkbox" class="mt-1 h-5 w-5 accent-purple-600" /></label>
           <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">默认策略</label>
             <select v-model="defaultPolicy" class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none">

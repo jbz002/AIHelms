@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from repositories import model_repo, user_repo
-from services import litellm_client, platform_llm
+from services import litellm_client, platform_llm, platform_settings_service
 
 MAX_REVIEW_FILES = 8
 MAX_FILE_CHARS = 3000
@@ -871,20 +871,18 @@ def _review_prompt(prompt_payload: dict, retry: bool = False) -> list[dict]:
 
 async def run_llm_review(
     session: AsyncSession,
-    model_id: int | None,
     audit: Any,
     findings: list[dict],
     category_labels: dict[str, str],
     zip_path: str | None = None,
 ) -> dict:
-    if not model_id:
-        return {"status": "skipped", "message": "未选择审查模型"}
-    model = await get_supported_review_model(session, model_id)
-    if not model:
-        return {"status": "skipped", "message": "配置的审查模型不可用"}
-    model_name = model.model_id or model.name
-    if not model_name:
-        return {"status": "skipped", "message": "配置的审查模型不可用"}
+    resolved = await platform_settings_service.resolve_default_model(session)
+    if resolved is None:
+        return {
+            "status": "skipped",
+            "message": "平台未配置默认模型，请在平台设置中配置",
+        }
+    review_model_id, model_name = resolved
     user = await user_repo.find_user_by_id(
         session, int(getattr(audit, "created_by", 0) or 0)
     )
@@ -918,8 +916,8 @@ async def run_llm_review(
     if not finding_briefs and not file_tree:
         return {
             "status": "skipped",
-            "model_id": model.id,
-            "model": model.name or model_name,
+            "model_id": review_model_id,
+            "model": model_name,
             "message": "没有需要 AI 复核的风险组",
             "finding_reviews": [],
             "category_reviews": [],
@@ -998,8 +996,8 @@ async def run_llm_review(
     ]
     return {
         "status": status,
-        "model_id": model.id,
-        "model": model.name or model_name,
+        "model_id": review_model_id,
+        "model": model_name,
         "overall_judgement": _policy_safe_text(
             parsed.get("overall_judgement") or "", 500
         ),

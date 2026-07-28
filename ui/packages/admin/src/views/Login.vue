@@ -3,6 +3,11 @@ import { useAuth } from '@aihelms/shared'
 
 const { redirectToAiHub } = useAuth()
 
+// 生产同源（nginx），dev 两 app 分端口（web 4002 / admin 4001），需跨端口跳转
+const webUrl = import.meta.env.DEV
+  ? `${location.protocol}//${location.hostname}:4002/`
+  : '/'
+
 function handleSso(): void {
   redirectToAiHub(
     import.meta.env.VITE_AI_HUB_URL,
@@ -37,7 +42,7 @@ function handleSso(): void {
       <!-- 底部说明 -->
       <p class="mt-6 text-center text-xs text-slate-400">
         前往
-        <a href="/" class="text-purple-600 hover:underline">用户端</a>
+        <a :href="webUrl" class="text-purple-600 hover:underline">用户端</a>
       </p>
     </div>
 

@@ -17,7 +17,6 @@ from repositories import ai_policies_repo, mcp_repo, skill_repo, skill_version_r
 from services import (
     ai_policies_analyzers,
     ai_policies_denoise,
-    ai_policies_llm,
     ai_policies_policies,
     ai_policies_report,
     ai_policies_scanner_client,
@@ -1393,21 +1392,12 @@ async def get_settings(session: AsyncSession) -> dict:
 async def update_settings(
     session: AsyncSession,
     llm_review_enabled: bool,
-    llm_review_model_id: int | None,
     current_user: dict,
     default_policy: str | None = None,
     policy_overrides: dict[str, str] | None = None,
     llm_consensus_runs: int | None = None,
     regex_enabled: bool | None = None,
 ) -> dict:
-    if llm_review_enabled and not llm_review_model_id:
-        raise ValidationError("启用 LLM 审查引擎时必须选择 OpenAI 格式的对话模型")
-    if llm_review_model_id:
-        model = await ai_policies_llm.get_supported_review_model(
-            session, llm_review_model_id
-        )
-        if not model:
-            raise ValidationError("只能选择已启用且包含 OpenAI 格式渠道的对话模型")
     if (
         default_policy is not None
         and default_policy not in ai_policies_policies.POLICIES
@@ -1418,7 +1408,6 @@ async def update_settings(
 
     settings_row = await ai_policies_repo.get_settings(session)
     settings_row.llm_review_enabled = llm_review_enabled
-    settings_row.llm_review_model_id = llm_review_model_id
     if default_policy is not None:
         settings_row.default_policy = default_policy
     if policy_overrides is not None:
