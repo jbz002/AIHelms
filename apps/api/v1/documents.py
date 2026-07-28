@@ -7,6 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.deps import get_db, require_permission
 from exceptions import ConflictError, NotFoundError, ValidationError
 from services import (
+    document_api_batch_service,
+    document_api_classify_service,
     document_api_service,
     document_library_service,
     document_proxy_service,
@@ -39,6 +41,14 @@ class UpdateDocumentRequest(BaseModel):
 
 class ExtractInterfacesRequest(BaseModel):
     model_id: int = Field(..., description="提取所用模型 ID")
+
+
+class LibraryExtractionRequest(BaseModel):
+    model_id: int = Field(..., description="批量提取所用模型 ID")
+
+
+class LibraryClassificationRequest(BaseModel):
+    model_id: int = Field(..., description="分类所用模型 ID")
 
 
 class ProxyRequestRequest(BaseModel):
@@ -140,6 +150,90 @@ async def delete_library(
     except NotFoundError:
         raise HTTPException(status_code=404, detail="知识库不存在")
     return {"code": 200, "message": "知识库删除成功", "data": None}
+
+
+# ── 库级接口提取与分类 ──
+
+
+@library_router.post("/{library_name}/extract-interfaces", summary="批量提取库接口")
+async def extract_library_interfaces(
+    library_name: str,
+    req: LibraryExtractionRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_permission("document:batch_extract")),
+):
+    """批量提取库内所有已入库文档的 API 接口，异步任务。"""
+    try:
+        result = await document_api_batch_service.create_library_extraction(
+            session, library_name, req.model_id, current_user
+        )
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="模型不存在")
+    except ConflictError:
+        raise HTTPException(status_code=409, detail="该库已有批量提取任务在进行中")
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "批量提取任务已提交", "data": result}
+
+
+@library_router.get("/{library_name}/extract-status")
+async def get_library_extract_status(
+    library_name: str,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("document:read")),
+):
+    """返回库最近一次批量提取任务状态（前端轮询用）。"""
+    result = await document_api_batch_service.get_library_extraction_status(
+        session, library_name
+    )
+    return {"code": 200, "message": "ok", "data": result}
+
+
+@library_router.post("/{library_name}/classify-interfaces", summary="分类库接口")
+async def classify_library_interfaces(
+    library_name: str,
+    req: LibraryClassificationRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_permission("document:classify")),
+):
+    """AI 按业务模块对库内接口统一分类，异步任务。"""
+    try:
+        result = await document_api_classify_service.create_classification(
+            session, library_name, req.model_id, current_user
+        )
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="模型不存在")
+    except ConflictError:
+        raise HTTPException(status_code=409, detail="该库已有分类任务在进行中")
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "分类任务已提交", "data": result}
+
+
+@library_router.get("/{library_name}/classify-status")
+async def get_library_classify_status(
+    library_name: str,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("document:read")),
+):
+    """返回库最近一次分类任务状态（前端轮询用）。"""
+    result = await document_api_classify_service.get_classification_status(
+        session, library_name
+    )
+    return {"code": 200, "message": "ok", "data": result}
+
+
+@library_router.get("/{library_name}/interfaces")
+async def get_library_interfaces(
+    library_name: str,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("document:read")),
+):
+    """返回库级全部接口（跨文档，扁平 + category + operation 内联）。"""
+    result = await document_api_classify_service.build_library_endpoints(
+        session, library_name
+    )
+    return {"code": 200, "message": "ok", "data": result}
 
 
 # ── 文档 CRUD（无 POST，文档由 upload/crawl 自动创建） ──

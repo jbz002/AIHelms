@@ -23,6 +23,7 @@ from api.v1.export_tasks import router as export_tasks_router
 from api.v1.key_scenarios import router as key_scenarios_router
 from api.v1.mcp import router as mcp_router
 from api.v1.models import router as models_router
+from api.v1.platform_settings import router as platform_settings_router
 from api.v1.projects import router as projects_router
 from api.v1.providers import router as providers_router
 from api.v1.publish_requests import router as publish_requests_router
@@ -65,6 +66,7 @@ router.include_router(agents_router, tags=["智能体中心"])
 router.include_router(resource_applications_router, tags=["资源审计"])
 router.include_router(publish_requests_router, tags=["发布门控"])
 router.include_router(publish_settings_router, tags=["发布门控"])
+router.include_router(platform_settings_router, tags=["平台设置"])
 router.include_router(audit_logs_router, tags=["安全"])
 router.include_router(api_keys_router, tags=["安全"])
 router.include_router(cli_tokens_router, tags=["安全"])

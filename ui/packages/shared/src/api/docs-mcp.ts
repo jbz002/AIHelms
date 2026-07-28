@@ -1,4 +1,5 @@
 import { request } from './request'
+import { getCurrentLocale } from '../i18n'
 import type {
   DocsMcpStats,
   DocsMcpJob,
@@ -23,6 +24,13 @@ import type {
   IngestBatchParams,
   DocumentDashboardSummary,
   DocumentApiExtractStatus,
+  LibraryBatchExtractStatus,
+  LibraryClassifyStatus,
+  LibraryEndpoint,
+  LibraryInterfacesResult,
+  DocsMcpAskSource,
+  DocsMcpAskDoneMeta,
+  DocsMcpAskStreamHandlers,
 } from '../types/docs-mcp'
 import type { OpenApiSpec, ProxyRequestPayload, ProxyResult } from '../types/openapi-subset'
 
@@ -67,6 +75,114 @@ export function searchDocsMcp(libraryName: string, query: string, version?: stri
   return request<DocsMcpSearchResult[]>('/api/v1/docs-mcp/libraries/{name}/search'.replace('{name}', libraryName), {
     params: { query, version, limit } as Record<string, string | number | undefined>,
   })
+}
+
+function parseSseFrame(frame: string): { event: string; data: string } | null {
+  let event = ''
+  let data = ''
+  for (const line of frame.split('\n')) {
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trim()
+    } else if (line.startsWith('data:')) {
+      data += line.slice(5).trim()
+    }
+  }
+  if (!event) return null
+  return { event, data }
+}
+
+function dispatchSseEvent(event: string, data: string, handlers: DocsMcpAskStreamHandlers): void {
+  let payload: unknown = null
+  if (data) {
+    try {
+      payload = JSON.parse(data)
+    } catch {
+      return
+    }
+  }
+  switch (event) {
+    case 'sources':
+      handlers.onSources(Array.isArray(payload) ? (payload as DocsMcpAskSource[]) : [])
+      break
+    case 'delta':
+      handlers.onDelta((payload as { content?: string })?.content ?? '')
+      break
+    case 'done':
+      handlers.onDone((payload as DocsMcpAskDoneMeta) ?? {})
+      break
+    case 'error':
+      handlers.onError((payload as { message?: string })?.message ?? '未知错误')
+      break
+    default:
+      break
+  }
+}
+
+export async function streamDocsMcpAsk(
+  libraryName: string,
+  body: { query: string; version?: string },
+  handlers: DocsMcpAskStreamHandlers,
+  signal?: AbortSignal,
+): Promise<void> {
+  const url = '/api/v1/docs-mcp/libraries/{name}/ask'.replace('{name}', libraryName)
+  const token = localStorage.getItem('aihelms_token')
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept-Language': getCurrentLocale(),
+  }
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  let resp: Response
+  try {
+    resp = await fetch(url, { method: 'POST', headers, body: JSON.stringify(body), signal })
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') return
+    handlers.onError('网络错误，请稍后重试')
+    return
+  }
+
+  if (resp.status === 401) {
+    handlers.onError('未认证或 token 已过期')
+    return
+  }
+  if (!resp.ok || !resp.body) {
+    let message = `请求失败 (${resp.status})`
+    try {
+      const text = await resp.text()
+      const json = JSON.parse(text) as { message?: string }
+      if (json.message) message = json.message
+    } catch {
+      // 非 JSON 错误体，保留默认 message
+    }
+    handlers.onError(message)
+    return
+  }
+
+  const reader = resp.body.getReader()
+  const decoder = new TextDecoder('utf-8')
+  let buffer = ''
+  try {
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const frames = buffer.split('\n\n')
+      buffer = frames.pop() ?? ''
+      for (const frame of frames) {
+        const parsed = parseSseFrame(frame)
+        if (!parsed) continue
+        dispatchSseEvent(parsed.event, parsed.data, handlers)
+      }
+    }
+    if (buffer.trim()) {
+      const parsed = parseSseFrame(buffer)
+      if (parsed) dispatchSseEvent(parsed.event, parsed.data, handlers)
+    }
+  } catch (e) {
+    if ((e as Error)?.name !== 'AbortError') {
+      handlers.onError('读取响应流失败')
+    }
+  }
 }
 
 export function deleteDocsMcpVersion(libraryName: string, version: string) {
@@ -274,6 +390,40 @@ export function extractDocumentInterfaces(documentId: number, modelId: number) {
   return request<DocumentApiExtractStatus>(
     `/api/v1/documents/${documentId}/extract-interfaces`,
     { method: 'POST', body: { model_id: modelId } },
+  )
+}
+
+// ── 库级接口提取与分类 ──
+
+export function extractLibraryInterfaces(libraryName: string, modelId: number) {
+  return request<LibraryBatchExtractStatus>(
+    `/api/v1/document-libraries/${encodeURIComponent(libraryName)}/extract-interfaces`,
+    { method: 'POST', body: { model_id: modelId } },
+  )
+}
+
+export function getLibraryExtractStatus(libraryName: string) {
+  return request<LibraryBatchExtractStatus | null>(
+    `/api/v1/document-libraries/${encodeURIComponent(libraryName)}/extract-status`,
+  )
+}
+
+export function classifyLibraryInterfaces(libraryName: string, modelId: number) {
+  return request<LibraryClassifyStatus>(
+    `/api/v1/document-libraries/${encodeURIComponent(libraryName)}/classify-interfaces`,
+    { method: 'POST', body: { model_id: modelId } },
+  )
+}
+
+export function getLibraryClassifyStatus(libraryName: string) {
+  return request<LibraryClassifyStatus | null>(
+    `/api/v1/document-libraries/${encodeURIComponent(libraryName)}/classify-status`,
+  )
+}
+
+export function getLibraryInterfaces(libraryName: string) {
+  return request<LibraryInterfacesResult>(
+    `/api/v1/document-libraries/${encodeURIComponent(libraryName)}/interfaces`,
   )
 }
 

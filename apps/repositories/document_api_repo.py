@@ -4,10 +4,16 @@
 状态字段变更由 service 直接改 ORM 属性后 commit，不走 repo 的 update 函数。
 """
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.db import DocumentApiEndpoint, DocumentApiSpec
+from models.db import (
+    Document,
+    DocumentApiBatchJob,
+    DocumentApiCategoryJob,
+    DocumentApiEndpoint,
+    DocumentApiSpec,
+)
 
 # ── 提取任务 ──────────────────────────────────────────────────────────────────
 
@@ -99,3 +105,149 @@ async def count_by_document(session: AsyncSession, document_id: int) -> int:
         )
     )
     return result.scalar_one()
+
+
+# ── 库级接口查询（联 Document 取 library，弱关联用 func.lower 归一）────────────
+
+
+async def list_by_library(
+    session: AsyncSession, library_name: str
+) -> list[DocumentApiEndpoint]:
+    """该库全部接口（跨文档）。按 category、path、method 排序，左侧折叠展示用。"""
+    result = await session.execute(
+        select(DocumentApiEndpoint)
+        .join(Document, DocumentApiEndpoint.document_id == Document.id)
+        .where(func.lower(Document.library) == library_name.lower())
+        .order_by(
+            DocumentApiEndpoint.category,
+            DocumentApiEndpoint.path,
+            DocumentApiEndpoint.method,
+        )
+    )
+    return list(result.scalars().all())
+
+
+async def count_by_library(session: AsyncSession, library_name: str) -> int:
+    result = await session.execute(
+        select(func.count(DocumentApiEndpoint.id))
+        .join(Document, DocumentApiEndpoint.document_id == Document.id)
+        .where(func.lower(Document.library) == library_name.lower())
+    )
+    return result.scalar_one()
+
+
+async def bulk_update_category(
+    session: AsyncSession, updates: list[tuple[int, str]]
+) -> None:
+    """按 endpoint id 批量回写 category（AI 分类结果）。仅 flush。"""
+    for endpoint_id, category in updates:
+        await session.execute(
+            update(DocumentApiEndpoint)
+            .where(DocumentApiEndpoint.id == endpoint_id)
+            .values(category=category[:200])
+        )
+    await session.flush()
+
+
+# ── 库级批量提取任务 ──────────────────────────────────────────────────────────
+
+
+async def create_batch_job(
+    session: AsyncSession, job: DocumentApiBatchJob
+) -> DocumentApiBatchJob:
+    session.add(job)
+    await session.flush()
+    await session.refresh(job)
+    return job
+
+
+async def find_batch_by_id(
+    session: AsyncSession, job_pk: int
+) -> DocumentApiBatchJob | None:
+    result = await session.execute(
+        select(DocumentApiBatchJob).where(DocumentApiBatchJob.id == job_pk)
+    )
+    return result.scalar_one_or_none()
+
+
+async def find_active_batch_by_library(
+    session: AsyncSession, library_name: str
+) -> DocumentApiBatchJob | None:
+    """该库是否有进行中的批量提取任务（queued/running）—— 冲突守卫。"""
+    result = await session.execute(
+        select(DocumentApiBatchJob)
+        .where(
+            func.lower(DocumentApiBatchJob.library) == library_name.lower(),
+            DocumentApiBatchJob.status.in_(["queued", "running"]),
+        )
+        .order_by(DocumentApiBatchJob.created_at.desc(), DocumentApiBatchJob.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def find_latest_batch_by_library(
+    session: AsyncSession, library_name: str
+) -> DocumentApiBatchJob | None:
+    """该库最近一次批量提取任务（任意状态）—— 前端轮询状态用。"""
+    result = await session.execute(
+        select(DocumentApiBatchJob)
+        .where(func.lower(DocumentApiBatchJob.library) == library_name.lower())
+        .order_by(DocumentApiBatchJob.created_at.desc(), DocumentApiBatchJob.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+# ── 库级 AI 分类任务 ──────────────────────────────────────────────────────────
+
+
+async def create_category_job(
+    session: AsyncSession, job: DocumentApiCategoryJob
+) -> DocumentApiCategoryJob:
+    session.add(job)
+    await session.flush()
+    await session.refresh(job)
+    return job
+
+
+async def find_category_by_id(
+    session: AsyncSession, job_pk: int
+) -> DocumentApiCategoryJob | None:
+    result = await session.execute(
+        select(DocumentApiCategoryJob).where(DocumentApiCategoryJob.id == job_pk)
+    )
+    return result.scalar_one_or_none()
+
+
+async def find_active_category_by_library(
+    session: AsyncSession, library_name: str
+) -> DocumentApiCategoryJob | None:
+    """该库是否有进行中的分类任务（queued/running）—— 冲突守卫。"""
+    result = await session.execute(
+        select(DocumentApiCategoryJob)
+        .where(
+            func.lower(DocumentApiCategoryJob.library) == library_name.lower(),
+            DocumentApiCategoryJob.status.in_(["queued", "running"]),
+        )
+        .order_by(
+            DocumentApiCategoryJob.created_at.desc(), DocumentApiCategoryJob.id.desc()
+        )
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def find_latest_category_by_library(
+    session: AsyncSession, library_name: str
+) -> DocumentApiCategoryJob | None:
+    """该库最近一次分类任务（任意状态）—— 前端轮询状态用。"""
+    result = await session.execute(
+        select(DocumentApiCategoryJob)
+        .where(func.lower(DocumentApiCategoryJob.library) == library_name.lower())
+        .order_by(
+            DocumentApiCategoryJob.created_at.desc(), DocumentApiCategoryJob.id.desc()
+        )
+        .limit(1)
+    )
+    return result.scalar_one_or_none()

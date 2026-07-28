@@ -32,6 +32,7 @@ import {
   BookOpen,
   Award,
   Terminal,
+  Settings,
   X,
 } from 'lucide-vue-next'
 
@@ -118,9 +119,16 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
       { label: 'AI健康', icon: HeartPulse, path: '/ai-health', permission: 'efficiency:read' },
     ],
   },
+  {
+    title: '系统',
+    icon: Settings,
+    items: [
+      { label: '平台设置', icon: Settings, path: '/platform-settings', permission: 'platform_settings:read' },
+    ],
+  },
 ])
 
-const expandedGroups = ref<Set<string>>(new Set(['AI身份', '资源审计', 'AI市场', '模型纳管', 'AI效能', '安全', 'AI实验室']))
+const expandedGroups = ref<Set<string>>(new Set(['AI身份', '资源审计', 'AI市场', '模型纳管', 'AI效能', '安全', 'AI实验室', '系统']))
 
 watch(
   () => route.fullPath,

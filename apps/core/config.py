@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     litellm_master_key: str = ""
     # 平台 LLM 调用在 LiteLLM 的 user 字段归属标识（发起人无 litellm_user_id 时兜底）
     platform_llm_user: str = "aihelms_platform"
+    # 平台默认模型 ID（aihelms.models.id）：平台级 LLM 调用（如文档搜索 AI 总结）的默认模型。
+    # env 仅作 bootstrap；运行时被 platform_settings 单例覆盖。
+    # 见 services/platform_settings_service.py。
+    platform_default_model_id: int | None = None
     # 对外暴露给用户客户端的 LiteLLM 地址
     # （自动由 NGINX_SERVER_NAME + LITELLM_PORT 拼接）
     litellm_public_url: str = ""
@@ -100,6 +104,8 @@ class Settings(BaseSettings):
 
     # 文档接口提取（AI）
     api_extract_timeout_seconds: int = 300
+    # 文档接口 AI 分类（库级统一归类，独立于提取）
+    api_classify_timeout_seconds: int = 300
     # 文档接口调试代理（Try-it-out 后端转发，规避浏览器 CORS）
     document_proxy_timeout_seconds: int = 15
     document_proxy_max_bytes: int = 1024 * 1024  # 响应体上限 1 MB，超则截断

@@ -153,6 +153,12 @@ const router = createRouter({
           meta: { permission: 'document:read' },
         },
         {
+          path: 'lab/docs/:libraryName/interfaces',
+          name: 'LibraryInterfaces',
+          component: () => import('../views/docs-mcp/LibraryInterfaces.vue'),
+          meta: { permission: 'document:read' },
+        },
+        {
           path: 'agents',
           name: 'AgentList',
           component: () => import('../views/agents/AgentList.vue'),
@@ -175,6 +181,12 @@ const router = createRouter({
           name: 'PublishReviewManage',
           component: () => import('../views/publish-review/PublishReviewManage.vue'),
           meta: { permission: 'publish_review:read' },
+        },
+        {
+          path: 'platform-settings',
+          name: 'PlatformSettings',
+          component: () => import('../views/settings/PlatformSettings.vue'),
+          meta: { permission: 'platform_settings:read' },
         },
         {
           path: 'audit',

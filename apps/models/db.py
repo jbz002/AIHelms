@@ -1590,7 +1590,9 @@ class DocumentApiSpec(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     spec_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
     document_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("aihelms.documents.id", ondelete="CASCADE"), nullable=False
+        BigInteger,
+        ForeignKey("aihelms.documents.id", ondelete="CASCADE"),
+        nullable=False,
     )
     status: Mapped[str] = mapped_column(String(32), default="queued")
     model_id: Mapped[int | None] = mapped_column(
@@ -1636,7 +1638,9 @@ class DocumentApiEndpoint(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     document_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("aihelms.documents.id", ondelete="CASCADE"), nullable=False
+        BigInteger,
+        ForeignKey("aihelms.documents.id", ondelete="CASCADE"),
+        nullable=False,
     )
     method: Mapped[str] = mapped_column(String(10), nullable=False)
     path: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -1644,9 +1648,94 @@ class DocumentApiEndpoint(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     operation_id: Mapped[str] = mapped_column(String(200), default="")
     tags: Mapped[list] = mapped_column(JSONB, default=list)
+    category: Mapped[str] = mapped_column(String(200), default="")
     parameters: Mapped[list] = mapped_column(JSONB, default=list)
     request_body: Mapped[dict] = mapped_column(JSONB, default=dict)
     responses: Mapped[dict] = mapped_column(JSONB, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DocumentApiBatchJob(Base):
+    """库级批量接口提取任务(异步):queued/running/completed/failed。
+
+    顺序处理库内每个 ingested 文档(复用单文档提取逻辑),聚合计数进度。
+    library 为弱关联库名(同 Document.library)。
+    """
+
+    __tablename__ = "document_api_batch_jobs"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    library: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    model_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.models.id", ondelete="SET NULL"), nullable=True
+    )
+    model_name: Mapped[str] = mapped_column(String(200), default="")
+    total_documents: Mapped[int] = mapped_column(Integer, default=0)
+    completed_documents: Mapped[int] = mapped_column(Integer, default=0)
+    failed_documents: Mapped[int] = mapped_column(Integer, default=0)
+    total_endpoints: Mapped[int] = mapped_column(Integer, default=0)
+    summary: Mapped[dict] = mapped_column(JSONB, default=dict)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class DocumentApiCategoryJob(Base):
+    """库级 AI 接口分类任务(异步):queued/running/completed/failed。
+
+    AI 读库内全部已提取 endpoints,按业务模块/资源域统一归类,回写
+    DocumentApiEndpoint.category。categories 为最终产出的分类名清单。
+    """
+
+    __tablename__ = "document_api_category_jobs"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    job_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    library: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    model_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.models.id", ondelete="SET NULL"), nullable=True
+    )
+    model_name: Mapped[str] = mapped_column(String(200), default="")
+    endpoint_count: Mapped[int] = mapped_column(Integer, default=0)
+    category_count: Mapped[int] = mapped_column(Integer, default=0)
+    prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    categories: Mapped[list] = mapped_column(JSONB, default=list)
+    raw_output: Mapped[dict] = mapped_column(JSONB, default=dict)
+    summary: Mapped[dict] = mapped_column(JSONB, default=dict)
+    error_message: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -1687,6 +1776,30 @@ class PublishSettings(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     publish_review_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class PlatformSettings(Base):
+    """平台级设置单例（id 固定为 1）。
+
+    default_model_id：平台 LLM 调用（文档搜索 AI 总结等）默认模型，被
+    services/platform_settings_service.resolve_default_model 解析为 LiteLLM 模型名。
+    """
+
+    __tablename__ = "platform_settings"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    default_model_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("aihelms.models.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     updated_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
     )

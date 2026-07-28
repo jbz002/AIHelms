@@ -5,6 +5,7 @@ import logging
 import httpx
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
@@ -16,7 +17,7 @@ from repositories import (
     doc_upload_repo,
     document_repo,
 )
-from services import doc_upload_service
+from services import doc_search_summary_service, doc_upload_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 from services.docs_version import (
     DOCS_VERSION_ERROR_MSG,
@@ -194,6 +195,40 @@ async def search_library(
         return {"code": 500, "message": str(e), "data": []}
 
 
+class AskLibraryRequest(BaseModel):
+    query: str
+    version: str | None = None
+
+
+@router.post("/libraries/{library_name}/ask", summary="AI 摘要搜索")
+async def ask_library(
+    library_name: str,
+    body: AskLibraryRequest,
+    current_user: dict = Depends(get_current_user),
+    session: AsyncSession = Depends(get_db),
+):
+    """基于检索片段的 AI 流式摘要（SSE）。事件：sources / delta / done / error。"""
+    query = (body.query or "").strip()
+    if not query:
+        return {"code": 400, "message": "query 不能为空", "data": None}
+
+    async def generate():
+        async for sse in doc_search_summary_service.stream_summary(
+            session, library_name, query, body.version, current_user
+        ):
+            yield sse
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.delete("/libraries/{library_name}/versions/{version}", summary="删除版本")
 async def delete_version(
     library_name: str,
@@ -215,9 +250,7 @@ async def delete_version(
                 }
         await docs_mcp_client.remove_version(library_name, resolved)
         await doc_upload_repo.delete_by_library_version(db, library_name, resolved)
-        await crawled_page_repo.delete_by_library_version(
-            db, library_name, resolved
-        )
+        await crawled_page_repo.delete_by_library_version(db, library_name, resolved)
         await crawl_task_repo.delete_by_library_version(db, library_name, resolved)
         await document_repo.delete_by_library_version(db, library_name, resolved)
         await db.commit()
@@ -248,9 +281,7 @@ async def delete_version_documents(
                     "data": None,
                 }
         await docs_mcp_client.remove_version_documents(library_name, resolved)
-        await crawled_page_repo.delete_by_library_version(
-            db, library_name, resolved
-        )
+        await crawled_page_repo.delete_by_library_version(db, library_name, resolved)
         await document_repo.delete_by_library_version(db, library_name, resolved)
         await db.commit()
         return {"code": 200, "message": "文档已清除", "data": None}

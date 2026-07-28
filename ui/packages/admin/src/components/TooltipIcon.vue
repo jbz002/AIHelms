@@ -26,7 +26,7 @@ const tabIndex = computed(() => (props.focusable ? 0 : undefined))
   >
     <HelpCircle class="h-3.5 w-3.5 text-slate-400 transition group-hover:text-slate-600" />
     <span
-      class="pointer-events-none invisible absolute bottom-full left-1/2 z-[70] mb-1.5 -translate-x-1/2 rounded-lg bg-slate-800 px-3 py-2 text-left text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100"
+      class="pointer-events-none absolute bottom-full left-1/2 z-[70] mb-1.5 -translate-x-1/2 rounded-lg bg-slate-800 px-3 py-2 text-left text-xs font-normal leading-relaxed text-white opacity-0 shadow-lg transition group-hover:block group-hover:opacity-100 group-focus-within:block group-focus-within:opacity-100 hidden"
       :class="widthClass"
       role="tooltip"
       data-tooltip-content

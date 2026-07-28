@@ -1,3 +1,5 @@
+import type { HttpMethod, Operation } from './openapi-subset'
+
 export interface DocsMcpStats {
   totalChunks: number
   libraryCount: number
@@ -285,4 +287,84 @@ export interface DocumentDashboardLibraryBreakdown {
 export interface DocumentDashboardSummary {
   global: DocumentDashboardSummaryGlobal
   by_library: Record<string, DocumentDashboardLibraryBreakdown>
+}
+
+// ── 库级接口提取与分类 ──
+
+export interface LibraryBatchExtractStatus {
+  id: number
+  job_id: string
+  library: string
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  model_id: number | null
+  model_name: string
+  total_documents: number
+  completed_documents: number
+  failed_documents: number
+  total_endpoints: number
+  summary: { progress?: { value: number; completed: number; total: number; step: string } }
+  error_message: string
+  created_by: number | null
+  started_at: string | null
+  finished_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LibraryClassifyStatus {
+  id: number
+  job_id: string
+  library: string
+  status: 'queued' | 'running' | 'completed' | 'failed'
+  model_id: number | null
+  model_name: string
+  endpoint_count: number
+  category_count: number
+  prompt_tokens: number
+  completion_tokens: number
+  categories: string[]
+  summary: { progress?: { value: number; step: string } }
+  error_message: string
+  created_by: number | null
+  started_at: string | null
+  finished_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface LibraryEndpoint {
+  id: number
+  document_id: number
+  method: HttpMethod
+  path: string
+  summary: string
+  category: string
+  operation: Operation
+}
+
+export interface LibraryInterfacesResult {
+  library: string
+  total: number
+  endpoints: LibraryEndpoint[]
+}
+
+// ── AI 摘要搜索（SSE 流式）──
+
+export interface DocsMcpAskSource {
+  url: string
+  score: number | null
+}
+
+export interface DocsMcpAskDoneMeta {
+  finish_reason?: string
+  model?: string
+  prompt_tokens?: number
+  completion_tokens?: number
+}
+
+export interface DocsMcpAskStreamHandlers {
+  onSources: (sources: DocsMcpAskSource[]) => void
+  onDelta: (content: string) => void
+  onDone: (meta: DocsMcpAskDoneMeta) => void
+  onError: (message: string) => void
 }

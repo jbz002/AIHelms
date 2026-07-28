@@ -6,7 +6,6 @@ import type {
   IngestStats,
   DocsMcpScrapeOptions,
   DocsMcpLibrary,
-  DocsMcpSearchResult,
 } from '@aihelms/shared'
 import {
   getDocuments,
@@ -18,7 +17,6 @@ import {
   createCrawlTask,
   getDocsMcpEventSourceUrl,
   getDocsMcpLibraryDetail,
-  searchDocsMcp,
   toast,
 } from '@aihelms/shared'
 import {
@@ -32,11 +30,12 @@ import {
   BarChart3,
   Plus,
   Upload,
+  Code2,
 } from 'lucide-vue-next'
 import ScrapeJobDialog from './components/ScrapeJobDialog.vue'
 import UploadDialog from './components/UploadDialog.vue'
 import SearchCard from './components/SearchCard.vue'
-import SearchResultList from './components/SearchResultList.vue'
+import DocSummary from './components/DocSummary.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -58,8 +57,8 @@ const showScrapeDialog = ref(false)
 const showUploadDialog = ref(false)
 const library = ref<DocsMcpLibrary | null>(null)
 const libraryLoading = ref(false)
-const searchResults = ref<DocsMcpSearchResult[]>([])
-const searchLoading = ref(false)
+const activeQuery = ref('')
+const searchNonce = ref(0)
 const hasSearched = ref(false)
 const showAddVersionDialog = ref(false)
 let eventSource: EventSource | null = null
@@ -151,21 +150,10 @@ async function loadLibrary(): Promise<void> {
   }
 }
 
-async function handleSearch(query: string): Promise<void> {
-  searchLoading.value = true
+function handleSearch(query: string): void {
   hasSearched.value = true
-  try {
-    searchResults.value = await searchDocsMcp(
-      libraryName.value,
-      query,
-      currentVersion.value || undefined,
-      20,
-    )
-  } catch (e) {
-    toast.error((e as Error).message || '搜索失败')
-  } finally {
-    searchLoading.value = false
-  }
+  activeQuery.value = query
+  searchNonce.value++
 }
 
 function sleep(ms: number): Promise<void> {
@@ -310,6 +298,12 @@ function connectSSE(): void {
   }
 }
 
+// ── 库级接口总览入口 ──
+
+function goLibraryInterfaces(): void {
+  router.push({ name: 'LibraryInterfaces', params: { libraryName: libraryName.value } })
+}
+
 watch([sourceFilter, statusFilter], () => {
   page.value = 1
   loadDocuments()
@@ -354,14 +348,14 @@ onUnmounted(() => {
       >
         <option v-for="o in versionOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
       </select>
+      <button
+        class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        @click="showAddVersionDialog = true"
+      >
+        <Plus class="h-4 w-4" />
+        新增版本
+      </button>
       <div class="ml-auto flex items-center gap-2">
-        <button
-          class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          @click="showAddVersionDialog = true"
-        >
-          <Plus class="h-4 w-4" />
-          新增版本
-        </button>
         <button
           class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
           @click="showScrapeDialog = true"
@@ -376,11 +370,24 @@ onUnmounted(() => {
           <Upload class="h-4 w-4" />
           上传增量
         </button>
+        <button
+          class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          @click="goLibraryInterfaces"
+        >
+          <Code2 class="h-4 w-4" />
+          接口总览
+        </button>
       </div>
     </div>
 
     <SearchCard @search="handleSearch" />
-    <SearchResultList v-if="hasSearched" :results="searchResults" :loading="searchLoading" />
+    <DocSummary
+      v-if="hasSearched"
+      :key="searchNonce"
+      :library-name="libraryName"
+      :version="currentVersion || undefined"
+      :query="activeQuery"
+    />
 
     <div v-if="stats" class="grid grid-cols-2 gap-4 lg:grid-cols-4">
       <div class="rounded-lg border border-gray-200 bg-white p-3">

@@ -1,4 +1,6 @@
+import json
 import logging
+from collections.abc import AsyncIterator
 from urllib.parse import quote
 
 import httpx
@@ -85,6 +87,70 @@ async def chat_completion(
         timeout=timeout,
         auth_token=api_key,
     )
+
+
+async def chat_completion_stream(
+    model: str,
+    messages: list[dict],
+    temperature: float = 0.2,
+    max_tokens: int = 1200,
+    timeout: float = 120.0,
+    api_key: str | None = None,
+    user: str | None = None,
+    metadata: dict | None = None,
+    extra_body: dict | None = None,
+) -> AsyncIterator[dict]:
+    """流式 chat completion，逐个 yield OpenAI 形态的 chunk 字典。
+
+    用于 SSE 打字机输出。调用方自行从 choices[0].delta.content / usage /
+    finish_reason 取值。遇到 `data: [DONE]` 终止。
+    """
+    data: dict = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+        "stream": True,
+        "stream_options": {"include_usage": True},
+    }
+    if user:
+        data["user"] = user
+    if metadata:
+        data["metadata"] = metadata
+    if extra_body:
+        data["extra_body"] = extra_body
+    url = f"{settings.litellm_url}/chat/completions"
+    headers = {"Authorization": f"Bearer {api_key or settings.litellm_master_key}"}
+    try:
+        async with httpx.AsyncClient(timeout=timeout, proxy=None) as client:
+            async with client.stream("POST", url, headers=headers, json=data) as resp:
+                if resp.status_code >= 400:
+                    body = await resp.aread()
+                    logger.error(
+                        "litellm stream failed",
+                        extra={
+                            "status": resp.status_code,
+                            "body": body.decode(errors="replace"),
+                        },
+                    )
+                    raise LiteLLMError(
+                        f"LiteLLM stream POST /chat/completions failed: {resp.status_code}"
+                    )
+                async for line in resp.aiter_lines():
+                    if not line or not line.startswith("data:"):
+                        continue
+                    payload = line[len("data:") :].strip()
+                    if payload == "[DONE]":
+                        return
+                    try:
+                        yield json.loads(payload)
+                    except json.JSONDecodeError:
+                        continue
+    except httpx.HTTPError as e:
+        logger.error("litellm stream connection error: %s", str(e))
+        raise LiteLLMError(
+            f"LiteLLM stream POST /chat/completions connection error: {e}"
+        ) from e
 
 
 async def create_user(user_id: str, user_email: str) -> dict:
