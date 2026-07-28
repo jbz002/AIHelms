@@ -9,26 +9,26 @@ def test_enrich_heading_numbered_line_becomes_h2():
 
 
 def test_enrich_flattened_json_becomes_fenced_block():
-    text = "{\n\n\"result\": true,\n\n\"token\": \"abc\",\n\n}"
-    assert enrich_markdown(text) == '```json\n{\n"result": true,\n"token": "abc",\n}\n```'
+    text = '{\n\n"result": true,\n\n"token": "abc",\n\n}'
+    assert (
+        enrich_markdown(text) == '```json\n{\n"result": true,\n"token": "abc",\n}\n```'
+    )
 
 
 def test_enrich_nested_json_balanced_close():
-    text = (
-        "{\n\n\"date\": [\n\n{\"name\": \"x\"},\n\n{\"name\": \"y\"}\n\n]\n\n}"
-    )
+    text = '{\n\n"date": [\n\n{"name": "x"},\n\n{"name": "y"}\n\n]\n\n}'
     assert enrich_markdown(text) == (
         '```json\n{\n"date": [\n{"name": "x"},\n{"name": "y"}\n]\n}\n```'
     )
 
 
 def test_enrich_skips_content_inside_existing_fence():
-    text = "```\n1、not a heading\n{\n\"a\": 1\n}\n```"
+    text = '```\n1、not a heading\n{\n"a": 1\n}\n```'
     assert enrich_markdown(text) == text
 
 
 def test_enrich_unclosed_object_left_untouched():
-    text = "{\n\"a\": 1\n"
+    text = '{\n"a": 1\n'
     assert enrich_markdown(text) == text
 
 
@@ -42,8 +42,8 @@ def test_enrich_mixed_heading_and_json_realistic_doc():
         "http://x/api/auth/getToken\n\n"
         "（POST请求）\n\n"
         "{\n\n"
-        "\"result\": **true** ,\n\n"
-        "\"message\": \"成功\"\n\n"
+        '"result": **true** ,\n\n'
+        '"message": "成功"\n\n'
         "}\n\n"
         "说明：result 为 true 同步成功\n"
     )

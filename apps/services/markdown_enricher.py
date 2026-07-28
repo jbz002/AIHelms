@@ -65,9 +65,7 @@ def enrich_markdown(text: str) -> str:
     return "\n".join(out)
 
 
-def _collect_json_block(
-    lines: list[str], start: int
-) -> tuple[list[str] | None, int]:
+def _collect_json_block(lines: list[str], start: int) -> tuple[list[str] | None, int]:
     """从 start 行（{ 或 [ 开头）收集到括号平衡闭合，跳过空行。
 
     返回 (去空行后的行列表, 下一行索引)；未闭合返回 (None, start)。
