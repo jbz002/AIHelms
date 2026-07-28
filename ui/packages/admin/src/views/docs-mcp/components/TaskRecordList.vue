@@ -57,6 +57,7 @@ const statusConfig: Record<DocTaskStatus, { label: string; cls: string; spin: bo
   ingesting: { label: '入库中', cls: 'bg-blue-100 text-blue-700', spin: true },
   ingested: { label: '已入库', cls: 'bg-purple-100 text-purple-700', spin: false },
   failed: { label: '失败', cls: 'bg-red-100 text-red-700', spin: false },
+  duplicate: { label: '重复跳过', cls: 'bg-gray-100 text-gray-500', spin: false },
 }
 
 const sourceConfig: Record<DocTaskSource, { label: string; icon: typeof Globe; cls: string }> = {
@@ -78,6 +79,7 @@ const statusOptions: { value: '' | DocTaskStatus; label: string }[] = [
   { value: 'ingesting', label: '入库中' },
   { value: 'ingested', label: '已入库' },
   { value: 'failed', label: '失败' },
+  { value: 'duplicate', label: '重复跳过' },
 ]
 
 const dateOptions: { value: string; label: string }[] = [
@@ -298,8 +300,8 @@ defineExpose({ loadTasks })
             <ChevronDown v-if="expandedKey === task.key" class="h-4 w-4" />
             <ChevronRight v-else class="h-4 w-4" />
           </button>
-          <component :is="sourceConfig[task.source].icon" class="h-4 w-4 shrink-0 text-gray-400" />
-          <span :class="['shrink-0 rounded px-1.5 py-0.5 text-xs font-medium', sourceConfig[task.source].cls]">{{ sourceConfig[task.source].label }}</span>
+          <component :is="(sourceConfig[task.source] ?? sourceConfig.internal_upload).icon" class="h-4 w-4 shrink-0 text-gray-400" />
+          <span :class="['shrink-0 rounded px-1.5 py-0.5 text-xs font-medium', (sourceConfig[task.source] ?? sourceConfig.internal_upload).cls]">{{ (sourceConfig[task.source] ?? sourceConfig.internal_upload).label }}</span>
           <div class="min-w-0 flex-1">
             <div class="flex items-center gap-2">
               <span class="truncate text-sm font-medium text-gray-900">{{ task.title }}</span>
@@ -322,9 +324,9 @@ defineExpose({ loadTasks })
               <span class="truncate max-w-[340px]" :title="task.error_message">{{ task.error_message }}</span>
             </div>
           </div>
-          <span :class="['shrink-0 rounded-full px-2 py-0.5 text-xs font-medium', statusConfig[task.status].cls]">
-            <Loader2 v-if="statusConfig[task.status].spin" class="mr-1 inline h-3 w-3 animate-spin" />
-            {{ statusConfig[task.status].label }}
+          <span :class="['shrink-0 rounded-full px-2 py-0.5 text-xs font-medium', (statusConfig[task.status] ?? statusConfig.failed).cls]">
+            <Loader2 v-if="(statusConfig[task.status] ?? statusConfig.failed).spin" class="mr-1 inline h-3 w-3 animate-spin" />
+            {{ (statusConfig[task.status] ?? statusConfig.failed).label }}
           </span>
           <div class="flex shrink-0 items-center">
             <button

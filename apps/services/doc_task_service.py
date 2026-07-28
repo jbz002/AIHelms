@@ -27,6 +27,7 @@ _UPLOAD_STATUS_MAP: dict[str, str] = {
     "ingesting": "ingesting",
     "completed": "ingested",
     "failed": "failed",
+    "duplicate": "duplicate",
 }
 
 # 单表拉取上限（任务记录量级小，内存合并即可）

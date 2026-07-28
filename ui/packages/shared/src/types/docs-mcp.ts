@@ -179,7 +179,14 @@ export interface CrawlPageListResult {
 }
 
 export type DocTaskSource = 'external_crawl' | 'internal_upload'
-export type DocTaskStatus = 'pending' | 'processing' | 'ready' | 'ingesting' | 'ingested' | 'failed'
+export type DocTaskStatus =
+  | 'pending'
+  | 'processing'
+  | 'ready'
+  | 'ingesting'
+  | 'ingested'
+  | 'failed'
+  | 'duplicate'
 
 export interface DocTask {
   key: string
