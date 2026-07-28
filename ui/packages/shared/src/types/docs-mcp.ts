@@ -301,6 +301,7 @@ export interface LibraryBatchExtractStatus {
   total_documents: number
   completed_documents: number
   failed_documents: number
+  skipped_documents: number
   total_endpoints: number
   summary: { progress?: { value: number; completed: number; total: number; step: string } }
   error_message: string

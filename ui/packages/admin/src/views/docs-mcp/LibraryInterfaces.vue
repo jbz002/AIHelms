@@ -123,7 +123,10 @@ async function pollBatch(): Promise<void> {
     if (!latest || !isBatchRunning.value) {
       stopBatchPoll()
       if (latest?.status === 'completed') {
-        toast.success(`批量提取完成，共 ${latest.total_endpoints} 个接口`)
+        const skip = latest.skipped_documents ?? 0
+        toast.success(
+          `批量提取完成，共 ${latest.total_endpoints} 个接口${skip ? `，跳过 ${skip} 个未变更文档` : ''}`,
+        )
         await load()
         if ((latest.total_endpoints ?? 0) > 0) {
           startClassifyPoll()

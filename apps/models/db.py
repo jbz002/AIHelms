@@ -1599,6 +1599,7 @@ class DocumentApiSpec(Base):
         BigInteger, ForeignKey("aihelms.models.id", ondelete="SET NULL"), nullable=True
     )
     model_name: Mapped[str] = mapped_column(String(200), default="")
+    content_hash: Mapped[str] = mapped_column(String(64), default="")
     endpoint_count: Mapped[int] = mapped_column(Integer, default=0)
     prompt_tokens: Mapped[int] = mapped_column(Integer, default=0)
     completion_tokens: Mapped[int] = mapped_column(Integer, default=0)
@@ -1681,6 +1682,7 @@ class DocumentApiBatchJob(Base):
     total_documents: Mapped[int] = mapped_column(Integer, default=0)
     completed_documents: Mapped[int] = mapped_column(Integer, default=0)
     failed_documents: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_documents: Mapped[int] = mapped_column(Integer, default=0)
     total_endpoints: Mapped[int] = mapped_column(Integer, default=0)
     summary: Mapped[dict] = mapped_column(JSONB, default=dict)
     error_message: Mapped[str] = mapped_column(Text, default="")

@@ -30,6 +30,20 @@ def _progress(value: int, completed: int, step: str) -> dict:
     return {"value": value, "completed": completed, "total": 4, "step": step}
 
 
+def _should_skip_incremental(
+    doc_content_hash: str,
+    existing_count: int,
+    latest_spec: DocumentApiSpec | None,
+) -> bool:
+    """已成功提取且文档内容未变更 → 增量跳过。
+
+    任一前提不成立（无 hash / 无既有接口 / 无成功任务 / hash 变更）则需（重）提取。
+    """
+    if not doc_content_hash or existing_count <= 0 or latest_spec is None:
+        return False
+    return (latest_spec.content_hash or "") == doc_content_hash
+
+
 def _serialize_batch_job(job: DocumentApiBatchJob) -> dict:
     return {
         "id": job.id,
@@ -41,6 +55,7 @@ def _serialize_batch_job(job: DocumentApiBatchJob) -> dict:
         "total_documents": job.total_documents,
         "completed_documents": job.completed_documents,
         "failed_documents": job.failed_documents,
+        "skipped_documents": job.skipped_documents,
         "total_endpoints": job.total_endpoints,
         "summary": job.summary or {},
         "error_message": job.error_message,
@@ -127,6 +142,26 @@ async def process_library_extraction(session: AsyncSession, job_pk: int) -> dict
                 continue
             if await document_api_repo.find_active_by_document(session, doc.id):
                 # 该文档已有单文档提取任务在进行中，跳过避免冲突
+                continue
+
+            existing = await document_api_repo.count_by_document(session, doc.id)
+            latest_done = (
+                await document_api_repo.find_latest_completed_by_document(
+                    session, doc.id
+                )
+                if existing > 0
+                else None
+            )
+            if _should_skip_incremental(doc.content_hash, existing, latest_done):
+                # 已成功提取且内容未变更，跳过重提
+                job.skipped_documents += 1
+                job.summary = {
+                    **job.summary,
+                    "progress": _progress(
+                        progress_value, 3, f"跳过未变更 {index}/{total}"
+                    ),
+                }
+                await session.commit()
                 continue
 
             spec = DocumentApiSpec(

@@ -317,6 +317,7 @@ async def process_extraction(session: AsyncSession, spec_pk: int) -> dict:
             return _serialize_spec(spec)
 
         spec.model_name = model_name
+        spec.content_hash = doc.content_hash or ""
         spec.summary = {**spec.summary, "progress": _progress(30, 2, "调用模型提取")}
         await session.commit()
 

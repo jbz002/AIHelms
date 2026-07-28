@@ -70,6 +70,22 @@ async def find_latest_by_document(
     return result.scalar_one_or_none()
 
 
+async def find_latest_completed_by_document(
+    session: AsyncSession, document_id: int
+) -> DocumentApiSpec | None:
+    """该文档最近一次成功提取任务——增量比对 content_hash 用。"""
+    result = await session.execute(
+        select(DocumentApiSpec)
+        .where(
+            DocumentApiSpec.document_id == document_id,
+            DocumentApiSpec.status == "completed",
+        )
+        .order_by(DocumentApiSpec.created_at.desc(), DocumentApiSpec.id.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
 # ── 结构化接口（source of truth）──────────────────────────────────────────────
 
 

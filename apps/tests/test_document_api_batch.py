@@ -118,3 +118,27 @@ async def test_auto_classify_skipped_on_conflict(monkeypatch) -> None:
     )()
     # 不抛即通过
     await document_api_batch_service._enqueue_auto_classify(FakeSession(), job)
+
+
+def test_should_skip_incremental_hash_match() -> None:
+    """已成功提取且 content_hash 相同 → 增量跳过。"""
+    latest = type("S", (), {"content_hash": "abc"})()
+    assert document_api_batch_service._should_skip_incremental("abc", 3, latest) is True
+
+
+def test_should_skip_incremental_hash_diff() -> None:
+    """文档内容变更（hash 不同）→ 不跳过，需重提。"""
+    latest = type("S", (), {"content_hash": "abc"})()
+    assert (
+        document_api_batch_service._should_skip_incremental("xyz", 3, latest) is False
+    )
+
+
+def test_should_skip_incremental_no_prereqs() -> None:
+    """无 content_hash / 无既有接口 / 无成功任务 → 不跳过。"""
+    latest = type("S", (), {"content_hash": "abc"})()
+    assert document_api_batch_service._should_skip_incremental("", 3, latest) is False
+    assert (
+        document_api_batch_service._should_skip_incremental("abc", 0, latest) is False
+    )
+    assert document_api_batch_service._should_skip_incremental("abc", 3, None) is False
