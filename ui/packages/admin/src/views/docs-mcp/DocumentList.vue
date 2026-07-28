@@ -343,7 +343,7 @@ onUnmounted(() => {
       <select
         v-model="selectedVersion"
         :disabled="libraryLoading"
-        class="rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
+        class="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:bg-gray-50"
         title="切换版本"
       >
         <option v-for="o in versionOptions" :key="o.value" :value="o.value">{{ o.label }}</option>

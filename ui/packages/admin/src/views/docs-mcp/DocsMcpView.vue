@@ -12,7 +12,7 @@ import {
   type DocsMcpScrapeOptions,
   type DocumentDashboardSummary,
 } from '@aihelms/shared'
-import { Plus, Upload } from 'lucide-vue-next'
+import { Plus, Upload, Globe } from 'lucide-vue-next'
 import AnalyticsCards from './components/AnalyticsCards.vue'
 import LibraryList from './components/LibraryList.vue'
 import LibraryFilterBar from './components/LibraryFilterBar.vue'
@@ -28,6 +28,7 @@ const libraryNameQuery = ref('')
 const statusFilter = ref<string>('')
 const showScrapeDialog = ref(false)
 const showUploadDialog = ref(false)
+const showFetchDrawer = ref(false)
 const taskRecordListRef = ref<InstanceType<typeof TaskRecordList> | null>(null)
 let eventSource: EventSource | null = null
 
@@ -145,11 +146,18 @@ onUnmounted(() => {
       <h1 class="text-xl font-bold text-gray-900">API文档管理</h1>
       <div class="flex items-center gap-2">
         <button
+          class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
+          @click="showFetchDrawer = true"
+        >
+          <Globe class="h-4 w-4" />
+          抓取单页
+        </button>
+        <button
           class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
           @click="showScrapeDialog = true"
         >
           <Plus class="h-4 w-4" />
-          新建文档
+          抓取文档
         </button>
         <button
           class="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
@@ -163,15 +171,18 @@ onUnmounted(() => {
 
     <AnalyticsCards :stats="stats" :summary="summary" />
 
-    <FetchUrlPanel />
-
-    <LibraryFilterBar
-      v-model:query="libraryNameQuery"
-      v-model:status="statusFilter"
-      :total="libraries.length"
-      :filtered-total="filteredLibraries.length"
-    />
-    <LibraryList :libraries="filteredLibraries" />
+    <div class="space-y-3">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-base font-semibold text-gray-900">文档列表</h2>
+        <LibraryFilterBar
+          v-model:query="libraryNameQuery"
+          v-model:status="statusFilter"
+          :total="libraries.length"
+          :filtered-total="filteredLibraries.length"
+        />
+      </div>
+      <LibraryList :libraries="filteredLibraries" />
+    </div>
 
     <TaskRecordList ref="taskRecordListRef" @refresh="loadLibraries(); loadStats()" />
 
@@ -185,5 +196,6 @@ onUnmounted(() => {
       @close="showUploadDialog = false"
       @uploaded="handleUploaded"
     />
+    <FetchUrlPanel :visible="showFetchDrawer" @close="showFetchDrawer = false" />
   </div>
 </template>
