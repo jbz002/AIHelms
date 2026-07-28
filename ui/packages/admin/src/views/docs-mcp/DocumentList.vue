@@ -65,14 +65,26 @@ const showSummaryDrawer = ref(false)
 const showAddVersionDialog = ref(false)
 let eventSource: EventSource | null = null
 
-// 版本下拉：latest 持续锁定最新 + 库内全部版本
-const versionOptions = computed(() => [
-  { value: 'latest', label: '最新' },
-  ...(library.value?.versions ?? []).map((v) => ({
-    value: v.ref.version || '',
-    label: v.ref.version || '默认',
-  })),
-])
+// 是否存在 semver 版本（ref.version 非空）
+const hasSemverVersion = computed(() =>
+  (library.value?.versions ?? []).some(
+    (v) => (v.ref.version || '').trim() !== '',
+  ),
+)
+
+// 版本下拉：latest 持续锁定最新 + 库内全部版本。
+// 仅 unversioned（无 semver）时 latest 已解析到该桶，跳过避免「最新」与「无版本」重复。
+const versionOptions = computed(() => {
+  const options: Array<{ value: string; label: string }> = [
+    { value: 'latest', label: '最新' },
+  ]
+  for (const v of library.value?.versions ?? []) {
+    const ver = v.ref.version || ''
+    if (!ver && !hasSemverVersion.value) continue
+    options.push({ value: ver, label: ver || '无版本' })
+  }
+  return options
+})
 
 // 是否最后一个版本：删它 = 删整个文档库（docs-mcp 库随末版本消失）
 const isLastVersion = computed(
