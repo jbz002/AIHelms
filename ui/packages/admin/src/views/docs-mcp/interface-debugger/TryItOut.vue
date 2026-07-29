@@ -68,6 +68,78 @@ watch([authType, authValue, apiKeyName], () => {
   )
 })
 
+const tokensKey = `debugger:tokens:${libKey}`
+interface TokenCandidate {
+  label: string
+  value: string
+}
+const tokens = ref<TokenCandidate[]>(readJson<TokenCandidate[]>(tokensKey, []))
+
+interface DetectedToken {
+  key: string
+  value: string
+}
+const detected = ref<DetectedToken | null>(null)
+const detectedFilled = ref(false)
+
+const TOKEN_KEYS = [
+  'access_token', 'id_token', 'token',
+  'api_key', 'apikey', 'api-key', 'api_token',
+  'secret', 'secret_key',
+  'authorization', 'auth', 'bearer', 'jwt',
+  'session', 'session_id',
+]
+
+function stripAuthPrefix(v: string): string {
+  const m = v.match(/^\s*(?:bearer|token)\s+(.+)$/i)
+  return m ? m[1].trim() : v.trim()
+}
+
+function collectTokens(node: unknown, out: DetectedToken[]): void {
+  if (Array.isArray(node)) {
+    for (const item of node) collectTokens(item, out)
+    return
+  }
+  if (node && typeof node === 'object') {
+    for (const [k, v] of Object.entries(node as Record<string, unknown>)) {
+      if (typeof v === 'string' && TOKEN_KEYS.includes(k.toLowerCase())) {
+        const val = stripAuthPrefix(v)
+        if (val && val.length <= 2048) out.push({ key: k, value: val })
+      } else {
+        collectTokens(v, out)
+      }
+    }
+  }
+}
+
+function extractTokenFromResult(r: ProxyResult): DetectedToken | null {
+  if (!r.content_type.includes('json')) return null
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(r.body)
+  } catch {
+    return null
+  }
+  const found: DetectedToken[] = []
+  collectTokens(parsed, found)
+  if (!found.length) return null
+  found.sort(
+    (a, b) =>
+      TOKEN_KEYS.indexOf(a.key.toLowerCase()) - TOKEN_KEYS.indexOf(b.key.toLowerCase()),
+  )
+  return found[0]
+}
+
+function pushToken(label: string, value: string): void {
+  const next = [{ label, value }, ...tokens.value.filter((t) => t.value !== value)].slice(0, 10)
+  tokens.value = next
+  localStorage.setItem(tokensKey, JSON.stringify(next))
+}
+
+function truncateVal(v: string): string {
+  return v.length > 24 ? `${v.slice(0, 24)}…` : v
+}
+
 function clearMemory(): void {
   localStorage.removeItem(baseUrlKey)
   localStorage.removeItem(baseUrlsKey)
@@ -77,6 +149,8 @@ function clearMemory(): void {
   authType.value = 'none'
   authValue.value = ''
   apiKeyName.value = 'X-API-Key'
+  tokens.value = []
+  detected.value = null
   toast.success('已清除该库的记忆')
 }
 
@@ -177,6 +251,24 @@ function formatBody(): void {
     toast.error('JSON 格式有误')
   }
 }
+
+watch(result, (r) => {
+  detected.value = null
+  if (!r) return
+  const tok = extractTokenFromResult(r)
+  if (!tok) return
+  pushToken(tok.key, tok.value)
+  if (!authValue.value.trim()) {
+    if (authType.value === 'none') authType.value = 'bearer'
+    authValue.value = tok.value
+    detectedFilled.value = true
+    toast.success(`检测到 ${tok.key}，已填入鉴权`)
+  } else {
+    detectedFilled.value = false
+    toast.success(`检测到 ${tok.key}，已加入候选`)
+  }
+  detected.value = tok
+})
 </script>
 
 <template>
@@ -214,10 +306,14 @@ function formatBody(): void {
       <input
         v-if="authType !== 'none'"
         v-model="authValue"
+        list="debugger-auth-values"
         :type="authType === 'bearer' ? 'text' : 'text'"
         placeholder="凭据值"
         class="flex-1 rounded-md border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:outline-none"
       />
+      <datalist v-if="authType !== 'none'" id="debugger-auth-values">
+        <option v-for="t in tokens" :key="t.value" :value="t.value">{{ t.label }}</option>
+      </datalist>
       <button
         type="button"
         class="ml-auto flex items-center gap-1 text-xs text-slate-400 hover:text-red-500"
@@ -292,6 +388,13 @@ function formatBody(): void {
     <!-- 响应 -->
     <div>
       <div class="mb-1 text-xs font-medium text-slate-500">响应</div>
+      <div
+        v-if="detected"
+        class="mb-2 flex flex-wrap items-center gap-1.5 rounded-md border border-purple-200 bg-purple-50 px-2.5 py-1.5 text-xs text-purple-700"
+      >
+        <span>检测到 <span class="font-mono font-medium">{{ detected.key }}</span>：<span class="font-mono">{{ truncateVal(detected.value) }}</span></span>
+        <span class="text-purple-400">→ {{ detectedFilled ? '已填入鉴权' : '已加入候选' }}</span>
+      </div>
       <ResponseViewer :result="result" :error="error" />
     </div>
   </div>
