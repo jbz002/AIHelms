@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { getUsers, updateUser, deleteUser, type User } from '@aihelms/shared'
-import { toast, usePermission } from '@aihelms/shared'
-import { Trash2 } from 'lucide-vue-next'
+import { getUsers, updateUser, type User } from '@aihelms/shared'
+import { usePermission } from '@aihelms/shared'
 import Pagination from '../../components/Pagination.vue'
-import ConfirmDialog from '../../components/ConfirmDialog.vue'
 
 const router = useRouter()
 const { hasPermission } = usePermission()
@@ -51,28 +49,6 @@ function handleEdit(user: User): void {
 async function handleToggleActive(user: User): Promise<void> {
   await updateUser(user.id, { is_active: !user.is_active })
   fetchUsers()
-}
-
-const showDelete = ref(false)
-const pendingDeleteUser = ref<User | null>(null)
-
-function openDeleteDialog(user: User): void {
-  pendingDeleteUser.value = user
-  showDelete.value = true
-}
-
-async function handleDelete(): Promise<void> {
-  const user = pendingDeleteUser.value
-  if (!user) return
-  try {
-    await deleteUser(user.id)
-    toast.success('用户删除成功')
-    showDelete.value = false
-    pendingDeleteUser.value = null
-    fetchUsers()
-  } catch (e) {
-    toast.error((e as { message?: string }).message || '删除失败')
-  }
 }
 
 function getRoleLabel(user: User): string {
@@ -226,14 +202,6 @@ onMounted(fetchUsers)
                 >
                   {{ user.is_active ? '禁用' : '启用' }}
                 </button>
-                <button
-                  v-if="hasPermission('user:delete') && !isAdmin(user)"
-                  class="flex items-center gap-1 text-sm text-red-500 transition-colors hover:text-red-600"
-                  @click="openDeleteDialog(user)"
-                >
-                  <Trash2 class="h-3.5 w-3.5" />
-                  删除
-                </button>
               </div>
             </td>
           </tr>
@@ -246,14 +214,6 @@ onMounted(fetchUsers)
       v-model:page-size="pageSize"
       :total="total"
       @change="handlePageChange"
-    />
-
-    <ConfirmDialog
-      :visible="showDelete"
-      title="删除用户"
-      :message="`确认删除用户 ${pendingDeleteUser?.display_name || pendingDeleteUser?.username}？此操作不可恢复。`"
-      @confirm="handleDelete"
-      @cancel="showDelete = false"
     />
   </div>
 </template>
