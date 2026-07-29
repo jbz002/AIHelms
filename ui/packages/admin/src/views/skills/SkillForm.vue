@@ -7,7 +7,7 @@ import {
   type Skill,
   type SkillCategory,
 } from '@aihelms/shared'
-import IconPicker from '../../components/IconPicker.vue'
+import { IconPicker } from '@aihelms/shared'
 
 interface Props {
   visible: boolean

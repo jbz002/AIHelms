@@ -1,14 +1,15 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, nextTick } from 'vue'
+import { onMounted, onUnmounted, ref, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { useAuth } from '@aihelms/shared'
+import { useAuth, usePermission } from '@aihelms/shared'
 import { LogOut, Settings, ChevronDown } from 'lucide-vue-next'
 import LanguageSwitcher from '@aihelms/shared/src/components/LanguageSwitcher.vue'
 
 const router = useRouter()
 const { t } = useI18n()
 const { currentUser, fetchCurrentUser, logout } = useAuth()
+const { hasPermission } = usePermission()
 
 onMounted(async () => {
   if (!currentUser.value) {
@@ -44,11 +45,21 @@ function isActive(path: string): boolean {
   return currentPath.value.startsWith(path)
 }
 
-const navItems = [
-  { path: '/', labelKey: 'layout.nav.identity' },
-  { path: '/market', labelKey: 'layout.nav.market' },
-  { path: '/models', labelKey: 'layout.nav.models' },
-]
+const navItems = computed(() => {
+  const items = [
+    { path: '/', labelKey: 'layout.nav.identity' },
+    { path: '/market', labelKey: 'layout.nav.market' },
+    { path: '/models', labelKey: 'layout.nav.models' },
+  ]
+  if (
+    hasPermission('skill:contribute') ||
+    hasPermission('mcp:contribute') ||
+    hasPermission('agent:contribute')
+  ) {
+    items.push({ path: '/contributor', labelKey: 'layout.nav.contributor' })
+  }
+  return items
+})
 
 // 下拉菜单
 const showDropdown = ref(false)

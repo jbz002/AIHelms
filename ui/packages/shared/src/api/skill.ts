@@ -39,7 +39,7 @@ export function getSkillMarketDetail(id: number): Promise<Skill> {
   return request<Skill>(`/api/v1/skills/${id}/market-detail`, { silent: true })
 }
 
-interface SkillFormFields {
+export interface SkillFormFields {
   name: string
   icon?: string
   icon_url?: string
@@ -56,7 +56,7 @@ interface SkillFormFields {
   source_url?: string
 }
 
-function buildSkillFormData(fields: SkillFormFields): FormData {
+export function buildSkillFormData(fields: SkillFormFields): FormData {
   const fd = new FormData()
   fd.append('name', fields.name)
   if (fields.icon !== undefined) fd.append('icon', fields.icon)

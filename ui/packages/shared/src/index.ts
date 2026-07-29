@@ -56,6 +56,16 @@ export {
   listLabelDefinitions, createLabelDefinition, updateLabelDefinition, deleteLabelDefinition,
   getBuiltinSkills, getBuiltinSkillsStatus, syncBuiltinSkills,
 } from './api/skill'
+export type { SkillFormFields } from './api/skill'
+export {
+  getMyContributions, getMyContribution, createContribution, updateContribution,
+  createContributionVersion, deleteContribution, submitContributionReview,
+  getMyMcpContributions, getMyMcpContribution, createMcpContribution, updateMcpContribution,
+  createMcpContributionVersion, deleteMcpContribution, submitMcpReview,
+  getMyAgentContributions, getMyAgentContribution, createAgentContribution, updateAgentContribution,
+  deleteAgentContribution, submitAgentReview,
+} from './api/contributor'
+export type { McpContributionFields, McpContributionVersionFields, AgentContributionFields } from './api/contributor'
 export type { AiPolicyAudit, AiPolicyAuditSummary, AiPolicyAuditListResult, AiPolicyAuditQuery, AiPolicyFinding, AiPolicyAuditFileSummary, AiPolicyRiskCatalogItem, AiPolicySettings, AiPolicyVerdict, AiPolicyName, AiPolicyPreset, AiPolicySignatureRule, AiPolicySignatureRules, AiPolicyAuditHistoryItem } from './types/aiPolicies'
 export { getAiPolicyAudits, getAiPolicyAudit, getAiPolicyReportDownloadUrl, getAiPolicyRiskCatalog, getAiPolicySettings, updateAiPolicySettings, getAiPolicyPolicies, getAiPolicySignatures, replaceAiPolicySignatures, getVersionAuditHistory } from './api/aiPolicies'
 export type { Agent, AgentCategory, AgentPlatform, AgentListResult, CreateAgentParams, UpdateAgentParams, CreateAgentCategoryParams, CreateAgentPlatformParams, AgentUsageLog, AgentUsageLogListResult } from './types/agent'
@@ -97,6 +107,7 @@ export type { HttpMethod, ParameterLocation, OpenApiInfo, OpenApiSpec, Operation
 export { getDocsMcpStats, getDocsMcpJobs, getDocsMcpJobDetail, createDocsMcpJob, cancelDocsMcpJob, clearCompletedDocsMcpJobs, getDocsMcpLibraries, getDocsMcpLibraryDetail, searchDocsMcp, streamDocsMcpAsk, deleteDocsMcpVersion, getDocsMcpEventSourceUrl, checkDocsMcpLibraryExists, getDocsMcpVersions, findDocsMcpVersionsByUrl, getDocsMcpVersionOptions, updateDocsMcpVersionOptions, deleteDocsMcpVersionDocuments, fetchDocsMcpUrl, uploadDocument, uploadDocumentsBatch, ingestUploadRecord, getDocUploadRecords, createCrawlTask, getCrawlTasks, getCrawlTask, getCrawlPages, ingestCrawlTask, deleteCrawlTask, syncCrawlTaskStatus, getDocTasks, deleteUploadRecord, getUploadRecordContent, getDocuments, getDocument, getDocumentSpec, getDocumentExtractStatus, extractDocumentInterfaces, extractLibraryInterfaces, getLibraryExtractStatus, classifyLibraryInterfaces, getLibraryClassifyStatus, getLibraryInterfaces, updateDocument, deleteDocument, getDocumentStats, ingestDocument, ingestDocumentBatch, getDocumentDashboardSummary, proxyDocumentRequest } from './api/docs-mcp'
 export { default as MarkdownRenderer } from './components/MarkdownRenderer.vue'
 export { default as LabelBadge } from './components/LabelBadge.vue'
+export { default as IconPicker } from './components/IconPicker.vue'
 export { useAuth } from './composables/useAuth'
 export { usePermission } from './composables/usePermission'
 export { toast } from './utils/toast'

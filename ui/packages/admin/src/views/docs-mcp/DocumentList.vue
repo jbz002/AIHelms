@@ -536,7 +536,7 @@ onUnmounted(() => {
                   <button
                     class="rounded-md p-1.5 text-gray-500 hover:bg-gray-100 hover:text-blue-600"
                     title="编辑"
-                    @click="router.push({ name: 'DocumentDetail', params: { libraryName, docId: doc.id }, query: { edit: '1' } })"
+                    @click="router.push({ name: 'DocumentDetail', params: { libraryName, docId: doc.id } })"
                   >
                     <Pencil class="h-4 w-4" />
                   </button>

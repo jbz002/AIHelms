@@ -481,6 +481,8 @@ CREATE TABLE IF NOT EXISTS aihelms.mcp_servers (
     latest_ai_policies_audit_id BIGINT
 );
 
+CREATE INDEX IF NOT EXISTS idx_mcp_servers_created_by ON aihelms.mcp_servers(created_by);
+
 -- MCP 工具表
 CREATE TABLE IF NOT EXISTS aihelms.mcp_tools (
     id BIGSERIAL PRIMARY KEY,
@@ -1021,6 +1023,7 @@ CREATE INDEX IF NOT EXISTS idx_agents_category ON aihelms.agents(category);
 CREATE INDEX IF NOT EXISTS idx_agents_published ON aihelms.agents(is_published);
 CREATE INDEX IF NOT EXISTS idx_agents_business_scenario ON aihelms.agents(business_scenario_id);
 CREATE INDEX IF NOT EXISTS idx_agents_department ON aihelms.agents(department_id);
+CREATE INDEX IF NOT EXISTS idx_agents_created_by ON aihelms.agents(created_by);
 
 -- Agent 使用日志
 CREATE TABLE IF NOT EXISTS aihelms.agent_usage_logs (
@@ -1278,7 +1281,8 @@ INSERT INTO aihelms.roles (name, display_name, description, is_system) VALUES
     ('super_admin', '超级管理员', '拥有所有权限', true),
     ('admin', '管理员', '管理平台日常运营', true),
     ('department_manager', '部门管理员', '管理所属部门', true),
-    ('user', '普通用户', '基础使用权限', true)
+    ('user', '普通用户', '基础使用权限', true),
+    ('contributor', 'Skill 贡献者', '可在 web 端贡献 Skill 草稿并提发布审核', false)
 ON CONFLICT (name) DO NOTHING;
 
 -- 权限点
@@ -1304,16 +1308,19 @@ INSERT INTO aihelms.permissions (code, name, resource, action, description) VALU
     ('mcp:read', '查看MCP', 'mcp', 'read', '查看 MCP Server 列表和详情'),
     ('mcp:update', '编辑MCP', 'mcp', 'update', '编辑 MCP Server 和审批申请'),
     ('mcp:delete', '删除MCP', 'mcp', 'delete', '删除 MCP Server 和撤销授权'),
+    ('mcp:contribute', '贡献 MCP', 'mcp', 'contribute', '普通用户在 web 端创建/编辑/提版本/提交发布审核自己的 MCP Server 草稿'),
     ('resource_application:read', '查看资源申请', 'resource_application', 'read', '查看 AI 资源申请列表'),
     ('resource_application:approve', '审批资源申请', 'resource_application', 'approve', '审批 AI 资源申请'),
     ('skill:create', '创建Skill', 'skill', 'create', '创建 Skill'),
     ('skill:read', '查看Skill', 'skill', 'read', '查看 Skill 列表和详情'),
     ('skill:update', '编辑Skill', 'skill', 'update', '编辑 Skill'),
     ('skill:delete', '删除Skill', 'skill', 'delete', '删除 Skill'),
+    ('skill:contribute', '贡献 Skill', 'skill', 'contribute', '普通用户在 web 端创建/编辑/提版本/提交发布审核自己的 Skill 草稿'),
     ('agent:create', '创建智能体', 'agent', 'create', '创建智能体'),
     ('agent:read', '查看智能体', 'agent', 'read', '查看智能体列表和详情'),
     ('agent:update', '编辑智能体', 'agent', 'update', '编辑智能体'),
     ('agent:delete', '删除智能体', 'agent', 'delete', '删除智能体'),
+    ('agent:contribute', '贡献智能体', 'agent', 'contribute', '普通用户在 web 端创建/编辑/提交发布审核自己的智能体草稿'),
     ('audit_log:read', '查看管理员日志', 'audit_log', 'read', '查看管理员操作审计日志'),
     ('api_key:create', '创建 API Key', 'api_key', 'create', '创建平台 API Key'),
     ('api_key:read', '查看 API Key', 'api_key', 'read', '查看 API Key 列表和详情'),
@@ -1353,6 +1360,12 @@ ON CONFLICT (role_id, permission_id) DO NOTHING;
 INSERT INTO aihelms.role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM aihelms.roles r, aihelms.permissions p
 WHERE r.name = 'user' AND p.code IN ('permission:read')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- contributor 仅可在 web 端贡献自己的 Skill / MCP / 智能体草稿
+INSERT INTO aihelms.role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM aihelms.roles r, aihelms.permissions p
+WHERE r.name = 'contributor' AND p.code IN ('skill:contribute', 'mcp:contribute', 'agent:contribute')
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 

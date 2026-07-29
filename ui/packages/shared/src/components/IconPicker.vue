@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { Search, X } from 'lucide-vue-next'
-import HostedIcon from '@aihelms/shared/src/components/HostedIcon.vue'
+import HostedIcon from './HostedIcon.vue'
 
 interface Props {
   // v-model 绑定的字段可能为旧数据 null/undefined，必须可选以防 render 崩

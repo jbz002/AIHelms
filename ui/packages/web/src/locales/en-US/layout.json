@@ -2,6 +2,7 @@
   "layout.nav.identity": "My AI ID",
   "layout.nav.market": "AI Tools",
   "layout.nav.models": "Model Hub",
+  "layout.nav.contributor": "Contributor",
   "layout.adminConsole": "Admin",
   "layout.logout": "Sign out"
 }

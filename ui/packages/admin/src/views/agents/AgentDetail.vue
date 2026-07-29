@@ -19,7 +19,7 @@ import {
 import { toast, usePermission } from '@aihelms/shared'
 import { ArrowLeft, Trash2, ExternalLink, Copy, FlaskConical } from 'lucide-vue-next'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
-import IconPicker from '../../components/IconPicker.vue'
+import { IconPicker } from '@aihelms/shared'
 
 const { hasPermission } = usePermission()
 const route = useRoute()

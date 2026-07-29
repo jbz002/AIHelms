@@ -117,6 +117,32 @@ async def delete_server(session: AsyncSession, server_id: int) -> bool:
     return result.rowcount > 0
 
 
+async def find_all_servers_by_creator(
+    session: AsyncSession,
+    creator_id: int,
+    page: int = 1,
+    page_size: int = 50,
+) -> list[McpServer]:
+    """contributor 工作台：列出某用户创建的全部 MCP Server（含草稿/隐藏/未发布）。"""
+    offset = (page - 1) * page_size
+    stmt = (
+        select(McpServer)
+        .where(McpServer.created_by == creator_id)
+        .order_by(McpServer.id.desc())
+        .limit(page_size)
+        .offset(offset)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def count_servers_by_creator(session: AsyncSession, creator_id: int) -> int:
+    """contributor 工作台：统计某用户创建的 MCP Server 总数。"""
+    stmt = select(func.count(McpServer.id)).where(McpServer.created_by == creator_id)
+    result = await session.execute(stmt)
+    return result.scalar_one()
+
+
 # ─── McpTool ─────────────────────────────────────────────────────────────────
 
 

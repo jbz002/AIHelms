@@ -9,7 +9,7 @@ import {
 } from '@aihelms/shared'
 import { toast } from '@aihelms/shared'
 import { Eye, EyeOff } from 'lucide-vue-next'
-import IconPicker from '../../components/IconPicker.vue'
+import { IconPicker } from '@aihelms/shared'
 
 interface Props {
   visible: boolean

@@ -157,10 +157,10 @@ async def delete_library(session: AsyncSession, library_id: int) -> None:
     await document_api_repo.delete_jobs_by_library(session, name)
     await document_library_repo.delete_library(session, library_id)
     await session.commit()
-    await _remove_docs_mcp_library(name)
+    await remove_docs_mcp_library(name)
 
 
-async def _remove_docs_mcp_library(library_name: str) -> None:
+async def remove_docs_mcp_library(library_name: str) -> None:
     """尽力清理 docs-mcp 中该库的全部版本向量，失败不阻断删除流程。"""
     try:
         libraries = await docs_mcp_client.list_libraries()

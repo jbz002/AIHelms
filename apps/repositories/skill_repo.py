@@ -102,6 +102,32 @@ async def count_all(
     return result.scalar_one()
 
 
+async def find_all_by_creator(
+    session: AsyncSession,
+    creator_id: int,
+    page: int = 1,
+    page_size: int = 50,
+) -> list[Skill]:
+    """contributor 工作台：列出某用户创建的全部 Skill（含草稿/隐藏/未发布）。"""
+    offset = (page - 1) * page_size
+    stmt = (
+        select(Skill)
+        .where(Skill.created_by == creator_id)
+        .order_by(Skill.id.desc())
+        .limit(page_size)
+        .offset(offset)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def count_by_creator(session: AsyncSession, creator_id: int) -> int:
+    """contributor 工作台：统计某用户创建的 Skill 总数。"""
+    stmt = select(func.count(Skill.id)).where(Skill.created_by == creator_id)
+    result = await session.execute(stmt)
+    return result.scalar_one()
+
+
 async def find_by_ids(session: AsyncSession, ids: list[int]) -> list[Skill]:
     if not ids:
         return []

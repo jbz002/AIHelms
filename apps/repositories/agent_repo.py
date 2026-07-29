@@ -82,6 +82,32 @@ async def delete(session: AsyncSession, agent_id: int) -> bool:
     return result.rowcount > 0
 
 
+async def find_all_by_creator(
+    session: AsyncSession,
+    creator_id: int,
+    page: int = 1,
+    page_size: int = 50,
+) -> list[Agent]:
+    """contributor 工作台：列出某用户创建的全部智能体（含草稿/未发布）。"""
+    offset = (page - 1) * page_size
+    stmt = (
+        select(Agent)
+        .where(Agent.created_by == creator_id)
+        .order_by(Agent.id.desc())
+        .limit(page_size)
+        .offset(offset)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def count_by_creator(session: AsyncSession, creator_id: int) -> int:
+    """contributor 工作台：统计某用户创建的智能体总数。"""
+    stmt = select(func.count(Agent.id)).where(Agent.created_by == creator_id)
+    result = await session.execute(stmt)
+    return result.scalar_one()
+
+
 # ─── AgentCategory ──────────────────────────────────────────────────────────
 
 

@@ -18,7 +18,8 @@ from repositories import publish_review_repo
 ENTITY_MCP = "mcp_server"
 ENTITY_SKILL = "skill"
 ENTITY_CUSTOM = "custom_entity"
-VALID_ENTITY_TYPES: tuple[str, ...] = (ENTITY_MCP, ENTITY_SKILL, ENTITY_CUSTOM)
+ENTITY_AGENT = "agent"
+VALID_ENTITY_TYPES: tuple[str, ...] = (ENTITY_MCP, ENTITY_SKILL, ENTITY_CUSTOM, ENTITY_AGENT)
 
 
 async def submit_review(
@@ -163,6 +164,10 @@ async def _set_entity_published(
         from services import custom_entity_service
 
         await custom_entity_service.set_published(session, entity_id, value)
+    elif entity_type == ENTITY_AGENT:
+        from services import agent_service
+
+        await agent_service.set_published(session, entity_id, value)
     else:
         raise ValidationError(f"不支持的实体类型: {entity_type}")
 

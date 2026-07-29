@@ -10,7 +10,7 @@ import {
 import { usePermission } from '@aihelms/shared'
 import HostedIcon from '@aihelms/shared/src/components/HostedIcon.vue'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
-import IconPicker from '../../components/IconPicker.vue'
+import { IconPicker } from '@aihelms/shared'
 
 const { hasPermission } = usePermission()
 

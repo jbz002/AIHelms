@@ -9,7 +9,6 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from exceptions import NotFoundError
 from repositories import (
     crawl_task_repo,
     crawled_page_repo,
@@ -24,14 +23,6 @@ from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 logger = logging.getLogger(__name__)
 
 
-async def _resolve_version(library_name: str, version: str) -> str:
-    """把 latest 哨兵解析为具体版本号；库空或无可用版本时抛 NotFoundError。"""
-    resolved = await docs_mcp_client.resolve_version(library_name, version)
-    if resolved is None:
-        raise NotFoundError("docs_version", f"{library_name}@{version}")
-    return resolved
-
-
 async def delete_version(
     session: AsyncSession, library_name: str, version: str
 ) -> None:
@@ -40,8 +31,14 @@ async def delete_version(
     specs/endpoints 跟随 documents 的 ondelete=CASCADE 自动清除。
     若删的是该库最后一个版本（docs-mcp 库消失），连带清平台库级残留
     （api_jobs + document_libraries 行），实现「删末版本即删整库」。
+
+    latest 解析为 None（库在 docs-mcp 已空/丢失，如删空壳库）时，跳过版本级
+    删除，直接清平台 DB 库级残留 + 尽力同步 docs-mcp，避免 404 阻断删除。
     """
-    resolved = await _resolve_version(library_name, version)
+    resolved = await docs_mcp_client.resolve_version(library_name, version)
+    if resolved is None:
+        await _force_cleanup_library(session, library_name)
+        return
     await document_repo.delete_by_library_version(session, library_name, resolved)
     await crawled_page_repo.delete_by_library_version(session, library_name, resolved)
     await crawl_task_repo.delete_by_library_version(session, library_name, resolved)
@@ -98,6 +95,26 @@ async def _cleanup_library_if_empty(session: AsyncSession, library_name: str) ->
     await session.commit()
 
 
+async def _force_cleanup_library(session: AsyncSession, library_name: str) -> None:
+    """库在 docs-mcp 已无可用版本时，无条件清平台 DB 库级残留 + 尽力同步 docs-mcp。
+
+    用于「删空壳库」：latest 解析为 None，_cleanup_library_if_empty 的 docs-mcp
+    版本存在性判断不再可靠（空壳可能仍带 version 桶但 0 文档），直接按平台 DB
+    库名清理，再尽力删 docs-mcp 残留版本向量。
+    """
+    library = await document_library_repo.find_by_name(session, library_name)
+    if library is None:
+        return
+    await document_repo.delete_by_library(session, library_name)
+    await doc_upload_repo.delete_by_library(session, library_name)
+    await crawled_page_repo.delete_by_library(session, library_name)
+    await crawl_task_repo.delete_by_library(session, library_name)
+    await document_api_repo.delete_jobs_by_library(session, library_name)
+    await document_library_repo.delete_library(session, library.id)
+    await session.commit()
+    await document_library_service.remove_docs_mcp_library(library_name)
+
+
 async def delete_version_documents(
     session: AsyncSession, library_name: str, version: str
 ) -> None:
@@ -105,8 +122,12 @@ async def delete_version_documents(
     crawled_pages + crawl_tasks + doc_upload_records，再清 docs-mcp 版本文档。
 
     crawl_tasks/upload_records 跟随删除，避免任务壳指向已删页面造成元数据漂移。
+
+    latest 解析为 None（库在 docs-mcp 已空/丢失）时无版本文档可删，直接成功。
     """
-    resolved = await _resolve_version(library_name, version)
+    resolved = await docs_mcp_client.resolve_version(library_name, version)
+    if resolved is None:
+        return
     await document_repo.delete_by_library_version(session, library_name, resolved)
     await crawled_page_repo.delete_by_library_version(session, library_name, resolved)
     await crawl_task_repo.delete_by_library_version(session, library_name, resolved)

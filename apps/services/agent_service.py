@@ -142,6 +142,29 @@ async def delete_agent(session: AsyncSession, agent_id: int) -> None:
     await session.commit()
 
 
+async def set_published(session: AsyncSession, agent_id: int, value: bool) -> None:
+    """审核通过后置 is_published（绕门控，直接生效 + ai_key 同步）。
+
+    contributor 建的智能体 requires_approval=True，故审核通过后仅发布、不触发 key
+    同步（key 绑定/激活归 admin），与 skill/mcp 的 approve≠activate 语义一致。
+    """
+    agent = await agent_repo.find_by_id(session, agent_id)
+    if not agent:
+        raise NotFoundError("agent", agent_id)
+    agent.is_published = value
+    from services import ai_key_service
+
+    if value and not agent.requires_approval:
+        await ai_key_service.sync_public_resource_to_all_keys(
+            session, "agents", agent_id
+        )
+    else:
+        await ai_key_service.remove_public_resource_from_all_keys(
+            session, "agents", agent_id
+        )
+    await session.flush()
+
+
 # ─── Usage Logs ─────────────────────────────────────────────────────────────
 
 

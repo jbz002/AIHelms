@@ -4,20 +4,17 @@ import { useRoute, useRouter } from 'vue-router'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import type { Document } from '@aihelms/shared'
-import { getDocument, updateDocument, toast } from '@aihelms/shared'
-import { ArrowLeft, Save, X, Loader2, Pencil, Code2 } from 'lucide-vue-next'
-import { MarkdownRenderer } from '@aihelms/shared'
+import { getDocument, updateDocument, ingestDocument, toast } from '@aihelms/shared'
+import { ArrowLeft, Save, Loader2, Code2 } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
 const libraryName = computed(() => route.params.libraryName as string)
 const docId = computed(() => Number(route.params.docId))
-const startInEdit = computed(() => route.query.edit === '1')
 
 const doc = ref<Document | null>(null)
 const loading = ref(false)
 const saving = ref(false)
-const isEditing = ref(false)
 const editContent = ref('')
 
 const statusConfig: Record<string, { label: string; cls: string }> = {
@@ -38,7 +35,6 @@ async function loadDocument(): Promise<void> {
   try {
     doc.value = await getDocument(docId.value)
     editContent.value = doc.value?.content ?? ''
-    if (startInEdit.value) isEditing.value = true
   } catch (e) {
     toast.error((e as Error).message || '加载文档失败')
   } finally {
@@ -46,28 +42,48 @@ async function loadDocument(): Promise<void> {
   }
 }
 
-function handleEdit(): void {
-  if (!doc.value) return
-  editContent.value = doc.value.content
-  isEditing.value = true
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function handleCancel(): void {
-  isEditing.value = false
-  editContent.value = doc.value?.content ?? ''
+async function reingestInBackground(): Promise<void> {
+  // 入库走 celery 异步：先派发任务，再轮询单文档状态直到终态
+  try {
+    await ingestDocument(docId.value)
+  } catch (e) {
+    toast.error((e as Error).message || '提交重新入库失败')
+    return
+  }
+  for (let i = 0; i < 40; i++) {
+    await sleep(1500)
+    try {
+      const d = await getDocument(docId.value)
+      doc.value = d
+      if (d.ingest_status === 'ingested') {
+        toast.success('重新入库完成')
+        return
+      }
+      if (d.ingest_status === 'failed') {
+        toast.error(`重新入库失败：${d.error_message || '未知原因'}`)
+        return
+      }
+    } catch {
+      // 单次查询失败不中断轮询
+    }
+  }
 }
 
 async function handleSave(): Promise<void> {
   if (!doc.value || saving.value) return
   saving.value = true
-  const prevStatus = doc.value.ingest_status
   try {
     const updated = await updateDocument(docId.value, { content: editContent.value })
     doc.value = updated
-    isEditing.value = false
     toast.success('文档已保存')
-    if (prevStatus === 'ingested' && updated.ingest_status === 'pending') {
-      toast.warning('内容已变更，需要重新入库')
+    // 内容变更会重置 ingest_status=pending，自动后台重新入库（无需手动按钮）
+    if (updated.ingest_status === 'pending') {
+      toast.info('内容已变更，正在后台重新入库…')
+      void reingestInBackground()
     }
   } catch (e) {
     toast.error((e as Error).message || '保存失败')
@@ -107,7 +123,6 @@ onMounted(loadDocument)
         <span class="text-xs text-gray-400">{{ fmtTime(doc.updated_at) }}</span>
         <div class="ml-auto flex items-center gap-2">
           <button
-            v-if="!isEditing"
             class="flex items-center gap-1 rounded-md bg-purple-50 px-3 py-1.5 text-xs font-medium text-purple-700 hover:bg-purple-100"
             @click="router.push({ name: 'DocumentInterfaces', params: { libraryName, docId } })"
           >
@@ -115,42 +130,19 @@ onMounted(loadDocument)
             接口
           </button>
           <button
-            v-if="!isEditing"
-            class="flex items-center gap-1 rounded-md bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
-            @click="handleEdit"
+            class="flex items-center gap-1 rounded-md bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
+            :disabled="saving"
+            @click="handleSave"
           >
-            <Pencil class="h-3 w-3" />
-            编辑
+            <Loader2 v-if="saving" class="h-3 w-3 animate-spin" />
+            <Save v-else class="h-3 w-3" />
+            保存
           </button>
-          <template v-else>
-            <button
-              class="mr-2 flex items-center gap-1 rounded-md bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"
-              :disabled="saving"
-              @click="handleSave"
-            >
-              <Loader2 v-if="saving" class="h-3 w-3 animate-spin" />
-              <Save v-else class="h-3 w-3" />
-              保存
-            </button>
-            <button
-              class="flex items-center gap-1 rounded-md bg-gray-100 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-200"
-              :disabled="saving"
-              @click="handleCancel"
-            >
-              <X class="h-3 w-3" />
-              取消
-            </button>
-          </template>
         </div>
       </div>
 
-      <div v-if="isEditing" class="rounded-lg border border-gray-200 bg-white">
-        <MdEditor v-model="editContent" language="zh-CN" :preview="true" />
-      </div>
-
-      <div v-else class="rounded-lg border border-gray-200 bg-white p-6">
-        <MarkdownRenderer v-if="doc.content" :content="doc.content" />
-        <p v-else class="text-sm text-gray-400">文档内容为空</p>
+      <div class="rounded-lg border border-gray-200 bg-white">
+        <MdEditor v-model="editContent" language="zh-CN" :preview="true" :toolbars-exclude="['preview']" />
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-4">
@@ -158,10 +150,10 @@ onMounted(loadDocument)
         <div class="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
           <div class="text-gray-500">知识库</div>
           <div class="text-gray-900">{{ doc.library }}</div>
-          <div class="text-gray-500">版本</div>
-          <div class="text-gray-900">{{ doc.version || '-' }}</div>
+          <div v-if="doc.version" class="text-gray-500">版本</div>
+          <div v-if="doc.version" class="text-gray-900">{{ doc.version }}</div>
           <div class="text-gray-500">来源类型</div>
-          <div class="text-gray-900">{{ doc.source_type }}</div>
+          <div class="text-gray-900">{{ doc.source_type === 'crawl' ? '爬虫' : '上传' }}</div>
           <div class="text-gray-500">内容哈希</div>
           <div class="font-mono text-xs text-gray-500">{{ doc.content_hash || '-' }}</div>
           <div v-if="doc.error_message" class="text-gray-500">错误信息</div>

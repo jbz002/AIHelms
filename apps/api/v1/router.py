@@ -10,6 +10,9 @@ from api.v1.auth import router as auth_router
 from api.v1.business_scenarios import router as business_scenarios_router
 from api.v1.cli import router as cli_router
 from api.v1.cli_tokens import router as cli_tokens_router
+from api.v1.contributor_skills import router as contributor_skills_router
+from api.v1.contributor_mcps import router as contributor_mcps_router
+from api.v1.contributor_agents import router as contributor_agents_router
 from api.v1.crawl import router as crawl_router
 from api.v1.credentials import router as credentials_router
 from api.v1.custom_entities import router as custom_entities_router
@@ -57,6 +60,9 @@ router.include_router(models_router, tags=["模型纳管"])
 router.include_router(access_test_router, tags=["模型纳管"])
 router.include_router(mcp_router, tags=["AI 市场"])
 router.include_router(skills_router, tags=["AI 市场"])
+router.include_router(contributor_skills_router, tags=["AI 市场"])
+router.include_router(contributor_mcps_router, tags=["AI 市场"])
+router.include_router(contributor_agents_router, tags=["AI 市场"])
 router.include_router(skill_governance_router, tags=["AI 市场"])
 router.include_router(search_router, prefix="/search", tags=["AI 市场"])
 router.include_router(cli_router, tags=["AI 市场"])
