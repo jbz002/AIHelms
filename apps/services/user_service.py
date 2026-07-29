@@ -27,6 +27,21 @@ async def get_user_by_id(session: AsyncSession, user_id: int) -> dict:
     return _serialize_user_detail(user)
 
 
+async def provision_user_resources(session: AsyncSession, user: User) -> None:
+    """建 litellm 账号 + 个人主 key。幂等，每步独立 commit 保证重试安全。
+
+    普通建用户与 SSO 首登共用：litellm_user_id 未设则建 litellm 账号并立刻落库，
+    再建个人主 key（create_personal_main_key 自身幂等）。任一步失败，下次调用补建。
+    """
+    if not user.litellm_user_id:
+        litellm_user_id = f"aihelms_user_{user.id}"
+        await litellm_client.create_user(litellm_user_id, user.email)
+        user.litellm_user_id = litellm_user_id
+        await session.commit()
+    await ai_key_service.create_personal_main_key(session, user.id, user.username)
+    await session.commit()
+
+
 async def create_user(
     session: AsyncSession,
     username: str,
@@ -55,14 +70,7 @@ async def create_user(
     )
     user = await user_repo.create_user(session, user)
 
-    litellm_user_id = f"aihelms_user_{user.id}"
-    await litellm_client.create_user(litellm_user_id, email)
-    user.litellm_user_id = litellm_user_id
-
-    # Auto-create personal main key (disabled by default)
-    await ai_key_service.create_personal_main_key(session, user.id, username)
-
-    await session.commit()
+    await provision_user_resources(session, user)
     return _serialize_user(user)
 
 

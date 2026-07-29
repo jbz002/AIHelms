@@ -9,6 +9,7 @@ from core.security import create_access_token
 from exceptions import NotFoundError, UnauthorizedError
 from models.db import Permission, RolePermission, User, UserRole
 from repositories import user_repo
+from services import litellm_client, user_service
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,10 @@ async def oauth2_login(session: AsyncSession, code: str) -> tuple[str, User]:
     token = create_access_token(token_data)
     # get_db 依赖不自动 commit，SSO upsert 必须显式落库（否则请求结束回滚，用户档案丢失）
     await session.commit()
+    try:
+        await user_service.provision_user_resources(session, user)
+    except litellm_client.LiteLLMError:
+        logger.exception("provision user resources failed, will retry next login")
     return token, user
 
 
