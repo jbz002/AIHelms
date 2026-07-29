@@ -2,6 +2,8 @@
 import { Menu } from 'lucide-vue-next'
 import { useAuth } from '@aihelms/shared'
 
+import AdminMcpStatus from './AdminMcpStatus.vue'
+
 const { currentUser, logout } = useAuth()
 const emit = defineEmits<{ toggleSidebar: [] }>()
 
@@ -27,6 +29,7 @@ function handleLogout(): void {
       </div>
     </div>
     <div class="flex items-center gap-2 sm:gap-4">
+      <AdminMcpStatus />
       <span class="hidden text-sm text-slate-600 sm:inline">{{ currentUser?.username }}</span>
       <button
         class="rounded-lg px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100/80"

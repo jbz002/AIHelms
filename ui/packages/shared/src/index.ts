@@ -133,3 +133,5 @@ export type { PublishSettings, UpdatePublishSettingsParams } from './types/publi
 export { getPublishSettings, updatePublishSettings } from './api/publish-settings'
 export type { PlatformSettings, UpdatePlatformSettingsParams } from './types/platform-settings'
 export { getPlatformSettings, updatePlatformSettings } from './api/platform-settings'
+export type { AdminMcpStatus } from './types/admin-mcp'
+export { getAdminMcpStatus } from './api/admin-mcp'

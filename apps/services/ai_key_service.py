@@ -711,16 +711,22 @@ async def sync_public_resource_to_all_keys(
             flag_modified(key, resource_type)
             updated += 1
             if resource_type in ("models", "mcps"):
-                await _sync_key_to_litellm(
-                    key,
-                    models_changed=resource_type == "models",
-                    mcps_changed=resource_type == "mcps",
-                    budget_changed=False,
-                    model_budgets_changed=False,
-                    rate_limits_changed=key.rate_limit_mode
-                    == RATE_LIMIT_MODE_PER_MODEL,
-                    session=session,
-                )
+                try:
+                    await _sync_key_to_litellm(
+                        key,
+                        models_changed=resource_type == "models",
+                        mcps_changed=resource_type == "mcps",
+                        budget_changed=False,
+                        model_budgets_changed=False,
+                        rate_limits_changed=key.rate_limit_mode
+                        == RATE_LIMIT_MODE_PER_MODEL,
+                        session=session,
+                    )
+                except litellm_client.LiteLLMError:
+                    logger.warning(
+                        "add resource sync to litellm failed for key %s",
+                        key.id,
+                    )
     if updated:
         await session.flush()
     return updated

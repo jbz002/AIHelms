@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Request
 
 from api.v1.access_test import router as access_test_router
+from api.v1.admin_mcp import router as admin_mcp_router
 from api.v1.agents import router as agents_router
 from api.v1.ai_keys import router as ai_keys_router
 from api.v1.ai_policies import router as ai_policies_router
@@ -10,9 +11,9 @@ from api.v1.auth import router as auth_router
 from api.v1.business_scenarios import router as business_scenarios_router
 from api.v1.cli import router as cli_router
 from api.v1.cli_tokens import router as cli_tokens_router
-from api.v1.contributor_skills import router as contributor_skills_router
-from api.v1.contributor_mcps import router as contributor_mcps_router
 from api.v1.contributor_agents import router as contributor_agents_router
+from api.v1.contributor_mcps import router as contributor_mcps_router
+from api.v1.contributor_skills import router as contributor_skills_router
 from api.v1.crawl import router as crawl_router
 from api.v1.credentials import router as credentials_router
 from api.v1.custom_entities import router as custom_entities_router
@@ -86,6 +87,7 @@ router.include_router(crawl_router, tags=["系统"])
 router.include_router(docs_mcp_router, tags=["AI实验室"])
 router.include_router(document_library_router, tags=["AI实验室"])
 router.include_router(document_crud_router, tags=["AI实验室"])
+router.include_router(admin_mcp_router, tags=["系统"])
 router.include_router(dashboard_router, tags=["系统"])
 
 

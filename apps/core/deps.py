@@ -11,6 +11,7 @@ from core.api_key_utils import hash_api_key, looks_like_api_key
 from core.config import settings
 from core.database import async_session
 from core.security import ALGORITHM
+from exceptions import UnauthorizedError
 from repositories import ai_key_repo, api_key_repo
 from services import cli_token_service
 
@@ -47,6 +48,7 @@ def _authenticate_jwt(token: str) -> dict:
         raise HTTPException(status_code=401, detail="token 无效")
     return {
         "id": int(user_id),
+        "user_id": int(user_id),
         "username": payload.get("username", ""),
         "identity_type": "user",
         "is_admin": payload.get("is_admin", False),
@@ -54,25 +56,38 @@ def _authenticate_jwt(token: str) -> dict:
     }
 
 
-async def _authenticate_api_key(token: str) -> dict:
+async def validate_api_key(token: str) -> dict:
+    """校验平台 API Key，返回身份 dict。
+
+    纯函数（不依赖 FastAPI Request），供 HTTP 鉴权与 MCP 鉴权共用。
+    失败抛 UnauthorizedError；id 为 api_key.id，user_id 为创建该 key 的真实管理员 user.id。
+    """
     key_hash = hash_api_key(token)
     async with async_session() as session:
         api_key = await api_key_repo.find_by_hash(session, key_hash)
     if not api_key or not api_key.is_active:
-        raise HTTPException(status_code=401, detail="API Key 无效或已禁用")
+        raise UnauthorizedError("API Key 无效或已禁用")
     if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
-        raise HTTPException(status_code=401, detail="API Key 已过期")
+        raise UnauthorizedError("API Key 已过期")
 
     # 异步更新 last_used_at，不阻塞请求
     asyncio.create_task(_update_last_used(api_key.id))
 
     return {
         "id": api_key.id,
+        "user_id": api_key.created_by,
         "username": api_key.name,
         "identity_type": "api_key",
         "is_admin": True,
         "permissions": [],
     }
+
+
+async def _authenticate_api_key(token: str) -> dict:
+    try:
+        return await validate_api_key(token)
+    except UnauthorizedError as e:
+        raise HTTPException(status_code=401, detail=str(e))
 
 
 async def _update_last_used(key_id: int) -> None:

@@ -52,6 +52,16 @@ async def count_all(session: AsyncSession, keyword: str = "") -> int:
     return result.scalar_one()
 
 
+async def count_active(session: AsyncSession) -> int:
+    """统计启用且未过期的 API Key 数量。"""
+    stmt = select(func.count(ApiKey.id)).where(
+        ApiKey.is_active.is_(True),
+        or_(ApiKey.expires_at.is_(None), ApiKey.expires_at > func.now()),
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one()
+
+
 async def delete(session: AsyncSession, key_id: int) -> None:
     api_key = await find_by_id(session, key_id)
     if api_key:

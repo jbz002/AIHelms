@@ -12,6 +12,7 @@ from core.exception_handlers import register_exception_handlers
 from core.idempotency import IdempotencyMiddleware
 from core.logging import setup_logging
 from core.migrate import run_migrations
+from mcp_admin import create_admin_mcp_app
 from services.docs_mcp_event_subscriber import run_docs_mcp_event_subscriber
 
 logger = logging.getLogger(__name__)
@@ -19,27 +20,32 @@ logger = logging.getLogger(__name__)
 # Initialize logging before anything else
 setup_logging()
 
+# 管理员操作 MCP server（单例，lifespan 与 mount 共用）
+admin_mcp_app = create_admin_mcp_app()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await run_migrations()
-    # S8 · 内置 skills 异步同步（不阻塞启动；失败仅告警）
-    if settings.builtin_skills_enabled and settings.builtin_skills_sync_on_startup:
-        try:
-            from tasks.builtin_skills_tasks import sync_builtin_skills
+    # MCP StreamableHTTPSessionManager 的 task group 需在父 app lifespan 内启动
+    async with admin_mcp_app.lifespan(app):
+        await run_migrations()
+        # S8 · 内置 skills 异步同步（不阻塞启动；失败仅告警）
+        if settings.builtin_skills_enabled and settings.builtin_skills_sync_on_startup:
+            try:
+                from tasks.builtin_skills_tasks import sync_builtin_skills
 
-            sync_builtin_skills.delay()
-            logger.info("builtin skills sync task dispatched")
-        except Exception:  # noqa: BLE001
-            logger.warning("builtin skills sync dispatch failed", exc_info=True)
-    subscriber_task = asyncio.create_task(run_docs_mcp_event_subscriber())
-    yield
-    subscriber_task.cancel()
-    try:
-        await subscriber_task
-    except asyncio.CancelledError:
-        pass
-    await close_engine()
+                sync_builtin_skills.delay()
+                logger.info("builtin skills sync task dispatched")
+            except Exception:  # noqa: BLE001
+                logger.warning("builtin skills sync dispatch failed", exc_info=True)
+        subscriber_task = asyncio.create_task(run_docs_mcp_event_subscriber())
+        yield
+        subscriber_task.cancel()
+        try:
+            await subscriber_task
+        except asyncio.CancelledError:
+            pass
+        await close_engine()
 
 
 app = FastAPI(
@@ -76,6 +82,9 @@ app.add_middleware(IdempotencyMiddleware)
 app.add_middleware(RequestIdMiddleware)
 register_exception_handlers(app)
 app.include_router(api_v1_router, prefix="/api/v1")
+
+# 管理员操作 MCP server（streamable HTTP，用平台 API Key 鉴权）
+app.mount("/admin-mcp", admin_mcp_app)
 
 
 def custom_openapi():
