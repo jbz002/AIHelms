@@ -170,6 +170,6 @@ onUnmounted(stopPolling)
       </button>
     </div>
 
-    <InterfaceDebugger v-else-if="spec" :spec="spec" :doc-id="docId" />
+    <InterfaceDebugger v-else-if="spec" :spec="spec" :doc-id="docId" :library-name="libraryName" />
   </div>
 </template>

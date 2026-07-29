@@ -9,6 +9,7 @@ interface Props {
   path: string
   operation: Operation
   docId: number
+  libraryName: string
 }
 const props = defineProps<Props>()
 
@@ -179,6 +180,7 @@ function statusClass(code: string): string {
           :path="path"
           :operation="operation"
           :doc-id="docId"
+          :library-name="libraryName"
         />
       </div>
     </div>

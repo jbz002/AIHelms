@@ -9,7 +9,7 @@ import {
   type Parameter,
   type ProxyResult,
 } from '@aihelms/shared'
-import { Loader2, Send } from 'lucide-vue-next'
+import { Loader2, Send, Trash2 } from 'lucide-vue-next'
 import ResponseViewer from './ResponseViewer.vue'
 
 interface Props {
@@ -17,13 +17,68 @@ interface Props {
   path: string
   operation: Operation
   docId: number
+  libraryName: string
 }
 const props = defineProps<Props>()
 
 type AuthType = 'none' | 'bearer' | 'apikey'
 
-const baseUrl = ref(localStorage.getItem(`debugger:baseurl:${props.docId}`) ?? '')
-watch(baseUrl, (v) => localStorage.setItem(`debugger:baseurl:${props.docId}`, v))
+const libKey = encodeURIComponent(props.libraryName)
+const baseUrlKey = `debugger:baseurl:${libKey}`
+const baseUrlsKey = `debugger:baseurls:${libKey}`
+const authKey = `debugger:auth:${libKey}`
+
+function readJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    return raw ? (JSON.parse(raw) as T) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+const baseUrl = ref(localStorage.getItem(baseUrlKey) ?? '')
+const baseUrls = ref<string[]>(readJson<string[]>(baseUrlsKey, []))
+watch(baseUrl, (v) => {
+  localStorage.setItem(baseUrlKey, v)
+  const trimmed = v.trim()
+  if (!trimmed) return
+  const next = [trimmed, ...baseUrls.value.filter((u) => u !== trimmed)].slice(0, 10)
+  baseUrls.value = next
+  localStorage.setItem(baseUrlsKey, JSON.stringify(next))
+})
+
+interface SavedAuth {
+  authType: AuthType
+  authValue: string
+  apiKeyName: string
+}
+const savedAuth = readJson<SavedAuth | null>(authKey, null)
+const authType = ref<AuthType>(savedAuth?.authType ?? 'none')
+const authValue = ref(savedAuth?.authValue ?? '')
+const apiKeyName = ref(savedAuth?.apiKeyName ?? 'X-API-Key')
+watch([authType, authValue, apiKeyName], () => {
+  localStorage.setItem(
+    authKey,
+    JSON.stringify({
+      authType: authType.value,
+      authValue: authValue.value,
+      apiKeyName: apiKeyName.value,
+    } satisfies SavedAuth),
+  )
+})
+
+function clearMemory(): void {
+  localStorage.removeItem(baseUrlKey)
+  localStorage.removeItem(baseUrlsKey)
+  localStorage.removeItem(authKey)
+  baseUrl.value = ''
+  baseUrls.value = []
+  authType.value = 'none'
+  authValue.value = ''
+  apiKeyName.value = 'X-API-Key'
+  toast.success('已清除该库的记忆')
+}
 
 const pathParamsList = computed(() => (props.operation.parameters ?? []).filter((p) => p.in === 'path'))
 const queryParamsList = computed(() => (props.operation.parameters ?? []).filter((p) => p.in === 'query'))
@@ -34,10 +89,6 @@ const pathParams = ref<Record<string, string>>(initMap(pathParamsList.value))
 const queryParams = ref<Record<string, string>>(initMap(queryParamsList.value))
 const headerParams = ref<Record<string, string>>(initMap(headerParamsList.value))
 const bodyText = ref('')
-
-const authType = ref<AuthType>('none')
-const authValue = ref('')
-const apiKeyName = ref('X-API-Key')
 
 function initMap(list: Parameter[]): Record<string, string> {
   return Object.fromEntries(list.map((p) => [p.name, '']))
@@ -116,6 +167,16 @@ async function copyCurl(): Promise<void> {
   await navigator.clipboard.writeText(curlPreview.value)
   toast.success('curl 已复制')
 }
+
+function formatBody(): void {
+  if (!bodyText.value.trim()) return
+  try {
+    bodyText.value = JSON.stringify(JSON.parse(bodyText.value), null, 2)
+    toast.success('已格式化')
+  } catch {
+    toast.error('JSON 格式有误')
+  }
+}
 </script>
 
 <template>
@@ -125,9 +186,13 @@ async function copyCurl(): Promise<void> {
       <label class="mb-1 block text-xs font-medium text-slate-500">Base URL</label>
       <input
         v-model="baseUrl"
+        list="debugger-baseurls"
         placeholder="https://api.example.com"
-        class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:border-purple-400 focus:outline-none"
+        class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:border-purple-400 focus:outline-none appearance-none [&::-webkit-calendar-picker-indicator]:!hidden"
       />
+      <datalist id="debugger-baseurls">
+        <option v-for="u in baseUrls" :key="u" :value="u" />
+      </datalist>
     </div>
 
     <!-- 鉴权 -->
@@ -153,6 +218,14 @@ async function copyCurl(): Promise<void> {
         placeholder="凭据值"
         class="flex-1 rounded-md border border-slate-200 px-2.5 py-1.5 font-mono text-sm focus:outline-none"
       />
+      <button
+        type="button"
+        class="ml-auto flex items-center gap-1 text-xs text-slate-400 hover:text-red-500"
+        @click="clearMemory"
+      >
+        <Trash2 class="h-3.5 w-3.5" />
+        清除记忆
+      </button>
     </div>
 
     <!-- 路径参数 -->
@@ -181,7 +254,10 @@ async function copyCurl(): Promise<void> {
 
     <!-- 请求体 -->
     <div v-if="hasBody">
-      <label class="mb-1 block text-xs font-medium text-slate-500">请求体 (JSON)</label>
+      <div class="mb-1 flex items-center justify-between">
+        <label class="block text-xs font-medium text-slate-500">请求体 (JSON)</label>
+        <button type="button" class="text-xs text-purple-500 hover:text-purple-600" @click="formatBody">格式化</button>
+      </div>
       <textarea
         v-model="bodyText"
         rows="4"

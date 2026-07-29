@@ -7,6 +7,7 @@ import OperationDetail from './OperationDetail.vue'
 interface Props {
   spec: OpenApiSpec
   docId: number
+  libraryName: string
 }
 const props = defineProps<Props>()
 
@@ -64,6 +65,7 @@ watch(
         :path="selected.path"
         :operation="selectedOperation"
         :doc-id="docId"
+        :library-name="libraryName"
       />
       <div v-else class="flex h-full items-center justify-center text-sm text-slate-400">
         请从左侧选择接口
