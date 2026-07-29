@@ -380,8 +380,8 @@ onMounted(loadData)
               </div>
             </div>
 
-            <!-- 治理 -->
-            <SkillGovernancePanel :skill="selectedSkill" @changed="loadData" />
+            <!-- 内容：概览/摘要 + 完整指令/内容完整性 抽屉 -->
+            <SkillContentPanel :skill-id="selectedSkill.id" />
 
             <!-- 版本管理 -->
             <SkillVersionPanel
@@ -390,8 +390,8 @@ onMounted(loadData)
               @activated="handleVersionActivated"
             />
 
-            <!-- 内容：概览/摘要/完整指令 -->
-            <SkillContentPanel :skill-id="selectedSkill.id" />
+            <!-- 治理 -->
+            <SkillGovernancePanel :skill="selectedSkill" @changed="loadData" />
 
             <!-- 使用统计 -->
             <div class="mb-4 rounded-xl border border-slate-200/60 p-3">
