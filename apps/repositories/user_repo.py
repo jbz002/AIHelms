@@ -1,7 +1,7 @@
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models.db import User, UserDepartment, UserProject, UserRole
+from models.db import Role, User, UserDepartment, UserProject, UserRole
 
 
 async def count_users(session: AsyncSession, keyword: str = "") -> int:
@@ -87,11 +87,13 @@ async def upsert_user_from_aihub(
     email: str,
     display_name: str,
     aihub_department_id: str | None,
+    phone: str = "",
 ) -> User:
-    """按 aihub_user_id 查/建本地用户档案。SSO 登录专用，不写密码、不碰角色/部门中间表。
+    """按 aihub_user_id 查/建本地用户档案。SSO 登录专用，不写密码。
 
     绑定顺序：先 aihub_user_id（SSO 回访），再 username（首次登录复用本地同名账号，
     如本地 admin），都没有则新建。已绑定时不覆盖 email/username，避免 unique 冲突。
+    新建或当前无角色时绑默认 user 角色，保证列表/编辑/权限一致；部门中间表不碰。
     """
     user = await find_user_by_aihub_user_id(session, aihub_user_id)
     if user is None:
@@ -103,6 +105,7 @@ async def upsert_user_from_aihub(
             email=email,
             hashed_password="!",
             display_name=display_name,
+            phone=phone,
             aihub_user_id=aihub_user_id,
             aihub_department_id=aihub_department_id,
             is_active=True,
@@ -114,8 +117,19 @@ async def upsert_user_from_aihub(
             user.aihub_user_id = aihub_user_id
         if aihub_department_id is not None:
             user.aihub_department_id = aihub_department_id
+        if phone:
+            user.phone = phone
     await session.flush()
     await session.refresh(user)
+    existing_role = await session.execute(
+        select(UserRole.id).where(UserRole.user_id == user.id).limit(1)
+    )
+    if existing_role.scalar_one_or_none() is None:
+        role = await session.execute(select(Role).where(Role.name == "user"))
+        default_role = role.scalar_one_or_none()
+        if default_role is not None:
+            session.add(UserRole(user_id=user.id, role_id=default_role.id))
+            await session.flush()
     return user
 
 

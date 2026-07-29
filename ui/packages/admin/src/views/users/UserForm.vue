@@ -5,7 +5,6 @@ import {
   getUserById,
   createUser,
   updateUser,
-  resetUserPassword,
   updateUserRoles,
   updateUserDepartments,
   updateUserProjects,
@@ -36,7 +35,6 @@ const selectedProjectIds = ref<number[]>([])
 const allRoles = ref<Role[]>([])
 const deptTree = ref<DeptTreeNode[]>([])
 const allProjects = ref<{ id: number; name: string }[]>([])
-const newPassword = ref('')
 const errorMessage = ref('')
 const isLoading = ref(false)
 
@@ -152,9 +150,6 @@ async function handleSubmit(): Promise<void> {
         updateUserDepartments(userId.value, selectedDeptIds.value),
         updateUserProjects(userId.value, selectedProjectIds.value),
       ])
-      if (newPassword.value) {
-        await resetUserPassword(userId.value, newPassword.value)
-      }
     } else {
       if (!username.value || !email.value || !password.value) {
         errorMessage.value = '请填写所有必填项'
@@ -265,16 +260,6 @@ onMounted(fetchData)
             v-model="password"
             type="password"
             placeholder="至少 6 位"
-            class="flex h-11 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
-          />
-        </div>
-
-        <div v-if="isEdit" class="mb-4">
-          <label class="mb-1.5 block text-sm font-medium text-slate-700">重置密码（留空不修改）</label>
-          <input
-            v-model="newPassword"
-            type="password"
-            placeholder="输入新密码"
             class="flex h-11 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
           />
         </div>

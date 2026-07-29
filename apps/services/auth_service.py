@@ -33,15 +33,18 @@ async def oauth2_login(session: AsyncSession, code: str) -> tuple[str, User]:
         aihub_token = data["access_token"]
         aihub_user = data["user"]
 
-        # 2. 补 app_roles（唯一链路：/me?app_code=）
+        # 2. 补 app_roles + phone（/token user 无 phone，/me 才有）
         app_roles: list[str] = []
+        phone: str = ""
         me = await client.get(
             f"{base}/api/v1/auth/me",
             params={"app_code": settings.ai_hub_app_code},
             headers={"Authorization": f"Bearer {aihub_token}"},
         )
         if me.status_code == 200:
-            app_roles = list(me.json().get("app_roles") or [])
+            me_data = me.json()
+            app_roles = list(me_data.get("app_roles") or [])
+            phone = me_data.get("phone") or ""
 
     # 3. upsert 本地用户
     aihub_user_id = str(aihub_user["id"])
@@ -58,6 +61,7 @@ async def oauth2_login(session: AsyncSession, code: str) -> tuple[str, User]:
             if aihub_user.get("department_id")
             else None
         ),
+        phone=phone,
     )
 
     # 4. 签本地 JWT（is_admin 由 app_roles 映射，permissions 仍走本地 RBAC）
