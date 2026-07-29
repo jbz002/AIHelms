@@ -4,7 +4,14 @@ import { useRoute, useRouter } from 'vue-router'
 import { MdEditor } from 'md-editor-v3'
 import 'md-editor-v3/lib/style.css'
 import type { Document } from '@aihelms/shared'
-import { getDocument, updateDocument, ingestDocument, toast } from '@aihelms/shared'
+import {
+  getDocument,
+  updateDocument,
+  ingestDocument,
+  extractDocumentInterfaces,
+  getDocumentExtractStatus,
+  toast,
+} from '@aihelms/shared'
 import { ArrowLeft, Save, Loader2, Code2 } from 'lucide-vue-next'
 
 const route = useRoute()
@@ -61,10 +68,40 @@ async function reingestInBackground(): Promise<void> {
       doc.value = d
       if (d.ingest_status === 'ingested') {
         toast.success('重新入库完成')
+        void triggerExtract()
         return
       }
       if (d.ingest_status === 'failed') {
         toast.error(`重新入库失败：${d.error_message || '未知原因'}`)
+        return
+      }
+    } catch {
+      // 单次查询失败不中断轮询
+    }
+  }
+}
+
+async function triggerExtract(): Promise<void> {
+  // 入库完成后自动重新提取接口（读平台 DB content，不依赖 docs-mcp 入库结果）
+  try {
+    await extractDocumentInterfaces(docId.value)
+    toast.info('内容已变更，正在重新提取接口…')
+  } catch (e) {
+    // 409 进行中 / 400 内容为空 / 403 无权限 —— 仅 toast，不阻断主流程
+    toast.error((e as Error).message || '提交接口提取失败')
+    return
+  }
+  for (let i = 0; i < 60; i++) {
+    await sleep(5000)
+    try {
+      const s = await getDocumentExtractStatus(docId.value)
+      if (!s) return
+      if (s.status === 'completed') {
+        toast.success(`接口提取完成，共 ${s.endpoint_count} 个接口`)
+        return
+      }
+      if (s.status === 'failed') {
+        toast.error(`接口提取失败：${s.error_message || '未知原因'}`)
         return
       }
     } catch {
