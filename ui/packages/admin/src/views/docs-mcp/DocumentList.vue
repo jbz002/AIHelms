@@ -336,6 +336,13 @@ function connectSSE(): void {
     loadDocuments()
     loadStats()
   })
+  // 上传走 Celery 异步：Document 行在后台提取/入库后才落库，
+  // 完成时 docs-mcp 发 library-change（爬取发 job-* 上面已订阅），此处兜底重载。
+  eventSource.addEventListener('library-change', () => {
+    loadLibrary()
+    loadDocuments()
+    loadStats()
+  })
   eventSource.onerror = () => {
     if (eventSource) {
       eventSource.close()
