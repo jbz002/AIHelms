@@ -138,10 +138,10 @@ async def create_key(
         owner_type=owner_type,
         owner_id=owner_id,
         tags=tags or [],
-        models=models or [],
-        mcps=mcps or [],
-        skills=skills or [],
-        agents=agents or [],
+        models=_dedupe_preserve_order(models or []),
+        mcps=_dedupe_preserve_order(mcps or []),
+        skills=_dedupe_preserve_order(skills or []),
+        agents=_dedupe_preserve_order(agents or []),
         budget_limit=budget_limit,
         budget_hard_limit=budget_hard_limit,
         budget_duration=budget_duration,
@@ -237,13 +237,13 @@ async def update_key(
     if tags is not None:
         key.tags = tags
     if models is not None:
-        key.models = models
+        key.models = _dedupe_preserve_order(models)
     if mcps is not None:
-        key.mcps = mcps
+        key.mcps = _dedupe_preserve_order(mcps)
     if skills is not None:
-        key.skills = skills
+        key.skills = _dedupe_preserve_order(skills)
     if agents is not None:
-        key.agents = agents
+        key.agents = _dedupe_preserve_order(agents)
     if budget_limit is not None:
         key.budget_limit = budget_limit
     if budget_hard_limit is not None:
@@ -317,13 +317,13 @@ async def update_key_resources(
     if not key:
         return
     if models is not None:
-        key.models = models
+        key.models = _dedupe_preserve_order(models)
     if mcps is not None:
-        key.mcps = mcps
+        key.mcps = _dedupe_preserve_order(mcps)
     if skills is not None:
-        key.skills = skills
+        key.skills = _dedupe_preserve_order(skills)
     if agents is not None:
-        key.agents = agents
+        key.agents = _dedupe_preserve_order(agents)
     await _sync_key_to_litellm(
         key,
         models is not None,
@@ -333,6 +333,17 @@ async def update_key_resources(
         rate_limits_changed=key.rate_limit_mode == RATE_LIMIT_MODE_PER_MODEL,
         session=session,
     )
+
+
+def _dedupe_preserve_order(values: list) -> list:
+    """列表去重,保留首次出现顺序。元素须可哈希(str/int)。"""
+    seen: set = set()
+    result: list = []
+    for v in values:
+        if v not in seen:
+            seen.add(v)
+            result.append(v)
+    return result
 
 
 async def _resolve_mcp_server_names(
@@ -728,7 +739,8 @@ async def remove_public_resource_from_all_keys(
         if field is None:
             continue
         if resource_id in field:
-            field.remove(resource_id)
+            while resource_id in field:
+                field.remove(resource_id)
             from sqlalchemy.orm.attributes import flag_modified
 
             flag_modified(key, resource_type)
