@@ -5,7 +5,6 @@ export const CLI_SCOPE_OPTIONS = [
   'skill:install',
   'skill:publish',
   'skill:tag:read',
-  'skill:label:read',
   'skill:*',
 ] as const
 

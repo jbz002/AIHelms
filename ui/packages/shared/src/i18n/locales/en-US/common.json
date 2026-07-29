@@ -5,8 +5,5 @@
   "common.action.confirm": "Confirm",
   "common.action.save": "Save",
   "common.action.delete": "Delete",
-  "common.status.loading": "Loading...",
-  "label.recommended.title": "Recommended",
-  "label.official.title": "Official",
-  "label.verified.title": "Verified"
+  "common.status.loading": "Loading..."
 }

@@ -152,13 +152,9 @@ async def increment_install_count(session: AsyncSession, skill_id: int) -> None:
 def _cli_search_stmt(
     q: str | None,
     category: str | None,
-    label_skill_ids: list[int] | None,
     sort: str,
 ) -> select:
-    """CLI 搜索 Select：published-only + 非 hidden + 可选关键词/类目/label 过滤。
-
-    label 过滤通过预先解析为 skill_ids 列表后 in_ 过滤实现（避免跨表 join 分页复杂度）。
-    """
+    """CLI 搜索 Select：published-only + 非 hidden + 可选关键词/类目过滤。"""
     stmt = select(Skill).where(
         Skill.is_published == True,  # noqa: E712
         Skill.hidden == False,  # noqa: E712
@@ -170,11 +166,6 @@ def _cli_search_stmt(
         )
     if category:
         stmt = stmt.where(Skill.category == category)
-    if label_skill_ids is not None:
-        if not label_skill_ids:
-            stmt = stmt.where(Skill.id < 0)  # label 存在但无匹配 → 强制空集
-        else:
-            stmt = stmt.where(Skill.id.in_(label_skill_ids))
     if sort == "install_count":
         stmt = stmt.order_by(Skill.install_count.desc().nulls_last(), Skill.id.desc())
     elif sort == "name":
@@ -189,12 +180,11 @@ async def cli_search_skills(
     *,
     q: str | None = None,
     category: str | None = None,
-    label_skill_ids: list[int] | None = None,
     sort: str = "newest",
     page: int = 1,
     page_size: int = 50,
 ) -> list[Skill]:
-    stmt = _cli_search_stmt(q, category, label_skill_ids, sort)
+    stmt = _cli_search_stmt(q, category, sort)
     offset = (page - 1) * page_size
     stmt = stmt.limit(page_size).offset(offset)
     result = await session.execute(stmt)
@@ -206,12 +196,11 @@ async def cli_count_skills(
     *,
     q: str | None = None,
     category: str | None = None,
-    label_skill_ids: list[int] | None = None,
     sort: str = "newest",
 ) -> int:
     from sqlalchemy import func as sa_func
 
-    base = _cli_search_stmt(q, category, label_skill_ids, sort)
+    base = _cli_search_stmt(q, category, sort)
     stmt = select(sa_func.count()).select_from(base.subquery())
     result = await session.execute(stmt)
     return result.scalar_one()

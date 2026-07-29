@@ -67,7 +67,6 @@ def _serialize_version(
 def _serialize(
     skill: Skill,
     latest_audit_map: dict[int, str] | None = None,
-    labels: list[dict] | None = None,
     version_tags_map: dict[int, list[str]] | None = None,
 ) -> dict:
     latest_audit_map = latest_audit_map or {}
@@ -95,7 +94,6 @@ def _serialize(
         "category": skill.category,
         "version": skill.version,
         "tags": skill.tags,
-        "labels": labels or [],
         "author": skill.author,
         "agent_install_prompt": skill.agent_install_prompt,
         "usage_instructions": skill.usage_instructions,

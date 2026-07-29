@@ -5,7 +5,6 @@ import {
   getBuiltinSkillsStatus,
   syncBuiltinSkills,
   toast,
-  LabelBadge,
   type BuiltinSkillStatusEntry,
   type Skill,
 } from '@aihelms/shared'
@@ -59,7 +58,7 @@ onMounted(load)
       </button>
     </div>
     <p class="mb-4 text-xs text-slate-400">
-      实例启动时按 manifest 自动同步官方 skill 到全局（复用标准发布链路 + official Label），开箱即用。幂等：slug+version 已存在则跳过；sha256 与 manifest 不一致则拒绝。
+      实例启动时按 manifest 自动同步官方 skill 到全局（复用标准发布链路），开箱即用。幂等：slug+version 已存在则跳过；sha256 与 manifest 不一致则拒绝。
     </p>
 
     <div v-if="loading" class="py-8 text-center text-sm text-slate-400">加载中...</div>
@@ -106,7 +105,6 @@ onMounted(load)
               <th class="px-4 py-2 font-medium">名称</th>
               <th class="px-4 py-2 font-medium">slug</th>
               <th class="px-4 py-2 font-medium">版本</th>
-              <th class="px-4 py-2 font-medium">标签</th>
               <th class="px-4 py-2 font-medium">发布</th>
             </tr>
           </thead>
@@ -115,16 +113,6 @@ onMounted(load)
               <td class="px-4 py-2">{{ s.name }}</td>
               <td class="px-4 py-2 font-mono text-xs">{{ s.builtin_slug }}</td>
               <td class="px-4 py-2 text-xs">{{ s.version }}</td>
-              <td class="px-4 py-2">
-                <LabelBadge
-                  v-for="lb in s.labels"
-                  :key="lb.id"
-                  :name="lb.name"
-                  :display_name_key="lb.display_name_key"
-                  :color="lb.color"
-                  size="sm"
-                />
-              </td>
               <td class="px-4 py-2">
                 <span
                   class="rounded px-1.5 py-0.5 text-[10px]"

@@ -19,7 +19,7 @@ from core.config import settings
 from core.database import get_worker_session_factory
 from exceptions import ValidationError
 from models.db import Skill, SkillVersion
-from repositories import skill_label_repo, skill_repo, skill_version_repo
+from repositories import skill_repo, skill_version_repo
 from services import builtin_skills_service
 
 _BUILTIN_SLUGS = {"code-review", "doc-summary", "meeting-notes"}
@@ -143,7 +143,7 @@ async def test_fetch_zip_url_not_in_whitelist_rejected(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_sync_single_creates_skill_and_grants_official():
+async def test_sync_single_creates_and_publishes_builtin_skill():
     slug = f"test-builtin-{uuid.uuid4().hex[:8]}"
     zip_bytes = _make_zip(slug)
     entry = _entry(slug, sha=hashlib.sha256(zip_bytes).hexdigest())
@@ -161,8 +161,6 @@ async def test_sync_single_creates_skill_and_grants_official():
             assert skill.is_builtin is True
             assert skill.builtin_slug == slug
             assert skill.is_published is True
-            labels = await skill_label_repo.list_by_skill(s, skill_id)
-            assert any(lb["name"] == "official" for lb in labels)
     finally:
         await _cleanup([skill_id])
 

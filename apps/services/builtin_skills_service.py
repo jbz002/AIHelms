@@ -1,7 +1,7 @@
 """S8 · 内置 Skills 开箱即用。
 
 启动时按 manifest 异步同步一批官方 skill 到全局，复用标准发布链路（create_skill /
-create_version + 协议/包校验）+ official Label，开箱即用。
+create_version + 协议/包校验），开箱即用。
 
 源支持双模式：
 - path：本地打包 zip（apps/builtin_skills/skills/），开箱零外部依赖。
@@ -28,7 +28,7 @@ from core.distributed_lock import redis_lock
 from exceptions import LockBusyError, ValidationError
 from models.db import User
 from repositories import skill_repo, skill_version_repo
-from services import skill_label_service, skill_service
+from services import skill_service
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +179,7 @@ async def _create_builtin_skill(
         created_by=admin_id,
     )
     skill_id = int(created["id"])
-    # 结构化内置标记（独立列，非仅 official Label）
+    # 结构化内置标记（独立列 is_builtin / builtin_slug）
     skill = await skill_repo.find_by_id(session, skill_id)
     if skill is not None:
         skill.is_builtin = True
@@ -188,15 +188,6 @@ async def _create_builtin_skill(
     # 绕过发布门控直接发布（等同审核通过路径）
     await skill_service.set_published(session, skill_id, True)
     await session.commit()
-    # 授予 official Label（S4 治理徽标）
-    try:
-        await skill_label_service.grant_label(
-            session, skill_id, "official", admin_id, note="builtin"
-        )
-    except Exception:  # noqa: BLE001
-        logger.warning(
-            "grant official label failed slug=%s", entry["slug"], exc_info=True
-        )
     return {"slug": entry["slug"], "action": "created", "skill_id": skill_id}
 
 

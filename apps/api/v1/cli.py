@@ -11,9 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_cli_token_identity, get_db, require_cli_scope
 from exceptions import ConflictError, NotFoundError, ValidationError
-from repositories import skill_label_repo, skill_repo, skill_version_repo
+from repositories import skill_repo, skill_version_repo
 from services import (
-    skill_label_service,
     skill_service,
     skill_tag_service,
     skill_view_service,
@@ -48,35 +47,26 @@ async def cli_whoami(identity: dict = Depends(get_cli_token_identity)):
 async def cli_list_skills(
     q: str | None = Query(None, max_length=128),
     category: str | None = Query(None, max_length=64),
-    label: str | None = Query(None, max_length=32),
     sort: str = Query("newest", pattern=r"^(newest|install_count|name)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
     _: dict = Depends(require_cli_scope("skill:search")),
 ):
-    label_skill_ids = None
-    if label:
-        label_skill_ids = await skill_label_repo.find_skill_ids_by_label_name(
-            session, label
-        )
     total = await skill_repo.cli_count_skills(
         session,
         q=q,
         category=category,
-        label_skill_ids=label_skill_ids,
         sort=sort,
     )
     items = await skill_repo.cli_search_skills(
         session,
         q=q,
         category=category,
-        label_skill_ids=label_skill_ids,
         sort=sort,
         page=page,
         page_size=page_size,
     )
-    label_map = await skill_label_repo.map_by_skills(session, [s.id for s in items])
     data = {
         "items": [
             {
@@ -89,7 +79,6 @@ async def cli_list_skills(
                 "category": s.category,
                 "author": s.author,
                 "install_count": s.install_count,
-                "labels": [lb.get("name") for lb in (label_map.get(s.id) or [])],
             }
             for s in items
         ],
@@ -191,20 +180,6 @@ async def cli_list_tags(
     skill = await _resolve_skill(session, identifier)
     try:
         data = await skill_tag_service.list_tags(session, skill.id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Skill 不存在")
-    return {"code": 200, "message": "ok", "data": data}
-
-
-@router.get("/skills/{identifier}/labels")
-async def cli_list_labels(
-    identifier: str,
-    session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_cli_scope("skill:label:read")),
-):
-    skill = await _resolve_skill(session, identifier)
-    try:
-        data = await skill_label_service.list_labels(session, skill.id)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")
     return {"code": 200, "message": "ok", "data": data}

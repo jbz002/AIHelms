@@ -7,7 +7,6 @@ export interface SearchCommandOptions {
   registry?: string
   token?: string
   category?: string
-  label?: string
   sort?: string
   limit?: number
   json?: boolean
@@ -21,7 +20,6 @@ export async function searchCommand(query: string, options: SearchCommandOptions
   const client = new AihelmsClient(registry, token)
   const result = await client.search(query, {
     category: options.category,
-    label: options.label,
     sort: options.sort,
     limit: options.limit ?? 20,
   })
@@ -30,9 +28,6 @@ export async function searchCommand(query: string, options: SearchCommandOptions
   }
   if (result.items.length === 0) return 'No skills found.'
   return result.items
-    .map(item => {
-      const labels = item.labels && item.labels.length > 0 ? `  [${item.labels.join(', ')}]` : ''
-      return `${item.skill_id}  ${item.name}  ${item.version || '-'}${labels}\n    ${item.description ?? ''}`
-    })
+    .map(item => `${item.skill_id}  ${item.name}  ${item.version || '-'}\n    ${item.description ?? ''}`)
     .join('\n')
 }

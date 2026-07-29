@@ -99,16 +99,10 @@ const router = createRouter({
           meta: { permission: 'skill:read' },
         },
         {
-          path: 'skills/label-definitions',
-          name: 'SkillLabelDefinitions',
-          component: () => import('../views/skills/LabelDefinitions.vue'),
-          meta: { permission: 'skill:label:manage' },
-        },
-        {
           path: 'skills/builtin',
           name: 'SkillBuiltin',
           component: () => import('../views/skills/BuiltinSkills.vue'),
-          meta: { permission: 'skill:label:manage' },
+          meta: { permission: 'skill:update' },
         },
         {
           path: 'ai-policies',

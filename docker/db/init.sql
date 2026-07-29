@@ -903,35 +903,6 @@ CREATE TABLE IF NOT EXISTS aihelms.skill_tags (
 CREATE INDEX IF NOT EXISTS idx_skill_tags_skill ON aihelms.skill_tags(skill_id);
 CREATE INDEX IF NOT EXISTS idx_skill_tags_version ON aihelms.skill_tags(version_id);
 
--- S4 · 治理 Label 定义（display_name_key 走前端 i18n）
-CREATE TABLE IF NOT EXISTS aihelms.label_definitions (
-    id BIGSERIAL PRIMARY KEY,
-    name VARCHAR(32) NOT NULL UNIQUE,
-    display_name_key VARCHAR(64) NOT NULL,
-    color VARCHAR(16) NOT NULL DEFAULT '',
-    sort_order INTEGER NOT NULL DEFAULT 0,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- S4 · Skill-Label 关联（运营标签授予）
-CREATE TABLE IF NOT EXISTS aihelms.skill_labels (
-    id BIGSERIAL PRIMARY KEY,
-    skill_id BIGINT NOT NULL REFERENCES aihelms.skills(id) ON DELETE CASCADE,
-    label_id BIGINT NOT NULL REFERENCES aihelms.label_definitions(id),
-    granted_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
-    granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    note TEXT NOT NULL DEFAULT '',
-    CONSTRAINT uq_skill_labels_skill_label UNIQUE (skill_id, label_id)
-);
-CREATE INDEX IF NOT EXISTS idx_skill_labels_skill ON aihelms.skill_labels(skill_id);
-
-INSERT INTO aihelms.label_definitions (name, display_name_key, color, sort_order, is_active) VALUES
-    ('recommended', 'label.recommended.title', 'green', 10, true),
-    ('official', 'label.official.title', 'blue', 20, true),
-    ('verified', 'label.verified.title', 'purple', 30, true)
-ON CONFLICT (name) DO NOTHING;
-
 -- ai_policies_audits.skill_version_id：版本绑定安全审查指针
 ALTER TABLE aihelms.ai_policies_audits
     ADD COLUMN IF NOT EXISTS skill_version_id BIGINT
@@ -1378,8 +1349,7 @@ VALUES
     ('custom_entity:create', '创建自定义实体类型', 'custom_entity', 'create', '创建自定义实体类型'),
     ('custom_entity:read', '查看自定义实体', 'custom_entity', 'read', '查看自定义实体类型和实例'),
     ('custom_entity:update', '编辑自定义实体', 'custom_entity', 'update', '编辑自定义实体类型和实例'),
-    ('custom_entity:delete', '删除自定义实体', 'custom_entity', 'delete', '删除自定义实体类型和实例'),
-    ('skill:label:manage', '管理Skill治理标签', 'skill', 'label_manage', '授予/撤销 Skill 治理标签、维护标签定义')
+    ('custom_entity:delete', '删除自定义实体', 'custom_entity', 'delete', '删除自定义实体类型和实例')
 ON CONFLICT (code) DO NOTHING;
 
 

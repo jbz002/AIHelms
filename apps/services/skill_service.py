@@ -12,7 +12,6 @@ from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import Skill, SkillCategory, SkillUsageLog, SkillVersion
 from repositories import (
     ai_policies_repo,
-    skill_label_repo,
     skill_repo,
     skill_tag_repo,
     skill_version_repo,
@@ -106,10 +105,7 @@ async def list_skills(
         is_admin=is_admin,
     )
     latest_audit_map = await _latest_audit_map(session, items)
-    label_map = await skill_label_repo.map_by_skills(session, [s.id for s in items])
-    serialized = [
-        _serialize(s, latest_audit_map, labels=label_map.get(s.id)) for s in items
-    ]
+    serialized = [_serialize(s, latest_audit_map) for s in items]
     return {
         "items": serialized,
         "total": total,
@@ -124,11 +120,9 @@ async def get_skill(session: AsyncSession, skill_id: int) -> dict:
         raise NotFoundError("skill", skill_id)
     latest_audit_map = await _latest_audit_map(session, [skill])
     version_tags_map = await _build_version_tags_map(session, skill.id)
-    labels = await skill_label_repo.list_by_skill(session, skill_id)
     return _serialize(
         skill,
         latest_audit_map,
-        labels=labels,
         version_tags_map=version_tags_map,
     )
 

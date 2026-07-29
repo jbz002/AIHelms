@@ -11,10 +11,6 @@ import type {
   SkillFullView,
   SkillIntegrityView,
   SkillTag,
-  LabelDefinition,
-  SkillLabelGrant,
-  CreateLabelDefinitionParams,
-  UpdateLabelDefinitionParams,
   BuiltinSkillStatusEntry,
 } from '../types/skill'
 import type { AiPolicyAudit } from '../types/aiPolicies'
@@ -239,57 +235,6 @@ export function deleteSkillTag(skillId: number, tagName: string): Promise<null> 
   return request<null>(`/api/v1/skills/${skillId}/tags/${encodeURIComponent(tagName)}`, {
     method: 'DELETE',
   })
-}
-
-// ─── S4 · 治理 Label ───────────────────────────────────────────────
-
-export function listSkillLabels(skillId: number): Promise<SkillLabelGrant[]> {
-  return request<SkillLabelGrant[]>(`/api/v1/skills/${skillId}/labels`)
-}
-
-export function grantSkillLabel(
-  skillId: number,
-  labelName: string,
-  note: string = '',
-): Promise<SkillLabelGrant> {
-  return request<SkillLabelGrant>(`/api/v1/skills/${skillId}/labels`, {
-    method: 'POST',
-    body: { label_name: labelName, note },
-  })
-}
-
-export function revokeSkillLabel(skillId: number, labelName: string): Promise<null> {
-  return request<null>(`/api/v1/skills/${skillId}/labels/${encodeURIComponent(labelName)}`, {
-    method: 'DELETE',
-  })
-}
-
-export function listLabelDefinitions(activeOnly: boolean = true): Promise<LabelDefinition[]> {
-  const params: Record<string, string | boolean> = { active_only: activeOnly }
-  return request<LabelDefinition[]>('/api/v1/skills/label-definitions', { params })
-}
-
-export function createLabelDefinition(
-  params: CreateLabelDefinitionParams,
-): Promise<LabelDefinition> {
-  return request<LabelDefinition>('/api/v1/skills/label-definitions', {
-    method: 'POST',
-    body: params,
-  })
-}
-
-export function updateLabelDefinition(
-  id: number,
-  params: UpdateLabelDefinitionParams,
-): Promise<LabelDefinition> {
-  return request<LabelDefinition>(`/api/v1/skills/label-definitions/${id}`, {
-    method: 'PUT',
-    body: params,
-  })
-}
-
-export function deleteLabelDefinition(id: number): Promise<null> {
-  return request<null>(`/api/v1/skills/label-definitions/${id}`, { method: 'DELETE' })
 }
 
 // ─── 内置 Skills（S8）─────────────────────────────────────────────────

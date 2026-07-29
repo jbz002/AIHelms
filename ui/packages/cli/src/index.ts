@@ -214,7 +214,6 @@ cli
   .option('--registry <url>', 'Registry URL')
   .option('--token <token>', 'CLI scoped token')
   .option('--category <c>', 'Filter by category')
-  .option('--label <l>', 'Filter by label name')
   .option('--sort <sort>', 'Sort: newest|install_count|name')
   .option('--limit <n>', 'Max results', { default: 20 })
   .option('--json', 'Output JSON')
@@ -225,7 +224,6 @@ cli
         registry?: string
         token?: string
         category?: string
-        label?: string
         sort?: string
         limit?: number
         json?: boolean

@@ -2,7 +2,7 @@
 
 - CLI scoped token 生成/哈希/serialize 隔离；scope 校验；CRUD。
 - require_cli_scope 分权（403 / 命中 / 通配）。
-- cli_search 搜索：published-only、hidden 排除、label 过滤、sort。
+- cli_search 搜索：published-only、hidden 排除、sort。
 - 权限点 cli_token:* 已注册。
 """
 
@@ -19,7 +19,7 @@ from core.database import get_worker_session_factory
 from core.deps import require_cli_scope
 from exceptions import NotFoundError, ValidationError
 from models.db import AiKey, Permission, Skill, SkillVersion, User
-from repositories import ai_key_repo, skill_label_repo, skill_repo
+from repositories import ai_key_repo, skill_repo
 from services import cli_token_service, skill_service
 
 
@@ -321,37 +321,16 @@ async def test_cli_search_published_only_and_hidden_excluded():
 
 
 @pytest.mark.asyncio
-async def test_cli_search_label_filter_and_sort():
+async def test_cli_search_sort():
     sid_a, _ = await _make_published_skill("a")
     sid_b, _ = await _make_published_skill("b")
     try:
         async with _session() as s:
-            await skill_label_repo.grant(
-                s, sid_a, await _label_def_id(s, "recommended"), None, ""
-            )
-            await s.commit()
-
-        async with _session() as s:
-            # label 过滤：仅返回带 recommended 的
-            ids_with = await skill_label_repo.find_skill_ids_by_label_name(
-                s, "recommended"
-            )
-            assert sid_a in ids_with
-            items = await skill_repo.cli_search_skills(s, label_skill_ids=ids_with)
-            assert sid_a in {it.id for it in items}
-            assert sid_b not in {it.id for it in items}
-
             # sort=name 不报错且返回结果
             by_name = await skill_repo.cli_search_skills(s, sort="name")
             assert len(by_name) >= 1
     finally:
         await _cleanup_skills([sid_a, sid_b])
-
-
-async def _label_def_id(s, name: str) -> int:
-    definition = await skill_label_repo.find_definition_by_name(s, name)
-    assert definition is not None, "recommended 标签定义未 seed"
-    return definition.id
 
 
 # ─── CLI publish（阶段二写端点）──────────────────────────────────────────────

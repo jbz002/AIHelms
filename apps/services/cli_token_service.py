@@ -27,7 +27,6 @@ SCOPE_OPTIONS = [
     "skill:install",
     "skill:publish",
     "skill:tag:read",
-    "skill:label:read",
     "skill:*",
 ]
 _VALID_SCOPES = set(SCOPE_OPTIONS)

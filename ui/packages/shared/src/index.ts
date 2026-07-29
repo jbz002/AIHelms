@@ -38,8 +38,7 @@ export type {
   SkillLifecycleProjection,
   SkillSummaryView, SkillFullView, SkillIntegrityView,
   ManifestFile, ProtocolIssue,
-  SkillTag, LabelDefinition, SkillLabelGrant,
-  CreateLabelDefinitionParams, UpdateLabelDefinitionParams,
+  SkillTag,
   BuiltinSkillStatusEntry,
 } from './types/skill'
 export {
@@ -52,8 +51,6 @@ export {
   yankSkillVersion, restoreSkillVersion, setSkillHidden,
   getSkillSummary, getSkillFull, getSkillIntegrity,
   listSkillTags, createOrMoveSkillTag, deleteSkillTag,
-  listSkillLabels, grantSkillLabel, revokeSkillLabel,
-  listLabelDefinitions, createLabelDefinition, updateLabelDefinition, deleteLabelDefinition,
   getBuiltinSkills, getBuiltinSkillsStatus, syncBuiltinSkills,
 } from './api/skill'
 export type { SkillFormFields } from './api/skill'
@@ -106,7 +103,6 @@ export type { DocsMcpStats, DocsMcpJob, DocsMcpJobProgress, DocsMcpVersion, Docs
 export type { HttpMethod, ParameterLocation, OpenApiInfo, OpenApiSpec, Operation, Parameter, MediaTypeObject, RequestBody, ResponseObject, JsonSchema, ProxyRequestPayload, ProxyResult } from './types/openapi-subset'
 export { getDocsMcpStats, getDocsMcpJobs, getDocsMcpJobDetail, createDocsMcpJob, cancelDocsMcpJob, clearCompletedDocsMcpJobs, getDocsMcpLibraries, getDocsMcpLibraryDetail, searchDocsMcp, streamDocsMcpAsk, deleteDocsMcpVersion, getDocsMcpEventSourceUrl, checkDocsMcpLibraryExists, getDocsMcpVersions, findDocsMcpVersionsByUrl, getDocsMcpVersionOptions, updateDocsMcpVersionOptions, deleteDocsMcpVersionDocuments, fetchDocsMcpUrl, uploadDocument, uploadDocumentsBatch, ingestUploadRecord, getDocUploadRecords, createCrawlTask, getCrawlTasks, getCrawlTask, getCrawlPages, ingestCrawlTask, deleteCrawlTask, syncCrawlTaskStatus, getDocTasks, deleteUploadRecord, getUploadRecordContent, getDocuments, getDocument, getDocumentSpec, getDocumentExtractStatus, extractDocumentInterfaces, extractLibraryInterfaces, getLibraryExtractStatus, classifyLibraryInterfaces, getLibraryClassifyStatus, getLibraryInterfaces, updateDocument, deleteDocument, getDocumentStats, ingestDocument, ingestDocumentBatch, getDocumentDashboardSummary, proxyDocumentRequest } from './api/docs-mcp'
 export { default as MarkdownRenderer } from './components/MarkdownRenderer.vue'
-export { default as LabelBadge } from './components/LabelBadge.vue'
 export { default as IconPicker } from './components/IconPicker.vue'
 export { useAuth } from './composables/useAuth'
 export { usePermission } from './composables/usePermission'

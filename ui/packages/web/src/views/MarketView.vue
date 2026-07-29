@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { getMyKeys, search, request, createResourceApplication, getPublishedAgents, recordAgentUsage, LabelBadge } from '@aihelms/shared'
-import type { AiKey, Skill, McpServer, Agent, SearchResultItem, SkillLabelGrant } from '@aihelms/shared'
+import { getMyKeys, search, request, createResourceApplication, getPublishedAgents, recordAgentUsage } from '@aihelms/shared'
+import type { AiKey, Skill, McpServer, Agent, SearchResultItem } from '@aihelms/shared'
 import { Server, Sparkles, CheckCircle2, Search, X, ExternalLink, Flame, Bot } from 'lucide-vue-next'
 import * as lucideIcons from 'lucide-vue-next'
 import SkillInstallDialog from '../components/SkillInstallDialog.vue'
@@ -106,16 +106,6 @@ function isOwned(item: MarketItem): boolean {
   if (item._type === 'agent') return myAgents.value.includes(item.id)
   return myMcps.value.includes(item.id)
 }
-
-// S4 · 治理 Label（仅 skill 携带）
-function getLabels(item: MarketItem): SkillLabelGrant[] {
-  return item._type === 'skill' ? item.labels ?? [] : []
-}
-
-// recommended 置顶区（显式标注位，不进质量分）
-const recommendedItems = computed<MarketItem[]>(() =>
-  displayItems.value.filter(i => i._type === 'skill' && getLabels(i).some(l => l.name === 'recommended')),
-)
 
 function getTags(item: MarketItem): string[] {
   return item.tags?.slice(0, 3) ?? []
@@ -434,52 +424,6 @@ onMounted(loadData)
 
     <!-- Card Grid -->
     <div v-else class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      <!-- S4 · recommended 置顶区（显式标注位，不进质量分） -->
-      <div v-if="recommendedItems.length" class="col-span-full mb-2 rounded-2xl border border-green-200/60 bg-gradient-to-r from-green-50/60 to-transparent p-4">
-        <h3 class="mb-3 flex items-center gap-1.5 text-sm font-semibold text-green-700">
-          <Flame class="h-4 w-4 text-green-500" /> {{ t('label.recommended.title') }}
-        </h3>
-        <div class="flex gap-3 overflow-x-auto pb-1">
-          <div
-            v-for="item in recommendedItems"
-            :key="`rec-${item._type}-${item.id}`"
-            class="flex min-w-[200px] max-w-[220px] flex-col rounded-xl border border-slate-200/60 bg-white p-3"
-          >
-            <div class="mb-1 flex items-center gap-1.5">
-              <component
-                :is="getLucideIcon(getIconUrl(item) || getSkillIcon(item))"
-                v-if="getLucideIcon(getIconUrl(item) || getSkillIcon(item))"
-                class="h-4 w-4 text-purple-600"
-              />
-              <Sparkles v-else class="h-4 w-4 text-purple-600" />
-              <LabelBadge
-                v-for="l in getLabels(item)"
-                :key="l.name"
-                :name="l.name"
-                :display_name_key="l.display_name_key"
-                :color="l.color"
-                size="sm"
-              />
-            </div>
-            <h4 class="mb-1 text-sm font-semibold text-slate-800 line-clamp-1">{{ item.name }}</h4>
-            <p class="mb-2 flex-1 text-xs text-slate-500 line-clamp-2">{{ item.description }}</p>
-            <button
-              v-if="(isOwned(item) || !item.requires_approval) && item._type === 'skill'"
-              class="rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 px-3 py-1 text-xs font-medium text-white"
-              @click="handleCopyPrompt(item)"
-            >
-              安装 Skill
-            </button>
-            <button
-              v-else
-              class="rounded-lg bg-gradient-to-r from-green-500 to-emerald-500 px-3 py-1 text-xs font-medium text-white"
-              @click="handleApply(item)"
-            >
-              申请使用
-            </button>
-          </div>
-        </div>
-      </div>
       <div
         v-for="item in displayItems"
         :key="`${item._type}-${item.id}`"
@@ -499,14 +443,6 @@ onMounted(loadData)
           </div>
           <div class="flex items-center gap-1.5">
             <CheckCircle2 v-if="isOwned(item)" class="h-4 w-4 text-green-500" />
-            <LabelBadge
-              v-for="l in getLabels(item)"
-              :key="l.name"
-              :name="l.name"
-              :display_name_key="l.display_name_key"
-              :color="l.color"
-              size="sm"
-            />
             <span
               class="rounded-md px-2 py-0.5 text-xs font-medium"
               :class="item._type === 'skill' ? 'bg-purple-100 text-purple-700' : item._type === 'agent' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'"

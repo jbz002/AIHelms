@@ -17,7 +17,6 @@ export interface SkillSearchItem {
   category: string
   author: string
   install_count: number | null
-  labels: string[]
 }
 
 export interface SkillSearchResponse {
@@ -65,17 +64,6 @@ export interface SkillTag {
   created_at: string | null
 }
 
-export interface SkillLabel {
-  id: number
-  label_id: number
-  name: string
-  display_name_key: string
-  color: string
-  sort_order: number
-  granted_at: string | null
-  note: string
-}
-
 export interface PublishVersionFields {
   version: string
   version_label?: string
@@ -101,12 +89,11 @@ export class AihelmsClient {
 
   async search(
     query: string,
-    opts: { category?: string; label?: string; sort?: string; limit?: number } = {},
+    opts: { category?: string; sort?: string; limit?: number } = {},
   ): Promise<SkillSearchResponse> {
     const params = new URLSearchParams()
     if (query) params.set('q', query)
     if (opts.category) params.set('category', opts.category)
-    if (opts.label) params.set('label', opts.label)
     if (opts.sort) params.set('sort', opts.sort)
     params.set('page_size', String(opts.limit ?? 20))
     return this.getJson(`/skills?${params}`)
@@ -122,10 +109,6 @@ export class AihelmsClient {
 
   async listTags(skillId: string): Promise<SkillTag[]> {
     return this.getJson(`/skills/${skillId}/tags`)
-  }
-
-  async listLabels(skillId: string): Promise<SkillLabel[]> {
-    return this.getJson(`/skills/${skillId}/labels`)
   }
 
   async download(skillId: string, version?: string): Promise<Response> {

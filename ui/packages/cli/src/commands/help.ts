@@ -29,8 +29,8 @@ export const commands = {
   search: {
     summary: 'Search published skills',
     usage:
-      'aihelms search [query] [--category <c>] [--label <l>] [--sort newest|install_count|name] [--limit <n>] [--json]',
-    examples: ['aihelms search pdf', 'aihelms search --label recommended'],
+      'aihelms search [query] [--category <c>] [--sort newest|install_count|name] [--limit <n>] [--json]',
+    examples: ['aihelms search pdf', 'aihelms search --category data'],
   },
   install: {
     summary: 'Install a skill locally (UUID or name)',
