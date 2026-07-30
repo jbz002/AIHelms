@@ -1,6 +1,10 @@
 """管理员操作 MCP server：FastMCP 实例与 ASGI app 工厂。"""
 
 from fastmcp import FastMCP
+from fastmcp.server.transforms.search import (
+    RegexSearchTransform,
+    serialize_tools_for_output_markdown,
+)
 
 from mcp_admin.auth import AdminKeyVerifier
 
@@ -9,6 +13,25 @@ mcp = FastMCP("aihelms_admin_mcp", auth=AdminKeyVerifier())
 
 # 导入工具模块触发 @mcp.tool 注册
 from mcp_admin import tools  # noqa: E402,F401
+
+# 高频只读工具常驻 tools/list，其余走 search_tools 按需发现。
+# 目的：tools/list 从 172 工具 ~24K token 压到 ~1-2K。
+# stateless_http 下 search 模式不依赖 session，非钉工具经 call_tool proxy 调用。
+ALWAYS_VISIBLE = [
+    "admin_list_users",
+    "admin_get_user",
+    "admin_list_models",
+    "admin_get_dashboard",
+    "admin_list_mcp_servers",
+    "admin_list_keys",
+]
+
+mcp.add_transform(
+    RegexSearchTransform(
+        always_visible=ALWAYS_VISIBLE,
+        search_result_serializer=serialize_tools_for_output_markdown,
+    )
+)
 
 _mcp_app = None
 

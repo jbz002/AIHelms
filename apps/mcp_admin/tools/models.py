@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from core.database import async_session
 from exceptions import ConflictError, NotFoundError, ValidationError
+from mcp_admin._audit import audited_tool
 from mcp_admin._common import PageInput, error_text, json_dumps
 from mcp_admin.server import mcp
 from services import model_service
@@ -122,6 +123,7 @@ async def admin_get_model(params: ModelIdInput) -> str:
         "openWorldHint": False,
     },
 )
+@audited_tool("admin_create_model")
 async def admin_create_model(params: CreateModelInput) -> str:
     """创建模型（仅落库，不同步 LiteLLM；部署需另建）。返回新建模型详情。"""
     async with async_session() as session:
@@ -158,6 +160,7 @@ async def admin_create_model(params: CreateModelInput) -> str:
         "openWorldHint": True,
     },
 )
+@audited_tool("admin_update_model")
 async def admin_update_model(params: UpdateModelInput) -> str:
     """更新模型。改 model_id_str（改名）会级联同步 LiteLLM 与所有引用 Key。返回更新后详情。"""
     async with async_session() as session:
@@ -196,6 +199,7 @@ async def admin_update_model(params: UpdateModelInput) -> str:
         "openWorldHint": True,
     },
 )
+@audited_tool("admin_delete_model")
 async def admin_delete_model(params: ModelIdInput) -> str:
     """删除模型（LiteLLM 侧禁用而非物理删除）。返回 {deleted:true}。"""
     async with async_session() as session:
@@ -215,6 +219,7 @@ async def admin_delete_model(params: ModelIdInput) -> str:
         "openWorldHint": True,
     },
 )
+@audited_tool("admin_publish_model")
 async def admin_publish_model(params: PublishModelInput) -> str:
     """更新模型发布状态与可见性。发布变更会广播到所有主 Key。返回更新后详情。"""
     async with async_session() as session:

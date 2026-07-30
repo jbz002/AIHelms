@@ -3,7 +3,7 @@
 铸一个平台 API Key，经 httpx ASGITransport + asgi-lifespan 打挂载的 FastAPI app
 （单事件循环，触发 lifespan 初始化 MCP StreamableHTTPSessionManager），验证：
 - 无 auth → 401
-- 合法 Bearer → initialize / tools/list（26 工具）/ tools/call admin_list_users
+- 合法 Bearer → initialize / tools/list（search transform 后暴露钉的高频 + search_tools/call_tool）/ search 发现非钉工具 / 直调钉的 admin_list_users
 """
 
 import json
@@ -101,9 +101,29 @@ async def test_valid_key_lists_tools_and_calls(client: httpx.AsyncClient) -> Non
         )
         assert r.status_code == 200
         names = {t["name"] for t in _parse_sse(r.text)["result"]["tools"]}
-        assert len(names) == 26
+        # search transform 后 tools/list 只暴露钉的高频 + search_tools + call_tool
+        assert "search_tools" in names
+        assert "call_tool" in names
         assert "admin_list_users" in names
-        assert "admin_create_scene_key" in names
+
+        # 非钉工具经 search_tools 按需发现
+        r = await client.post(
+            MCP_PATH,
+            headers=headers,
+            json={
+                "jsonrpc": "2.0",
+                "method": "tools/call",
+                "id": 4,
+                "params": {
+                    "name": "search_tools",
+                    "arguments": {"pattern": "scene_key"},
+                },
+            },
+        )
+        assert r.status_code == 200
+        searched = _parse_sse(r.text)["result"]
+        assert searched["isError"] is False
+        assert "admin_create_scene_key" in searched["content"][0]["text"]
 
         r = await client.post(
             MCP_PATH,
@@ -133,7 +153,7 @@ async def test_status_returns_meta(client: httpx.AsyncClient) -> None:
         )
         assert r.status_code == 200
         data = r.json()["data"]
-        assert data["tool_count"] == 26
+        assert data["tool_count"] >= 64
         assert data["endpoint_url"].endswith("/admin-mcp/mcp")
         assert data["has_active_api_key"] is True
         assert "admin_list_users" in data["tool_names"]

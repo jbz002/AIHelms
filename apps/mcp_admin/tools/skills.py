@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from core.database import async_session
 from exceptions import ConflictError, NotFoundError, ValidationError
+from mcp_admin._audit import audited_tool
 from mcp_admin._common import PageInput, actor_id, error_text, json_dumps
 from mcp_admin.server import mcp
 from services import skill_service
@@ -91,6 +92,7 @@ async def admin_get_skill(params: SkillIdInput) -> str:
         "openWorldHint": True,
     },
 )
+@audited_tool("admin_create_skill_from_url")
 async def admin_create_skill_from_url(params: CreateSkillFromUrlInput) -> str:
     """从 git/zip URL 创建 Skill（服务端下载并校验包结构，含 SSRF 防护）。不走 zip 二进制入参。返回新建 Skill 详情。"""
     created_by = actor_id()
@@ -124,6 +126,7 @@ async def admin_create_skill_from_url(params: CreateSkillFromUrlInput) -> str:
         "openWorldHint": False,
     },
 )
+@audited_tool("admin_delete_skill")
 async def admin_delete_skill(params: SkillIdInput) -> str:
     """删除 Skill（含磁盘文件清理）。返回 {deleted:true}。"""
     async with async_session() as session:

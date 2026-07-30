@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from core.database import async_session
 from exceptions import ConflictError, NotFoundError, ValidationError
+from mcp_admin._audit import audited_tool
 from mcp_admin._common import PageInput, error_text, json_dumps
 from mcp_admin.server import mcp
 from services import user_service
@@ -99,6 +100,7 @@ async def admin_get_user(params: GetAndDeleteInput) -> str:
         "openWorldHint": True,
     },
 )
+@audited_tool("admin_create_user")
 async def admin_create_user(params: CreateUserInput) -> str:
     """创建用户。会同步在 LiteLLM 建账号与个人主 Key（可能较慢/失败）。返回新建用户详情。"""
     async with async_session() as session:
@@ -128,6 +130,7 @@ async def admin_create_user(params: CreateUserInput) -> str:
         "openWorldHint": True,
     },
 )
+@audited_tool("admin_update_user")
 async def admin_update_user(params: UpdateUserInput) -> str:
     """更新用户资料。只传需修改的字段；切换 is_active 会同步名下 Key 到 LiteLLM。返回更新后详情。"""
     async with async_session() as session:
@@ -156,6 +159,7 @@ async def admin_update_user(params: UpdateUserInput) -> str:
         "openWorldHint": True,
     },
 )
+@audited_tool("admin_delete_user")
 async def admin_delete_user(params: GetAndDeleteInput) -> str:
     """删除用户。有名下 ApiKey/AiKey/McpServer/Skill/Agent 时拒绝（RESTRICT）。返回 {deleted:true} 或错误文本。"""
     async with async_session() as session:
@@ -175,6 +179,7 @@ async def admin_delete_user(params: GetAndDeleteInput) -> str:
         "openWorldHint": False,
     },
 )
+@audited_tool("admin_reset_user_password")
 async def admin_reset_user_password(params: ResetPasswordInput) -> str:
     """重置用户密码。返回 {reset:true}。"""
     async with async_session() as session:

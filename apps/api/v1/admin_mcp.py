@@ -18,7 +18,9 @@ async def get_admin_mcp_status(
     session: AsyncSession = Depends(get_db),
 ):
     """内置管理员 MCP 的就绪状态、接入端点、工具清单与鉴权可用性。"""
-    tools = await mcp.list_tools(run_middleware=False)
+    # 绕 search transform 拿原始注册工具：transform 只压缩 tools/list 暴露数，
+    # 平台注册的真实工具数（能力）不变，前端展示取注册总数
+    tools = await mcp._list_tools()
     tool_names = [t.name for t in tools]
     has_active_api_key = await api_key_repo.count_active(session) > 0
     endpoint_url = resolve_platform_public_url(request) + "/admin-mcp/mcp"

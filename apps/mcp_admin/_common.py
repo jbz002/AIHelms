@@ -30,10 +30,11 @@ def error_text(e: Exception) -> str:
     return f"错误：{type(e).__name__} - {e}"
 
 
-def actor_id() -> int:
-    """从当前 MCP 请求的 access_token 取 actor user_id（写工具用于 created_by/actor_id）。
+def actor() -> dict:
+    """从当前 MCP 请求的 access_token 取完整 actor 身份。
 
-    必须在工具请求上下文内调用；缺失身份抛 ValidationError。
+    必须在工具请求上下文内调用；缺失身份抛 ValidationError。返回
+    {user_id, username, api_key_id, is_super_admin}。
     """
     from fastmcp.server.dependencies import get_access_token
 
@@ -43,7 +44,17 @@ def actor_id() -> int:
     user_id = token.claims.get("user_id")
     if user_id is None:
         raise ValidationError("MCP 身份缺少 user_id")
-    return int(user_id)
+    return {
+        "user_id": int(user_id),
+        "username": token.claims.get("username", ""),
+        "api_key_id": token.claims.get("api_key_id"),
+        "is_super_admin": bool(token.claims.get("is_super_admin", False)),
+    }
+
+
+def actor_id() -> int:
+    """从当前 MCP 请求取 actor user_id（写工具用于 created_by）。"""
+    return actor()["user_id"]
 
 
 def _default(obj: Any) -> Any:

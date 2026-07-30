@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 
 from core.database import async_session
 from exceptions import ConflictError, NotFoundError, ValidationError
+from mcp_admin._audit import audited_tool
 from mcp_admin._common import PageInput, error_text, json_dumps
 from mcp_admin.server import mcp
 from services import mcp_service
@@ -75,6 +76,7 @@ async def admin_get_mcp_server(params: ServerIdInput) -> str:
         "openWorldHint": True,
     },
 )
+@audited_tool("admin_refresh_mcp_tools")
 async def admin_refresh_mcp_tools(params: ServerIdInput) -> str:
     """刷新 MCP Server 的工具列表（经 LiteLLM 拉远端，可能超时/失败）。返回最新工具列表。"""
     async with async_session() as session:
@@ -94,6 +96,7 @@ async def admin_refresh_mcp_tools(params: ServerIdInput) -> str:
         "openWorldHint": True,
     },
 )
+@audited_tool("admin_health_check_mcp")
 async def admin_health_check_mcp(params: ServerIdInput) -> str:
     """对 MCP Server 发起健康检查（经 LiteLLM 探测远端连通性）。返回检查结果。"""
     async with async_session() as session:
