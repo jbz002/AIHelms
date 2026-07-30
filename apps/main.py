@@ -29,15 +29,6 @@ async def lifespan(app: FastAPI):
     # MCP StreamableHTTPSessionManager 的 task group 需在父 app lifespan 内启动
     async with admin_mcp_app.lifespan(app):
         await run_migrations()
-        # S8 · 内置 skills 异步同步（不阻塞启动；失败仅告警）
-        if settings.builtin_skills_enabled and settings.builtin_skills_sync_on_startup:
-            try:
-                from tasks.builtin_skills_tasks import sync_builtin_skills
-
-                sync_builtin_skills.delay()
-                logger.info("builtin skills sync task dispatched")
-            except Exception:  # noqa: BLE001
-                logger.warning("builtin skills sync dispatch failed", exc_info=True)
         subscriber_task = asyncio.create_task(run_docs_mcp_event_subscriber())
         yield
         subscriber_task.cancel()
