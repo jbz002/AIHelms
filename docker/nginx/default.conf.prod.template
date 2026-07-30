@@ -1,0 +1,42 @@
+# 生产 nginx 配置（host 模式）
+# 与 default.conf.template 差异：listen 80→30700，upstream aihelms:8000→127.0.0.1:30720
+upstream aihelms_api {
+    server 127.0.0.1:30720;
+}
+
+server {
+    listen 30700;
+    server_name ${NGINX_SERVER_NAME};
+
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    # API 代理
+    location /api {
+        proxy_pass http://aihelms_api;
+        include /etc/nginx/proxy.conf;
+    }
+
+    # 管理后台
+    location = /admin {
+        rewrite ^ /admin/ last;
+    }
+    location /admin/ {
+        alias /usr/share/nginx/html/admin/;
+        try_files $uri $uri/ /admin/index.html;
+    }
+
+    # 平台内置图标
+    location /icons/ {
+        root /usr/share/nginx/html/web;
+        try_files $uri /icons/v1/default.svg;
+        add_header Cache-Control "public, max-age=86400";
+    }
+
+    # 用户端（默认）
+    location / {
+        root /usr/share/nginx/html/web;
+        try_files $uri $uri/ /index.html;
+    }
+}
