@@ -12,8 +12,8 @@ from core.config import settings
 from core.database import async_session
 from core.security import ALGORITHM
 from exceptions import UnauthorizedError
-from repositories import ai_key_repo, api_key_repo
-from services import cli_token_service
+from repositories import ai_key_repo, api_key_repo, user_repo
+from services import auth_service, cli_token_service
 
 logger = logging.getLogger(__name__)
 
@@ -60,26 +60,34 @@ async def validate_api_key(token: str) -> dict:
     """校验平台 API Key，返回身份 dict。
 
     纯函数（不依赖 FastAPI Request），供 HTTP 鉴权与 MCP 鉴权共用。
-    失败抛 UnauthorizedError；id 为 api_key.id，user_id 为创建该 key 的真实管理员 user.id。
+    失败抛 UnauthorizedError；id 为 api_key.id，user_id 为创建该 key 的 user.id。
+
+    is_admin 与 permissions 从创建者用户派生（而非硬编码 True）：admin 创建的 key
+    仍为 admin，普通用户经 /api-keys/my 自创的 key 为最小权限，避免垂直越权。
     """
     key_hash = hash_api_key(token)
     async with async_session() as session:
         api_key = await api_key_repo.find_by_hash(session, key_hash)
-    if not api_key or not api_key.is_active:
-        raise UnauthorizedError("API Key 无效或已禁用")
-    if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
-        raise UnauthorizedError("API Key 已过期")
+        if not api_key or not api_key.is_active:
+            raise UnauthorizedError("API Key 无效或已禁用")
+        if api_key.expires_at and api_key.expires_at < datetime.now(timezone.utc):
+            raise UnauthorizedError("API Key 已过期")
+        user = await user_repo.find_user_by_id(session, api_key.created_by)
+        if not user or not user.is_active:
+            raise UnauthorizedError("API Key 创建者无效或已禁用")
+        permissions = await auth_service.get_user_permissions(session, user.id)
+        is_admin = bool(user.is_admin or user.is_super_admin)
 
     # 异步更新 last_used_at，不阻塞请求
     asyncio.create_task(_update_last_used(api_key.id))
 
     return {
         "id": api_key.id,
-        "user_id": api_key.created_by,
-        "username": api_key.name,
+        "user_id": user.id,
+        "username": user.username,
         "identity_type": "api_key",
-        "is_admin": True,
-        "permissions": [],
+        "is_admin": is_admin,
+        "permissions": permissions,
     }
 
 

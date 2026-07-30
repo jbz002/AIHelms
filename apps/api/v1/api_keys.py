@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.deps import get_db, require_permission
+from core.deps import get_current_user, get_db, require_permission
 from exceptions import NotFoundError
 from services import api_key_service
 
@@ -22,6 +22,55 @@ class UpdateApiKeyRequest(BaseModel):
     description: str | None = Field(default=None, max_length=2000)
     is_active: bool | None = Field(default=None)
     expires_at: datetime | None = Field(default=None)
+
+
+@router.post("/my", summary="创建我的 API Key")
+async def create_my_api_key(
+    req: CreateApiKeyRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """用户自助：创建归属自己的平台 API Key（用于本地 MCP 客户端接入 web-mcp）。
+
+    任意登录用户可用（不限 admin）。created_by 强制为当前用户，is_admin 在校验时
+    从创建者派生，普通用户的 key 不具 admin 权限。创建返回含 raw_key，仅本次展示。
+    """
+    api_key, _raw_key = await api_key_service.create_api_key(
+        session,
+        name=req.name,
+        description=req.description,
+        expires_at=req.expires_at,
+        created_by=current_user["user_id"],
+    )
+    return {"code": 200, "message": "API Key 创建成功", "data": api_key}
+
+
+@router.get("/my")
+async def list_my_api_keys(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    result = await api_key_service.list_my_api_keys(
+        session, current_user["user_id"], page, page_size
+    )
+    return {"code": 200, "message": "ok", "data": result}
+
+
+@router.delete("/my/{key_id}", summary="删除我的 API Key")
+async def delete_my_api_key(
+    key_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        await api_key_service.delete_my_api_key(
+            session, key_id, current_user["user_id"]
+        )
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="API Key 不存在")
+    return {"code": 200, "message": "API Key 删除成功", "data": None}
 
 
 @router.post("", summary="创建 API Key")

@@ -88,6 +88,32 @@ async def delete_api_key(session: AsyncSession, key_id: int) -> None:
     await session.commit()
 
 
+async def list_my_api_keys(
+    session: AsyncSession,
+    user_id: int,
+    page: int = 1,
+    page_size: int = 20,
+) -> dict:
+    """用户自助面：列出自己的 API Key（不含明文，仅 prefix）。"""
+    total = await api_key_repo.count_by_creator(session, user_id)
+    keys = await api_key_repo.find_by_creator(session, user_id, page, page_size)
+    return {
+        "items": [_serialize(k, include_raw=False) for k in keys],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+async def delete_my_api_key(session: AsyncSession, key_id: int, user_id: int) -> None:
+    """用户自助面：删除自己的 API Key，归属校验失败按 NotFound 处理（防存在性泄漏）。"""
+    api_key = await api_key_repo.find_by_id(session, key_id)
+    if not api_key or api_key.created_by != user_id:
+        raise NotFoundError("api_key", key_id)
+    await api_key_repo.delete(session, key_id)
+    await session.commit()
+
+
 def _serialize(api_key: ApiKey, include_raw: bool = False) -> dict:
     data = {
         "id": api_key.id,

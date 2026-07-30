@@ -37,3 +37,25 @@ export function updateApiKey(id: number, params: UpdateApiKeyParams): Promise<Ap
 export function deleteApiKey(id: number): Promise<null> {
   return request<null>(`/api/v1/api-keys/${id}`, { method: 'DELETE' })
 }
+
+// ─── 用户自助面（/api-keys/my）：普通用户管理自己的平台 API Key（接入 web-mcp）───
+
+export function getMyApiKeys(
+  page: number,
+  pageSize: number,
+): Promise<ApiKeyListResult> {
+  return request<ApiKeyListResult>('/api/v1/api-keys/my', {
+    params: { page, page_size: pageSize },
+  })
+}
+
+export function createMyApiKey(params: CreateApiKeyParams): Promise<ApiKey> {
+  return request<ApiKey>('/api/v1/api-keys/my', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+export function deleteMyApiKey(id: number): Promise<null> {
+  return request<null>(`/api/v1/api-keys/my/${id}`, { method: 'DELETE' })
+}

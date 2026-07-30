@@ -72,7 +72,7 @@ export { getResourceApplications, getResourceApplicationById, createResourceAppl
 export type { AuditLog, AuditLogQuery, AuditLogListResult, AuditLogActor, AuditLogFilters } from './types/auditLog'
 export { getAuditLogs, getAuditLogFilters } from './api/auditLog'
 export type { ApiKey, ApiKeyListResult, CreateApiKeyParams, UpdateApiKeyParams } from './types/apiKey'
-export { getApiKeys, getApiKeyById, createApiKey, updateApiKey, deleteApiKey } from './api/apiKey'
+export { getApiKeys, getApiKeyById, createApiKey, updateApiKey, deleteApiKey, getMyApiKeys, createMyApiKey, deleteMyApiKey } from './api/apiKey'
 export type { CliToken, CliTokenListResult, CreateCliTokenParams, UpdateCliTokenParams, CliScope } from './types/cliToken'
 export { CLI_SCOPE_OPTIONS } from './types/cliToken'
 export { getCliTokens, getCliTokenById, createCliToken, updateCliToken, toggleCliToken, deleteCliToken } from './api/cliToken'

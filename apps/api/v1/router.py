@@ -41,6 +41,7 @@ from api.v1.storage_compensations import router as storage_compensations_router
 from api.v1.usage_logs import router as usage_logs_router
 from api.v1.usage_stats import router as usage_stats_router
 from api.v1.users import router as users_router
+from api.v1.web_mcp import router as web_mcp_router
 from core.public_urls import resolve_litellm_public_url
 
 # 接入文档板块暂搁置（详见 dev/roadmap/web.md），保留代码不接入路由
@@ -88,6 +89,7 @@ router.include_router(docs_mcp_router, tags=["AI实验室"])
 router.include_router(document_library_router, tags=["AI实验室"])
 router.include_router(document_crud_router, tags=["AI实验室"])
 router.include_router(admin_mcp_router, tags=["系统"])
+router.include_router(web_mcp_router, tags=["系统"])
 router.include_router(dashboard_router, tags=["系统"])
 
 

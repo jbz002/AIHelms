@@ -62,6 +62,31 @@ async def count_active(session: AsyncSession) -> int:
     return result.scalar_one()
 
 
+async def find_by_creator(
+    session: AsyncSession,
+    user_id: int,
+    page: int = 1,
+    page_size: int = 20,
+) -> list[ApiKey]:
+    """分页查询某用户创建的 API Key（用户自助面，按 created_by 过滤）。"""
+    offset = (page - 1) * page_size
+    stmt = (
+        select(ApiKey)
+        .where(ApiKey.created_by == user_id)
+        .order_by(ApiKey.id.desc())
+        .limit(page_size)
+        .offset(offset)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def count_by_creator(session: AsyncSession, user_id: int) -> int:
+    stmt = select(func.count(ApiKey.id)).where(ApiKey.created_by == user_id)
+    result = await session.execute(stmt)
+    return result.scalar_one()
+
+
 async def delete(session: AsyncSession, key_id: int) -> None:
     api_key = await find_by_id(session, key_id)
     if api_key:
