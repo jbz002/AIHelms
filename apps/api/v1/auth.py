@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_current_user, get_db
 from exceptions import NotFoundError, UnauthorizedError
-from models.auth import OAuth2CodeRequest
+from models.auth import OAuth2CodeRequest, TicketLoginRequest
 from services import auth_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -30,6 +30,21 @@ async def get_me(
 async def oauth2_login(req: OAuth2CodeRequest, session: AsyncSession = Depends(get_db)):
     try:
         token, _user = await auth_service.oauth2_login(session, req.code)
+    except UnauthorizedError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    return {
+        "code": 200,
+        "message": "登录成功",
+        "data": {"access_token": token, "token_type": "bearer"},
+    }
+
+
+@router.post("/login/ticket", summary="AI Hub Ticket 登录")
+async def ticket_login(
+    req: TicketLoginRequest, session: AsyncSession = Depends(get_db)
+):
+    try:
+        token, _user = await auth_service.ticket_login(session, req.ticket)
     except UnauthorizedError as e:
         raise HTTPException(status_code=401, detail=str(e))
     return {

@@ -1,5 +1,5 @@
 import { ref } from 'vue'
-import { loginOAuth2, getMe } from '../api/auth'
+import { loginOAuth2, loginTicket, getMe } from '../api/auth'
 import type { CurrentUser } from '../types/auth'
 import { getLoginUrl } from '../utils/auth-redirect'
 
@@ -10,6 +10,13 @@ const isAuthenticated = ref(!!localStorage.getItem(TOKEN_KEY))
 export function useAuth() {
   async function loginWithCode(code: string): Promise<void> {
     const data = await loginOAuth2(code)
+    localStorage.setItem(TOKEN_KEY, data.access_token)
+    isAuthenticated.value = true
+    await fetchCurrentUser()
+  }
+
+  async function loginWithTicket(ticket: string): Promise<void> {
+    const data = await loginTicket(ticket)
     localStorage.setItem(TOKEN_KEY, data.access_token)
     isAuthenticated.value = true
     await fetchCurrentUser()
@@ -46,6 +53,7 @@ export function useAuth() {
     currentUser,
     isAuthenticated,
     loginWithCode,
+    loginWithTicket,
     redirectToAiHub,
     logout,
     fetchCurrentUser,

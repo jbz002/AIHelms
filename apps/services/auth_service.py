@@ -14,40 +14,13 @@ from services import litellm_client, user_service
 logger = logging.getLogger(__name__)
 
 
-async def oauth2_login(session: AsyncSession, code: str) -> tuple[str, User]:
-    """OAuth2 授权码换 AI Hub 用户，upsert 本地档案，签本地 JWT。"""
-    if not settings.ai_hub_url:
-        raise RuntimeError("AI Hub 未配置(ai_hub_url 为空)")
-
-    base = settings.ai_hub_url.rstrip("/")
-    async with httpx.AsyncClient(timeout=10) as client:
-        # 1. code → token + 基础 user（无 app_roles）
-        resp = await client.post(f"{base}/api/v1/auth/token", json={"code": code})
-        if resp.status_code != 200:
-            logger.warning(
-                "aihub token exchange failed: status=%s body=%s",
-                resp.status_code,
-                resp.text,
-            )
-            raise UnauthorizedError("授权码无效或已过期")
-        data = resp.json()
-        aihub_token = data["access_token"]
-        aihub_user = data["user"]
-
-        # 2. 补 app_roles + phone（/token user 无 phone，/me 才有）
-        app_roles: list[str] = []
-        phone: str = ""
-        me = await client.get(
-            f"{base}/api/v1/auth/me",
-            params={"app_code": settings.ai_hub_app_code},
-            headers={"Authorization": f"Bearer {aihub_token}"},
-        )
-        if me.status_code == 200:
-            me_data = me.json()
-            app_roles = list(me_data.get("app_roles") or [])
-            phone = me_data.get("phone") or ""
-
-    # 3. upsert 本地用户
+async def _upsert_and_sign(
+    session: AsyncSession,
+    aihub_user: dict,
+    app_roles: list[str],
+    phone: str = "",
+) -> tuple[str, User]:
+    """upsert 本地用户档案 + 签本地 JWT。OAuth2/Ticket 两条登录链共用后半段。"""
     aihub_user_id = str(aihub_user["id"])
     email = aihub_user.get("email") or f"{aihub_user_id}@aihub.local"
     username = aihub_user.get("username") or f"aihub_{aihub_user_id[:8]}"
@@ -65,7 +38,7 @@ async def oauth2_login(session: AsyncSession, code: str) -> tuple[str, User]:
         phone=phone,
     )
 
-    # 4. 签本地 JWT（is_admin 由 app_roles 映射，permissions 仍走本地 RBAC）
+    # is_admin 由 app_roles 映射，permissions 仍走本地 RBAC
     permissions = await get_user_permissions(session, user.id)
     is_admin = settings.ai_hub_admin_role in app_roles
     token_data = {
@@ -84,6 +57,66 @@ async def oauth2_login(session: AsyncSession, code: str) -> tuple[str, User]:
     except litellm_client.LiteLLMError:
         logger.exception("provision user resources failed, will retry next login")
     return token, user
+
+
+async def oauth2_login(session: AsyncSession, code: str) -> tuple[str, User]:
+    """OAuth2 授权码登录（独立打开应用场景）。code → /token → /me 补 app_roles+phone。"""
+    if not settings.ai_hub_url:
+        raise RuntimeError("AI Hub 未配置(ai_hub_url 为空)")
+
+    base = settings.ai_hub_url.rstrip("/")
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(f"{base}/api/v1/auth/token", json={"code": code})
+        if resp.status_code != 200:
+            logger.warning(
+                "aihub token exchange failed: status=%s body=%s",
+                resp.status_code,
+                resp.text,
+            )
+            raise UnauthorizedError("授权码无效或已过期")
+        data = resp.json()
+        aihub_token = data["access_token"]
+        aihub_user = data["user"]
+
+        # /token user 无 app_roles/phone，补调 /me（app_code 触发 app_roles 返回）
+        app_roles: list[str] = []
+        phone: str = ""
+        me = await client.get(
+            f"{base}/api/v1/auth/me",
+            params={"app_code": settings.ai_hub_app_code},
+            headers={"Authorization": f"Bearer {aihub_token}"},
+        )
+        if me.status_code == 200:
+            me_data = me.json()
+            app_roles = list(me_data.get("app_roles") or [])
+            phone = me_data.get("phone") or ""
+
+    return await _upsert_and_sign(session, aihub_user, app_roles, phone)
+
+
+async def ticket_login(session: AsyncSession, ticket: str) -> tuple[str, User]:
+    """Ticket 登录（从 AI Hub 跳转场景）。ticket → /verify-ticket（带 app_code）直接返 user+app_roles。"""
+    if not settings.ai_hub_url:
+        raise RuntimeError("AI Hub 未配置(ai_hub_url 为空)")
+
+    base = settings.ai_hub_url.rstrip("/")
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            f"{base}/api/v1/auth/verify-ticket",
+            json={"ticket": ticket, "app_code": settings.ai_hub_app_code},
+        )
+        if resp.status_code != 200:
+            logger.warning(
+                "aihub ticket verify failed: status=%s body=%s",
+                resp.status_code,
+                resp.text,
+            )
+            raise UnauthorizedError("Ticket 无效或已过期")
+        aihub_user = resp.json()
+        app_roles = list(aihub_user.get("app_roles") or [])
+
+    # verify-ticket 不返 access_token/phone；phone 留空（不覆盖已有关键档案）
+    return await _upsert_and_sign(session, aihub_user, app_roles, phone="")
 
 
 async def get_user_permissions(session: AsyncSession, user_id: int) -> list[str]:

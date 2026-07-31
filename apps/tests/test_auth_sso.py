@@ -20,6 +20,15 @@ from models.db import User
 from services import auth_service
 
 
+@pytest.fixture(autouse=True)
+def _stub_provision(monkeypatch):
+    """provision_user_resources 会调 litellm 真实服务，测试环境 noop stub 隔离。"""
+    monkeypatch.setattr(
+        "services.auth_service.user_service.provision_user_resources",
+        AsyncMock(),
+    )
+
+
 def _session():
     return get_worker_session_factory()()
 
@@ -147,3 +156,59 @@ async def test_oauth2_login_upsert_idempotent_reuses_local_user(monkeypatch):
     assert user1.id == user2.id
 
     await _cleanup_aihub_user("aihub-uid-idem")
+
+
+def _mock_aihub_ticket_client(
+    *,
+    verify_status: int = 200,
+    app_roles: list[str] | None = None,
+    aihub_user: dict | None = None,
+) -> AsyncMock:
+    """构造 mock httpx.AsyncClient，verify-ticket 响应可控（直接返 user dict）。"""
+    post_resp = MagicMock()
+    post_resp.status_code = verify_status
+    post_resp.json.return_value = aihub_user or {
+        "id": "aihub-uid-ticket-test",
+        "username": "ticket_test_user",
+        "email": "ticket_test@aihub.local",
+        "real_name": "Ticket Test",
+        "department_id": None,
+        "app_roles": app_roles or [],
+    }
+    client = AsyncMock()
+    client.post = AsyncMock(return_value=post_resp)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+    return client
+
+
+@pytest.mark.asyncio
+async def test_ticket_login_admin_role_maps_is_admin_true(monkeypatch):
+    _configure_sso(monkeypatch)
+    client = _mock_aihub_ticket_client(app_roles=["aihelms-admin"])
+    with patch("services.auth_service.httpx.AsyncClient", return_value=client):
+        session = _session()
+        try:
+            token, _user = await auth_service.ticket_login(session, "fake-ticket")
+        finally:
+            await session.close()
+
+    payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
+    assert payload["is_admin"] is True
+    assert payload["aihub_user_id"] == "aihub-uid-ticket-test"
+    assert payload["app_roles"] == ["aihelms-admin"]
+
+    await _cleanup_aihub_user("aihub-uid-ticket-test")
+
+
+@pytest.mark.asyncio
+async def test_ticket_login_invalid_ticket_raises_unauthorized(monkeypatch):
+    _configure_sso(monkeypatch)
+    client = _mock_aihub_ticket_client(verify_status=401)
+    with patch("services.auth_service.httpx.AsyncClient", return_value=client):
+        session = _session()
+        try:
+            with pytest.raises(UnauthorizedError):
+                await auth_service.ticket_login(session, "bad-ticket")
+        finally:
+            await session.close()

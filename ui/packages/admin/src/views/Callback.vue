@@ -4,18 +4,24 @@ import { useRouter } from 'vue-router'
 import { useAuth } from '@aihelms/shared'
 
 const router = useRouter()
-const { loginWithCode } = useAuth()
+const { loginWithCode, loginWithTicket } = useAuth()
 const errorMessage = ref('')
 
 onMounted(async () => {
-  const code = new URLSearchParams(window.location.search).get('code')
-  if (!code) {
+  const params = new URLSearchParams(window.location.search)
+  const code = params.get('code')
+  const ticket = params.get('ticket')
+  if (!code && !ticket) {
     router.replace({ name: 'Login' })
     return
   }
   try {
-    await loginWithCode(code)
-    // code 一次性：换完立即清掉 URL 参数，防刷新/后退重消费
+    if (code) {
+      await loginWithCode(code)
+    } else if (ticket) {
+      await loginWithTicket(ticket)
+    }
+    // code/ticket 一次性：换完立即清掉 URL 参数，防刷新/后退重消费
     window.history.replaceState({}, '', window.location.pathname)
     router.push('/')
   } catch (e) {

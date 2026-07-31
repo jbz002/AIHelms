@@ -38,6 +38,12 @@ const router = createRouter({
 
 router.beforeEach((to, _from, next) => {
   const token = localStorage.getItem('aihelms_token')
+  // 从 AI Hub 跳转带 ?ticket=（无本地 token 时）：转交 AuthCallback 换 token，避免直接落 /login 丢 ticket
+  const ticket = to.query.ticket
+  if (typeof ticket === 'string' && ticket && !token && to.name !== 'AuthCallback') {
+    next({ name: 'AuthCallback', query: { ticket } })
+    return
+  }
   if (to.meta.requiresAuth !== false && !token) {
     next({ name: 'Login' })
     return
