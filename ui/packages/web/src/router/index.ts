@@ -28,6 +28,7 @@ const router = createRouter({
           component: () => import('../views/ResourceDetailView.vue'),
         },
         { path: 'models', name: 'Models', component: () => import('../views/ModelSquare.vue') },
+        { path: 'my-keys', name: 'ApiKeys', component: () => import('../views/ApiKeyView.vue') },
         { path: 'contributor', name: 'Contributor', component: () => import('../views/ContributorView.vue') },
         { path: 'agents', redirect: { name: 'Market' } },
       ],

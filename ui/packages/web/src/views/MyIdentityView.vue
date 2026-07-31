@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { useAuth, getMyKeys, type ActiveModel, createMyApiKey, deleteMyApiKey, getMyApiKeys, type ApiKey } from '@aihelms/shared'
+import { useAuth, getMyKeys, type ActiveModel } from '@aihelms/shared'
 import { request } from '@aihelms/shared/src/api/request'
 import type { AiKey } from '@aihelms/shared/src/types/ai-key'
 import type { EfficiencyKpi, TrendItem } from '@aihelms/shared/src/types/efficiency'
 import type { ResourceApplication } from '@aihelms/shared/src/types/resource-application'
 import type { McpServer } from '@aihelms/shared/src/types/mcp'
 import type { Skill } from '@aihelms/shared/src/types/skill'
-import { Copy, Check, Cpu, Server, Sparkles, Clock, CheckCircle2, XCircle, Eye, EyeOff, KeyRound } from 'lucide-vue-next'
+import { Copy, Check, Cpu, Server, Sparkles, Clock, CheckCircle2, XCircle, Eye, EyeOff } from 'lucide-vue-next'
 import ProviderIcon from '../components/ProviderIcon.vue'
 
 import VChart from 'vue-echarts'
@@ -30,12 +30,6 @@ const isLoading = ref(true)
 const copied = ref(false)
 const showFullKey = ref(false)
 const endpointUrl = ref('')
-const myApiKeys = ref<ApiKey[]>([])
-const newKeyName = ref('')
-const revealedRawKey = ref('')
-const mcpEndpoint = ref('')
-const creatingKey = ref(false)
-const rawCopied = ref(false)
 
 const maskedKey = computed(() => {
   const val = mainKey.value?.key_value || mainKey.value?.litellm_key_id
@@ -136,43 +130,6 @@ async function handleCopy(): Promise<void> {
   }
 }
 
-async function loadMyApiKeys(): Promise<void> {
-  try {
-    const res = await getMyApiKeys(1, 50)
-    myApiKeys.value = res.items
-  } catch { /* */ }
-}
-
-async function handleCreateMyKey(): Promise<void> {
-  const name = newKeyName.value.trim() || 'web-mcp'
-  creatingKey.value = true
-  try {
-    const created = await createMyApiKey({ name })
-    revealedRawKey.value = created.raw_key
-    newKeyName.value = ''
-    await loadMyApiKeys()
-  } catch { /* */ } finally {
-    creatingKey.value = false
-  }
-}
-
-async function handleDeleteMyKey(id: number): Promise<void> {
-  try {
-    await deleteMyApiKey(id)
-    if (revealedRawKey.value) revealedRawKey.value = ''
-    await loadMyApiKeys()
-  } catch { /* */ }
-}
-
-async function handleCopyRaw(): Promise<void> {
-  if (!revealedRawKey.value) return
-  try {
-    await navigator.clipboard.writeText(revealedRawKey.value)
-    rawCopied.value = true
-    setTimeout(() => { rawCopied.value = false }, 2000)
-  } catch { /* */ }
-}
-
 const typeLabel: Record<string, string> = {
   model: '模型', mcp: 'MCP', skill: 'Skill', agent: '智能体',
 }
@@ -208,9 +165,6 @@ onMounted(async () => {
     for (const s of skillRes.items) {
       skillNames.value[s.id] = s.name
     }
-    const webMcpData = await request<{ endpoint_url: string }>('/api/v1/web-mcp', { silent: true }).catch(() => ({ endpoint_url: '' }))
-    mcpEndpoint.value = webMcpData.endpoint_url
-    await loadMyApiKeys()
   } catch { /* */ }
   finally { isLoading.value = false }
 })
@@ -414,50 +368,6 @@ onMounted(async () => {
             <span class="flex-1 truncate text-sm text-slate-900">{{ app.resource_info?.name || `#${app.resource_id}` }}</span>
             <span class="text-xs text-slate-400">{{ app.status === 'pending' ? '审批中' : app.status === 'approved' ? '已通过' : '已拒绝' }}</span>
           </div>
-        </div>
-      </section>
-
-      <!-- 平台 API Key（MCP 接入）-->
-      <section class="mt-6 rounded-2xl border border-slate-200/60 bg-white p-5">
-        <div class="mb-2 flex items-center gap-2">
-          <KeyRound class="h-4 w-4 text-purple-600" />
-          <span class="text-sm font-medium text-slate-900">平台 API Key（MCP 接入）</span>
-        </div>
-        <p class="mb-3 text-xs text-slate-500">用于本地 MCP 客户端接入 AIHelms 自助服务（查身份、逛市场、申请资源），与调模型的 AI Key 相互独立。</p>
-
-        <div class="mb-4 flex flex-wrap items-center gap-2">
-          <input v-model="newKeyName" placeholder="Key 名称（如 my-agent）"
-            class="min-w-[200px] flex-1 rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-400 focus:outline-none" />
-          <button @click="handleCreateMyKey" :disabled="creatingKey"
-            class="rounded-lg bg-purple-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-purple-700 disabled:opacity-50">
-            {{ creatingKey ? '生成中...' : '生成 Key' }}
-          </button>
-        </div>
-
-        <div v-if="revealedRawKey" class="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <div class="mb-1 text-xs font-medium text-amber-700">请立即复制保存，关闭后将不再显示明文</div>
-          <div class="flex items-center gap-2">
-            <code class="flex-1 break-all text-sm text-amber-900">{{ revealedRawKey }}</code>
-            <button @click="handleCopyRaw" class="shrink-0 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-medium text-amber-700 hover:bg-amber-100">
-              {{ rawCopied ? '已复制' : '复制' }}
-            </button>
-          </div>
-        </div>
-
-        <div v-if="myApiKeys.length" class="space-y-2">
-          <div v-for="k in myApiKeys" :key="k.id" class="flex items-center gap-3 rounded-lg bg-slate-50/80 px-4 py-2.5">
-            <code class="flex-1 truncate text-sm text-slate-700">{{ k.key_prefix }}****</code>
-            <span class="text-xs text-slate-400">{{ k.name }}</span>
-            <span class="text-xs" :class="k.is_active ? 'text-green-600' : 'text-slate-400'">{{ k.is_active ? '启用' : '禁用' }}</span>
-            <button @click="handleDeleteMyKey(k.id)" class="text-xs text-red-400 hover:text-red-600">删除</button>
-          </div>
-        </div>
-        <p v-else class="text-xs text-slate-400">暂无 Key</p>
-
-        <div v-if="mcpEndpoint" class="mt-4 border-t border-slate-100 pt-3">
-          <div class="text-[10px] tracking-[1px] text-gray-400">MCP ENDPOINT</div>
-          <code class="mt-1 block break-all text-sm text-slate-700">{{ mcpEndpoint }}</code>
-          <div class="mt-2 text-xs text-slate-500">鉴权头：<code class="text-slate-700">Authorization: Bearer &lt;你的平台 API Key&gt;</code></div>
         </div>
       </section>
     </template>

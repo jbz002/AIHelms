@@ -3,7 +3,7 @@ import { onMounted, onUnmounted, ref, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { useAuth, usePermission } from '@aihelms/shared'
-import { LogOut, Settings, ChevronDown } from 'lucide-vue-next'
+import { LogOut, Settings, ChevronDown, KeyRound } from 'lucide-vue-next'
 import LanguageSwitcher from '@aihelms/shared/src/components/LanguageSwitcher.vue'
 
 const router = useRouter()
@@ -112,6 +112,12 @@ function updateDropdownPosition(): void {
       <!-- 右：用户操作 -->
       <div class="flex items-center justify-end gap-3">
         <LanguageSwitcher />
+        <RouterLink to="/my-keys"
+          class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm transition-colors"
+          :class="isActive('/my-keys') ? 'bg-purple-50 font-medium text-purple-700' : 'text-slate-600 hover:bg-slate-100'">
+          <KeyRound class="h-4 w-4" />
+          {{ t('layout.apiKeys') }}
+        </RouterLink>
         <a v-if="currentUser?.is_admin" href="/admin/"
           class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100">
           <Settings class="h-4 w-4" />
