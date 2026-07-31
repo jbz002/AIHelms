@@ -10,13 +10,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from jose import jwt
-from sqlalchemy import delete
+from sqlalchemy import delete, select
 
 from core.config import settings
 from core.database import get_worker_session_factory
 from core.security import ALGORITHM
 from exceptions import UnauthorizedError
-from models.db import User
+from models.db import Department, User
 from services import auth_service
 
 
@@ -212,3 +212,104 @@ async def test_ticket_login_invalid_ticket_raises_unauthorized(monkeypatch):
                 await auth_service.ticket_login(session, "bad-ticket")
         finally:
             await session.close()
+
+
+def _mock_aihub_client_with_dept(
+    *, dept_id: str, dept_name: str, app_roles: list[str] | None = None
+) -> AsyncMock:
+    """mock httpx.AsyncClient：/me 返回 app_roles+department_id，/departments/{id} 返回 name。"""
+    post_resp = MagicMock()
+    post_resp.status_code = 200
+    post_resp.json.return_value = {
+        "access_token": "aihub-token-dept",
+        "user": {
+            "id": "aihub-uid-dept-test",
+            "username": "sso_dept_user",
+            "email": "sso_dept@aihub.local",
+            "real_name": "Dept Test",
+            "department_id": dept_id,
+        },
+    }
+
+    def _get(url, params=None, headers=None):  # type: ignore[no-untyped-def]
+        resp = MagicMock()
+        resp.status_code = 200
+        if "/api/v1/auth/me" in url:
+            resp.json.return_value = {
+                "app_roles": app_roles or [],
+                "department_id": dept_id,
+            }
+        elif "/api/v1/departments/" in url:
+            resp.json.return_value = {"name": dept_name, "code": "test-dept"}
+        else:
+            resp.json.return_value = {}
+        return resp
+
+    client = AsyncMock()
+    client.post = AsyncMock(return_value=post_resp)
+    client.get = AsyncMock(side_effect=_get)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+    return client
+
+
+async def _cleanup_dept_sync(aihub_user_id: str, aihub_dept_id: str) -> None:
+    async with _session() as s:
+        await s.execute(delete(User).where(User.aihub_user_id == aihub_user_id))
+        await s.execute(
+            delete(Department).where(Department.aihub_department_id == aihub_dept_id)
+        )
+        await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_oauth2_login_syncs_department_to_local(monkeypatch):
+    """SSO 登录带 department_id 时，同步建本地部门 + 关联，/me 返回非空 departments。"""
+    _configure_sso(monkeypatch)
+    dept_id = "aihub-dept-sync-test"
+    dept_name = "SSO测试部"
+    client = _mock_aihub_client_with_dept(dept_id=dept_id, dept_name=dept_name)
+    with patch("services.auth_service.httpx.AsyncClient", return_value=client):
+        session = _session()
+        try:
+            _token, user = await auth_service.oauth2_login(session, "code-dept")
+        finally:
+            await session.close()
+
+    # /me 在生产是新请求新 session，用独立 session 验证关系加载
+    async with _session() as me_session:
+        info = await auth_service.get_current_user_info(me_session, user.id)
+
+    assert len(info["departments"]) == 1
+    assert info["departments"][0]["name"] == dept_name
+    assert isinstance(info["departments"][0]["id"], int)
+
+    async with _session() as s:
+        dept = (
+            await s.execute(
+                select(Department).where(Department.aihub_department_id == dept_id)
+            )
+        ).scalar_one_or_none()
+        assert dept is not None and dept.name == dept_name
+
+    await _cleanup_dept_sync("aihub-uid-dept-test", dept_id)
+
+
+@pytest.mark.asyncio
+async def test_oauth2_login_without_department_creates_no_dept_row(monkeypatch):
+    """aihub_user 无 department_id 时，不建本地部门、/me departments 为空。"""
+    _configure_sso(monkeypatch)
+    client = _mock_aihub_client(app_roles=[])  # aihub_user.department_id = None
+    with patch("services.auth_service.httpx.AsyncClient", return_value=client):
+        session = _session()
+        try:
+            _token, user = await auth_service.oauth2_login(session, "code-no-dept")
+        finally:
+            await session.close()
+
+    async with _session() as me_session:
+        info = await auth_service.get_current_user_info(me_session, user.id)
+
+    assert info["departments"] == []
+
+    await _cleanup_aihub_user("aihub-uid-sso-test")

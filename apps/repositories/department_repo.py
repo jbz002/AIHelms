@@ -1,4 +1,5 @@
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import Department, User, UserDepartment
@@ -130,3 +131,73 @@ async def find_paginated(
     stmt_list = stmt_list.limit(page_size).offset(offset)
     result = await session.execute(stmt_list)
     return list(result.scalars().all()), total
+
+
+async def upsert_by_aihub_id(
+    session: AsyncSession, aihub_id: str, name: str | None
+) -> Department | None:
+    """按 aihub_department_id 查/建本地部门。SSO 登录同步用。
+
+    命中则更新 name 后返回；未命中且 name 非空则新建；未命中且 name 为空返回 None
+    （不建空壳部门）。并发首登用 ON CONFLICT DO NOTHING 兜底，避免 IntegrityError
+    回滚整个 SSO 事务。
+    """
+    existing = await session.execute(
+        select(Department).where(Department.aihub_department_id == aihub_id)
+    )
+    dept = existing.scalar_one_or_none()
+    if dept is not None:
+        if name and dept.name != name:
+            dept.name = name
+        return dept
+    if not name:
+        return None
+    stmt = (
+        pg_insert(Department)
+        .values(name=name, aihub_department_id=aihub_id, is_active=True)
+        .on_conflict_do_nothing(index_elements=["aihub_department_id"])
+    )
+    await session.execute(stmt)
+    await session.flush()
+    created = await session.execute(
+        select(Department).where(Department.aihub_department_id == aihub_id)
+    )
+    return created.scalar_one_or_none()
+
+
+async def set_user_aihub_department(
+    session: AsyncSession, user_id: int, local_dept_id: int | None
+) -> None:
+    """把 user 的 AIHub 来源部门关联替换为 local_dept_id。
+
+    只清该 user 当前关联中、部门 aihub_department_id 非空的旧记录（AIHub 来源），
+    不动 admin 手动加的本地部门。local_dept_id 为 None 时仅清旧 AIHub 关联。
+    """
+    old_ids = await session.execute(
+        select(UserDepartment.department_id)
+        .join(Department, Department.id == UserDepartment.department_id)
+        .where(
+            UserDepartment.user_id == user_id,
+            Department.aihub_department_id.isnot(None),
+        )
+    )
+    old_aihub_dept_ids = list(old_ids.scalars().all())
+    if old_aihub_dept_ids:
+        await session.execute(
+            delete(UserDepartment).where(
+                UserDepartment.user_id == user_id,
+                UserDepartment.department_id.in_(old_aihub_dept_ids),
+            )
+        )
+    if local_dept_id is None:
+        return
+    already = await session.execute(
+        select(UserDepartment.id).where(
+            UserDepartment.user_id == user_id,
+            UserDepartment.department_id == local_dept_id,
+        )
+    )
+    if already.scalar_one_or_none() is not None:
+        return
+    session.add(UserDepartment(user_id=user_id, department_id=local_dept_id))
+    await session.flush()

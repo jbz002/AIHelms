@@ -8,7 +8,7 @@ from core.config import settings
 from core.security import create_access_token
 from exceptions import NotFoundError, UnauthorizedError
 from models.db import Permission, RolePermission, User, UserRole
-from repositories import user_repo
+from repositories import department_repo, user_repo
 from services import litellm_client, user_service
 
 logger = logging.getLogger(__name__)
@@ -19,6 +19,7 @@ async def _upsert_and_sign(
     aihub_user: dict,
     app_roles: list[str],
     phone: str = "",
+    aihub_dept_name: str | None = None,
 ) -> tuple[str, User]:
     """upsert 本地用户档案 + 签本地 JWT。OAuth2/Ticket 两条登录链共用后半段。"""
     aihub_user_id = str(aihub_user["id"])
@@ -36,6 +37,19 @@ async def _upsert_and_sign(
             else None
         ),
         phone=phone,
+    )
+
+    # 同步 AIHub 部门到本地 departments + user_departments（让 /me 的 departments 关系有数据）
+    aihub_dept_id = aihub_user.get("department_id")
+    local_dept = (
+        await department_repo.upsert_by_aihub_id(
+            session, str(aihub_dept_id), aihub_dept_name
+        )
+        if aihub_dept_id
+        else None
+    )
+    await department_repo.set_user_aihub_department(
+        session, user.id, local_dept.id if local_dept else None
     )
 
     # is_admin 由 app_roles 映射，permissions 仍走本地 RBAC
@@ -81,6 +95,7 @@ async def oauth2_login(session: AsyncSession, code: str) -> tuple[str, User]:
         # /token user 无 app_roles/phone，补调 /me（app_code 触发 app_roles 返回）
         app_roles: list[str] = []
         phone: str = ""
+        dept_name: str | None = None
         me = await client.get(
             f"{base}/api/v1/auth/me",
             params={"app_code": settings.ai_hub_app_code},
@@ -90,8 +105,17 @@ async def oauth2_login(session: AsyncSession, code: str) -> tuple[str, User]:
             me_data = me.json()
             app_roles = list(me_data.get("app_roles") or [])
             phone = me_data.get("phone") or ""
+            # 补查部门名（/me 只返回 department_id，需 /departments/{id} 取 name）
+            dept_id = aihub_user.get("department_id") or me_data.get("department_id")
+            if dept_id:
+                dept_resp = await client.get(
+                    f"{base}/api/v1/departments/{dept_id}",
+                    headers={"Authorization": f"Bearer {aihub_token}"},
+                )
+                if dept_resp.status_code == 200:
+                    dept_name = dept_resp.json().get("name")
 
-    return await _upsert_and_sign(session, aihub_user, app_roles, phone)
+    return await _upsert_and_sign(session, aihub_user, app_roles, phone, dept_name)
 
 
 async def ticket_login(session: AsyncSession, ticket: str) -> tuple[str, User]:

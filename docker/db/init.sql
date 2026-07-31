@@ -65,9 +65,14 @@ CREATE TABLE IF NOT EXISTS aihelms.departments (
     sort_order INTEGER DEFAULT 0,
     is_active BOOLEAN DEFAULT true,
     litellm_team_id VARCHAR(100),
+    aihub_department_id VARCHAR(100),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- SSO 来源部门按 aihub_department_id 唯一；postgres unique 允许多个 NULL，本地手动部门不冲突
+CREATE UNIQUE INDEX IF NOT EXISTS idx_departments_aihub_id
+    ON aihelms.departments (aihub_department_id);
 
 -- 项目表（扁平一级，每个项目同步为 LiteLLM Team）
 CREATE TABLE IF NOT EXISTS aihelms.projects (
