@@ -205,6 +205,7 @@ import {
   getUsers,
   getAllKeyScenarios,
   getModelLimits,
+  copyText,
 } from '@aihelms/shared'
 import type {
   AiKey,
@@ -338,7 +339,7 @@ function handleClose() {
 }
 
 function copyKey() {
-  navigator.clipboard.writeText(createdKeyValue.value)
+  void copyText(createdKeyValue.value).catch(() => {})
 }
 
 function handleModelBudgetUpdate(modelId: string, value: number | null) {

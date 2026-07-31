@@ -70,8 +70,21 @@ async function handleDelete(item: ApiKey): Promise<void> {
 
 async function handleCopyRaw(): Promise<void> {
   if (!justCreated.value?.raw_key) return
+  const text = justCreated.value.raw_key
   try {
-    await navigator.clipboard.writeText(justCreated.value.raw_key)
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(ta)
+      if (!ok) throw new Error('execCommand copy failed')
+    }
     copied.value = true
     setTimeout(() => { copied.value = false }, 2000)
   } catch {

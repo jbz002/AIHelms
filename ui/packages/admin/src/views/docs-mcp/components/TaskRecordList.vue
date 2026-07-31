@@ -11,6 +11,7 @@ import {
   deleteCrawlTask,
   deleteUploadRecord,
   toast,
+  copyText,
 } from '@aihelms/shared'
 import {
   ListChecks,
@@ -250,7 +251,7 @@ async function handleCopyContent(task: DocTask): Promise<void> {
       toast.error('暂无可复制的内容')
       return
     }
-    await navigator.clipboard.writeText(content)
+    await copyText(content)
     copiedKey.value = task.key
     toast.success('已复制全部内容')
     setTimeout(() => {

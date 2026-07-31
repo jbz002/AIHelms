@@ -53,8 +53,21 @@ async function loadInstallInfo(): Promise<void> {
 
 async function copyPrompt(): Promise<void> {
   if (!installInfo.value) return
+  const text = installInfo.value.agent_prompt
   try {
-    await navigator.clipboard.writeText(installInfo.value.agent_prompt)
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text)
+    } else {
+      const ta = document.createElement('textarea')
+      ta.value = text
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      const ok = document.execCommand('copy')
+      document.body.removeChild(ta)
+      if (!ok) throw new Error('execCommand copy failed')
+    }
     promptCopied.value = true
     setTimeout(() => {
       promptCopied.value = false

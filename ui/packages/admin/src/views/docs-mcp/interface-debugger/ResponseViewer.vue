@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Check, ChevronDown, ChevronRight, Copy } from 'lucide-vue-next'
-import type { ProxyResult } from '@aihelms/shared'
+import { copyText, type ProxyResult } from '@aihelms/shared'
 
 interface Props {
   result: ProxyResult | null
@@ -31,7 +31,7 @@ const headerEntries = computed(() => Object.entries(props.result?.headers ?? {})
 
 async function copyBody(): Promise<void> {
   if (!props.result) return
-  await navigator.clipboard.writeText(props.result.body)
+  await copyText(props.result.body)
   copied.value = true
   setTimeout(() => {
     copied.value = false

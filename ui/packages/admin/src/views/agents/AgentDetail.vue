@@ -16,7 +16,7 @@ import {
   type DeptTreeNode,
   type AiKey,
 } from '@aihelms/shared'
-import { toast, usePermission } from '@aihelms/shared'
+import { toast, usePermission, copyText } from '@aihelms/shared'
 import { ArrowLeft, Trash2, ExternalLink, Copy, FlaskConical } from 'lucide-vue-next'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import { IconPicker } from '@aihelms/shared'
@@ -174,7 +174,7 @@ async function handleDelete(): Promise<void> {
 
 function copyUrl(): void {
   if (!form.value.chat_url) return
-  navigator.clipboard.writeText(form.value.chat_url)
+  void copyText(form.value.chat_url).catch(() => {})
   urlCopied.value = true
   setTimeout(() => (urlCopied.value = false), 2000)
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { FileText, Plus, ClipboardCopy } from 'lucide-vue-next'
-import { createEfficiencyReport, getEfficiencyReport, getEfficiencyReports } from '@aihelms/shared'
+import { createEfficiencyReport, getEfficiencyReport, getEfficiencyReports, copyText } from '@aihelms/shared'
 import type { EfficiencyReport, EfficiencySuggestion } from '@aihelms/shared'
 
 import GlassCard from './components/GlassCard.vue'
@@ -101,7 +101,7 @@ const groupedSuggestions = computed(() => {
 
 function copyMarkdown() {
   if (detail.value?.content_md) {
-    navigator.clipboard.writeText(detail.value.content_md)
+    void copyText(detail.value.content_md).catch(() => {})
   }
 }
 
