@@ -1,6 +1,6 @@
 <script setup lang="ts">
 withDefaults(defineProps<{ message?: string }>(), {
-  message: '导出任务已创建，请到资源审计 > 导出任务下载表格',
+  message: '导出任务已创建，点击「去下载」立即下载，或稍后点击右上角「导出任务」按钮查看',
 })
 </script>
 

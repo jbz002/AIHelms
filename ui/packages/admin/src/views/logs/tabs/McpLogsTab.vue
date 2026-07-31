@@ -179,7 +179,7 @@ async function handleExport(): Promise<void> {
       status: filterStatus.value || undefined,
     },
     })
-    exportNotice.value = '导出任务已创建，请到资源审计 > 导出任务下载表格'
+    exportNotice.value = '导出任务已创建，点击「去下载」立即下载，或稍后点击右上角「导出任务」按钮查看'
   } catch (e) {
     toast.error((e as { message?: string }).message || '创建导出任务失败')
   } finally {
@@ -244,7 +244,7 @@ onMounted(() => {
         :options="aiKeyOptions"
         placeholder="全部 Key"
         search-placeholder="搜索人员、Key 或 Token"
-        class="w-[26rem]"
+        class="w-[20.8rem]"
       />
       <SearchableSelect
         v-model="filterServerId"
