@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { X, Copy, Check, ChevronDown, ChevronRight } from 'lucide-vue-next'
-import { toast } from '@aihelms/shared'
+import { toast, copyText } from '@aihelms/shared'
 
 interface InfoItem {
   label: string
@@ -89,7 +89,7 @@ function toggleBlock(idx: number, defaultExpanded: boolean): void {
 async function handleCopy(idx: number, text: string): Promise<void> {
   if (!text || text === '—') return
   try {
-    await navigator.clipboard.writeText(text)
+    await copyText(text)
     copiedIdx.value = idx
     setTimeout(() => {
       if (copiedIdx.value === idx) copiedIdx.value = null

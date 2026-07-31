@@ -17,6 +17,16 @@ server {
         include /etc/nginx/proxy.conf;
     }
 
+    # MCP streamable HTTP 代理（fastmcp 挂在 /admin-mcp + /web-mcp）
+    location /admin-mcp {
+        proxy_pass http://aihelms_api;
+        include /etc/nginx/proxy.conf;
+    }
+    location /web-mcp {
+        proxy_pass http://aihelms_api;
+        include /etc/nginx/proxy.conf;
+    }
+
     # 管理后台
     location = /admin {
         rewrite ^ /admin/ last;

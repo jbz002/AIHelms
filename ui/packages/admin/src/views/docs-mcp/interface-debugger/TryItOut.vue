@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import {
   buildCurl,
   proxyDocumentRequest,
+  copyText,
   toast,
   type HttpMethod,
   type Operation,
@@ -238,7 +239,7 @@ async function send(): Promise<void> {
 }
 
 async function copyCurl(): Promise<void> {
-  await navigator.clipboard.writeText(curlPreview.value)
+  await copyText(curlPreview.value)
   toast.success('curl 已复制')
 }
 

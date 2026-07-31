@@ -478,6 +478,7 @@ import {
   getAgents,
   usePermission,
   toast,
+  copyText,
   type AiKey,
   type ActiveModel,
   type McpServer,
@@ -673,18 +674,7 @@ function toggleReveal(keyId: number): void {
 
 async function copyToClipboard(text: string): Promise<void> {
   try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text)
-    } else {
-      const textarea = document.createElement('textarea')
-      textarea.value = text
-      textarea.style.position = 'fixed'
-      textarea.style.left = '-9999px'
-      document.body.appendChild(textarea)
-      textarea.select()
-      document.execCommand('copy')
-      document.body.removeChild(textarea)
-    }
+    await copyText(text)
     toast.success('已复制到剪贴板')
   } catch {
     toast.error('复制失败，请手动复制')

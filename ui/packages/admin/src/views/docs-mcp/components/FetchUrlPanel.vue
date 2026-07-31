@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { fetchDocsMcpUrl, toast } from '@aihelms/shared'
+import { fetchDocsMcpUrl, toast, copyText } from '@aihelms/shared'
 import { Loader2, Globe, Copy, X } from 'lucide-vue-next'
 
 interface Props {
@@ -32,9 +32,9 @@ async function handleFetchUrl(): Promise<void> {
 
 function copyResult(): void {
   if (!fetchResult.value) return
-  navigator.clipboard.writeText(fetchResult.value).then(() => {
-    toast.success('已复制到剪贴板')
-  })
+  copyText(fetchResult.value)
+    .then(() => toast.success('已复制到剪贴板'))
+    .catch(() => toast.error('复制失败'))
 }
 
 // 抽屉关闭时清空状态，下次打开为干净输入

@@ -5,6 +5,7 @@ import {
   getAuditLogs,
   getAuditLogFilters,
   toast,
+  copyText,
   type AuditLog,
   type AuditLogFilters,
 } from '@aihelms/shared'
@@ -144,7 +145,7 @@ function isSuccess(code: number): boolean {
 async function handleCopy(): Promise<void> {
   if (!prettySummary.value) return
   try {
-    await navigator.clipboard.writeText(prettySummary.value)
+    await copyText(prettySummary.value)
     copied.value = true
     setTimeout(() => {
       copied.value = false

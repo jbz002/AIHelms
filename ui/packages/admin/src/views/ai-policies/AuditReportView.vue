@@ -7,6 +7,7 @@ import {
   getAiPolicyReportDownloadUrl,
   getVersionAuditHistory,
   toast,
+  copyText,
   type AiPolicyAudit,
   type AiPolicyAuditFileSummary,
   type AiPolicyAuditHistoryItem,
@@ -549,12 +550,7 @@ function shortHash(value?: string): string {
 
 function copyHash(): void {
   if (!audit.value?.source_sha256) return
-  const write = navigator.clipboard?.writeText(audit.value.source_sha256)
-  if (!write) {
-    toast.error('复制失败')
-    return
-  }
-  write.then(
+  void copyText(audit.value.source_sha256).then(
     () => toast.success('SHA-256 已复制'),
     () => toast.error('复制失败'),
   )

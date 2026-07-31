@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { Check, Copy, Plug, RefreshCw, X } from 'lucide-vue-next'
-import { getAdminMcpStatus, toast, type AdminMcpStatus } from '@aihelms/shared'
+import { getAdminMcpStatus, toast, copyText, type AdminMcpStatus } from '@aihelms/shared'
 
 type Level = 'green' | 'yellow' | 'red' | 'grey'
 type CopyTarget = 'endpoint' | 'json'
@@ -89,7 +89,7 @@ function handleEsc(event: KeyboardEvent): void {
 
 async function copy(text: string, key: CopyTarget): Promise<void> {
   try {
-    await navigator.clipboard.writeText(text)
+    await copyText(text)
     copiedKey.value = key
     toast.success('已复制')
     setTimeout(() => {

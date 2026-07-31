@@ -110,6 +110,7 @@ export { toast } from './utils/toast'
 export { getLoginUrl } from './utils/auth-redirect'
 export { getProviderIconUrl } from './utils/icon'
 export { buildCurl } from './utils/curl'
+export { copyText } from './utils/clipboard'
 export type {
   EfficiencyKpi, TrendItem, CompositionItem, KeyTypeItem, RankingItem,
   AnalysisItem, BudgetOverview, EfficiencyReport, EfficiencySuggestion,

@@ -7,6 +7,7 @@ import {
   toggleCliToken,
   deleteCliToken,
   toast,
+  copyText,
   usePermission,
   CLI_SCOPE_OPTIONS,
   type CliToken,
@@ -116,7 +117,7 @@ async function submitCreate(): Promise<void> {
 async function handleCopyCreate(): Promise<void> {
   if (!createdToken.value?.key_value) return
   try {
-    await navigator.clipboard.writeText(createdToken.value.key_value)
+    await copyText(createdToken.value.key_value)
     copiedCreate.value = true
     setTimeout(() => {
       copiedCreate.value = false

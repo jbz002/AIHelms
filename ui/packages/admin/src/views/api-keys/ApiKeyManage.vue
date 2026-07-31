@@ -7,6 +7,7 @@ import {
   updateApiKey,
   deleteApiKey,
   toast,
+  copyText,
   usePermission,
   type ApiKey,
 } from '@aihelms/shared'
@@ -94,7 +95,7 @@ function toggleReveal(id: number): void {
 async function handleCopyKey(item: ApiKey): Promise<void> {
   if (!item.raw_key) return
   try {
-    await navigator.clipboard.writeText(item.raw_key)
+    await copyText(item.raw_key)
     copiedKeyId.value = item.id
     setTimeout(() => {
       if (copiedKeyId.value === item.id) copiedKeyId.value = null
