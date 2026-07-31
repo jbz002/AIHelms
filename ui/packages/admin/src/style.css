@@ -1,3 +1,17 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* 统一原生 select 下拉箭头：浏览器默认箭头位置不可控，改用自定义 chevron。
+   右内缩 0.625rem(10px)，与 SearchableSelect 的 mr-2 箭头视觉对齐并向左移 2px。
+   写在 @layer 之外(unlayered)以覆盖 Tailwind utilities 的 padding-right。 */
+select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.625rem center;
+  background-size: 1rem 1rem;
+  padding-right: 2rem;
+}
