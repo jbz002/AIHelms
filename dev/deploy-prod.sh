@@ -9,8 +9,10 @@
 #   → tar over ssh 是唯一不需装东西、不依赖外网的路径
 #
 # 用法:
-#   bash dev/deploy-prod.sh           # 重建 aihelms（后端/业务代码改动，最常用）
-#   bash dev/deploy-prod.sh nginx     # 额外 recreate nginx（前端 dist 改动时）
+#   bash dev/deploy-prod.sh           # 重建 aihelms（后端 + 前端 dist 改动都够）
+#                                    # 前端 dist 经 named volume 共享：aihelms recreate 时
+#                                    # start.sh 重跑 cp 覆盖 volume，nginx 直读新 dist，不用动 nginx
+#   bash dev/deploy-prod.sh nginx     # 额外 recreate nginx（仅改 docker/nginx/* template 时）
 #
 # 排除项说明:
 #   .env       — 服务器有自己的 prod .env，绝不能覆盖
