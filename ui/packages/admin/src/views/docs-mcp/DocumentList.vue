@@ -89,6 +89,24 @@ const isLastVersion = computed(
   () => (library.value?.versions ?? []).length <= 1,
 )
 
+// 新增版本默认号：取库内最大语义版本 +1 patch（1.0.0→1.0.1→1.0.2），无可解析版本则 1.0.0
+const nextVersion = computed(() => {
+  let best: [number, number, number] | null = null
+  for (const v of library.value?.versions ?? []) {
+    const m = (v.ref.version || '').replace(/^v/i, '').match(/^(\d+)\.(\d+)\.(\d+)/)
+    if (!m) continue
+    const cur = [Number(m[1]), Number(m[2]), Number(m[3])] as [number, number, number]
+    if (
+      !best ||
+      cur[0] > best[0] ||
+      (cur[0] === best[0] && (cur[1] > best[1] || (cur[1] === best[1] && cur[2] > best[2])))
+    ) {
+      best = cur
+    }
+  }
+  return best ? `${best[0]}.${best[1]}.${best[2] + 1}` : '1.0.0'
+})
+
 // select v-model 代理：写时 router.replace 更新 query，读时取 effectiveVersion
 const selectedVersion = computed<string>({
   get: () => effectiveVersion.value,
@@ -601,6 +619,7 @@ onUnmounted(() => {
     <AddVersionDialog
       :visible="showAddVersionDialog"
       :default-library="libraryName"
+      :default-version="nextVersion"
       @close="showAddVersionDialog = false"
       @crawl-submit="handleSubmitJob"
       @uploaded="handleUploaded"

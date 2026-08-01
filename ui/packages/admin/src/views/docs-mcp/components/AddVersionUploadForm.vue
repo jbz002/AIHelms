@@ -9,6 +9,7 @@ type IngestMode = 'direct' | 'extract-only'
 
 interface Props {
   defaultLibrary: string
+  defaultVersion?: string
 }
 
 interface Emits {
@@ -20,7 +21,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<Emits>()
 
 const library = ref(props.defaultLibrary)
-const version = ref('')
+const version = ref(props.defaultVersion ?? '')
 const files = ref<File[]>([])
 const ingestMode = ref<IngestMode>('direct')
 const uploading = ref(false)

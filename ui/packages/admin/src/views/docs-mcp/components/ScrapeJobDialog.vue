@@ -133,6 +133,8 @@ watch(() => props.visible, (v) => {
     }
     if (props.lockVersion) {
       version.value = props.defaultVersion ?? ''
+    } else {
+      version.value = props.defaultVersion?.trim() || '1.0.0'
     }
     libraryCheckState.value = 'idle'
     urlCheckState.value = 'idle'
@@ -163,9 +165,13 @@ function onExcludePatternsInput(e: Event): void {
 function handleSubmit(): void {
   if (!url.value || !library.value) return
   const versionInput = version.value.trim()
-  // lockVersion 模式下 version 来自父级（可能 "latest" 哨兵，后端解析），跳过格式校验
+  // lockVersion 模式下 version 来自父级（可能 "latest" 哨兵，后端解析），跳过必填与格式校验
+  if (!props.lockVersion && !versionInput) {
+    toast.error('请填写版本号（如 1.0.0）')
+    return
+  }
   if (!props.lockVersion && versionInput && !DOCS_VERSION_RE.test(versionInput)) {
-    toast.error('版本号格式无效，请留空或填写完整版本号（如 1.0.0）')
+    toast.error('版本号格式无效，请填写完整版本号（如 1.0.0）')
     return
   }
   submitting.value = true
@@ -245,11 +251,11 @@ function handleSubmit(): void {
               </div>
             </div>
             <div>
-              <label class="mb-1 block text-sm font-medium text-gray-700">版本</label>
+              <label class="mb-1 block text-sm font-medium text-gray-700">{{ lockVersion ? '版本' : '版本 *' }}</label>
               <input
                 v-model="version"
                 type="text"
-                :placeholder="lockVersion && !version ? '默认版本' : '留空或完整版本号，如 1.0.0'"
+                :placeholder="lockVersion && !version ? '默认版本' : '完整版本号，如 1.0.0'"
                 :disabled="lockVersion"
                 :class="inputCls"
                 class="disabled:bg-slate-50 disabled:text-slate-400"
@@ -332,7 +338,7 @@ function handleSubmit(): void {
           <button
             class="rounded-md px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
             :class="ingestMode === 'crawl-only' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'"
-            :disabled="!url || !library || submitting"
+            :disabled="!url || !library || (!lockVersion && !version.trim()) || submitting"
             @click="handleSubmit"
           >提交任务</button>
         </div>

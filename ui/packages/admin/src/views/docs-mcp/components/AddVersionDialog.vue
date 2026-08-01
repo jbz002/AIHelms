@@ -18,6 +18,7 @@ interface CrawlSubmitParams {
 interface Props {
   visible: boolean
   defaultLibrary: string
+  defaultVersion?: string
 }
 
 interface Emits {
@@ -69,12 +70,14 @@ watch(
         <AddVersionCrawlForm
           v-if="activeTab === 'crawl'"
           :default-library="defaultLibrary"
+          :default-version="defaultVersion"
           @close="emit('close')"
           @submit="(params) => emit('crawl-submit', params)"
         />
         <AddVersionUploadForm
           v-if="activeTab === 'upload'"
           :default-library="defaultLibrary"
+          :default-version="defaultVersion"
           @close="emit('close')"
           @uploaded="emit('uploaded')"
         />

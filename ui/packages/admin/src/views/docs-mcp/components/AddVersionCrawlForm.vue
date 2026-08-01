@@ -10,6 +10,7 @@ type IngestMode = 'direct' | 'crawl-only'
 
 interface Props {
   defaultLibrary: string
+  defaultVersion?: string
 }
 
 interface Emits {
@@ -22,7 +23,7 @@ const emit = defineEmits<Emits>()
 
 const url = ref('')
 const library = ref(props.defaultLibrary)
-const version = ref('')
+const version = ref(props.defaultVersion ?? '')
 const ingestMode = ref<IngestMode>('direct')
 const showAdvanced = ref(false)
 const submitting = ref(false)
