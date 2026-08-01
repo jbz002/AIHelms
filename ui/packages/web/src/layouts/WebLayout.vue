@@ -92,11 +92,9 @@ function updateDropdownPosition(): void {
     <header class="relative z-30 grid h-[60px] grid-cols-3 items-center border-b border-slate-200/60 bg-white/70 px-6 backdrop-blur-xl">
       <!-- 左：Logo -->
       <div class="flex items-center">
-        <RouterLink to="/" class="flex items-center gap-2.5">
-          <div class="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 text-xs font-bold text-white shadow-md shadow-purple-500/20">
-            AI
-          </div>
-          <span class="text-lg font-bold text-slate-900">AIHelms</span>
+        <RouterLink to="/" class="flex items-center gap-2">
+          <img src="/static/img/logo.png" alt="AI 资源中心" class="h-7 w-auto object-contain" />
+          <span class="whitespace-nowrap text-base font-bold text-slate-900">AI 资源中心</span>
         </RouterLink>
       </div>
 

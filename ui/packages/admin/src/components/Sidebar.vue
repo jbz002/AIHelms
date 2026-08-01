@@ -166,11 +166,11 @@ function isVisible(item: MenuItem): boolean {
     class="fixed inset-y-0 left-0 z-40 flex w-[13rem] flex-col overflow-hidden border-r border-slate-200/60 bg-white/95 shadow-xl backdrop-blur-xl transition-transform duration-200 md:relative md:z-10 md:translate-x-0 md:bg-white/60 md:shadow-none"
     :class="open ? 'translate-x-0' : '-translate-x-full'"
   >
-    <div class="flex h-14 shrink-0 items-center justify-center border-b border-slate-200/60">
+    <div class="relative flex h-14 shrink-0 items-center justify-center border-b border-slate-200/60">
       <img
         src="/static/img/logo.png"
-        alt="AIHelms"
-        class="h-7 max-w-[11rem] object-contain"
+        alt="AI资产管理平台"
+        class="-ml-6 h-7 max-w-[11rem] object-contain"
       />
       <button
         class="absolute right-2 flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 md:hidden"

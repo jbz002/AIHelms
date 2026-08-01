@@ -23,9 +23,7 @@ function handleSso(): void {
     <div class="relative z-10 w-full max-w-[420px] rounded-2xl border border-slate-200/60 bg-white p-8 shadow-xl">
       <!-- Logo -->
       <div class="mb-8 space-y-3 text-center">
-        <div class="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 text-sm font-bold text-white shadow-lg shadow-purple-500/30">
-          AI
-        </div>
+        <img src="/static/img/logo.png" alt="AI 资源中心" class="mx-auto h-10 w-auto object-contain" />
         <h1 class="text-2xl font-semibold tracking-tight text-slate-900">欢迎回来</h1>
         <p class="text-sm text-slate-500">登录你的 AI 身份</p>
       </div>

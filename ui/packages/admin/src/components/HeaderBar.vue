@@ -24,8 +24,8 @@ function handleLogout(): void {
       >
         <Menu class="h-5 w-5" />
       </button>
-      <div class="hidden min-w-0 truncate text-sm font-medium text-slate-700 sm:block">
-        AIHelms 管理后台
+      <div class="hidden min-w-0 truncate text-sm font-bold text-slate-900 sm:block">
+        AI资产管理平台
       </div>
     </div>
     <div class="flex items-center gap-2 sm:gap-4">
