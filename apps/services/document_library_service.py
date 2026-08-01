@@ -34,18 +34,6 @@ def _serialize_library(lib: DocumentLibrary) -> dict:
     }
 
 
-async def resolve_effective_version(session: AsyncSession, library: str) -> str | None:
-    """生效版本口径：active_version 非空 → 返回；否则回退最新 semver（docs-mcp best-match）。
-
-    active_version 的诚实性由删除路径保证（删掉的若是 active 则清空，触发回退），
-    故此处不额外打 docs-mcp 校验存在性，避免每次列表/检索都往返。
-    """
-    lib = await document_library_repo.find_by_name(session, library)
-    if lib and lib.active_version:
-        return lib.active_version
-    return await docs_mcp_client.resolve_version(library, "latest")
-
-
 async def ensure_library_exists(
     session: AsyncSession,
     name: str,

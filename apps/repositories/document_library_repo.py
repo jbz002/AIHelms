@@ -70,18 +70,6 @@ async def update_source_url(
     await session.flush()
 
 
-async def update_active_version(
-    session: AsyncSession, library_id: int, active_version: str
-) -> None:
-    """设置文档库生效版本（平台侧生效指针，docs-mcp 不感知）。"""
-    await session.execute(
-        update(DocumentLibrary)
-        .where(DocumentLibrary.id == library_id)
-        .values(active_version=active_version)
-    )
-    await session.flush()
-
-
 async def update_library_info(
     session: AsyncSession,
     library_id: int,

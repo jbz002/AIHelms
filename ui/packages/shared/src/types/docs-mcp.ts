@@ -55,7 +55,6 @@ export interface DocsMcpVersion {
 export interface DocsMcpLibrary {
   library: string
   versions: DocsMcpVersion[]
-  active_version?: string
 }
 
 export interface DocsMcpSearchResult {

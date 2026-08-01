@@ -12,7 +12,6 @@ from core.config import settings
 from core.database import async_session
 from core.deps import get_current_user, get_db
 from exceptions import NotFoundError, ValidationError
-from repositories import document_library_repo
 from services import (
     doc_search_summary_service,
     doc_upload_service,
@@ -169,58 +168,10 @@ async def get_library_detail(library_name: str, _: dict = Depends(get_current_us
         libraries = await docs_mcp_client.list_libraries()
         for lib in libraries:
             if lib.get("library") == library_name:
-                # 注入平台侧生效版本指针，供前端标记/切换生效版本
-                data = dict(lib)
-                async with async_session() as session:
-                    plat = await document_library_repo.find_by_name(
-                        session, library_name
-                    )
-                if plat is not None:
-                    data["active_version"] = plat.active_version
-                return {"code": 200, "message": "ok", "data": data}
+                return {"code": 200, "message": "ok", "data": lib}
         return {"code": 404, "message": "文档库不存在", "data": None}
     except DocsMcpError as e:
         return {"code": 500, "message": str(e), "data": None}
-
-
-class SetActiveVersionRequest(BaseModel):
-    version: str
-
-
-@router.put("/libraries/{library_name}/active-version", summary="设置文档库生效版本")
-async def set_library_active_version(
-    library_name: str,
-    body: SetActiveVersionRequest,
-    _: dict = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """切换平台侧生效版本（检索/列表默认口径）。docs-mcp 不感知，仅平台 DB 落指针。"""
-    try:
-        version = require_docs_version(body.version.strip())
-    except ValidationError as e:
-        return {"code": 400, "message": str(e), "data": None}
-
-    try:
-        libraries = await docs_mcp_client.list_libraries()
-    except DocsMcpError as e:
-        return {"code": 500, "message": str(e), "data": None}
-
-    lib_versions: list[str] = []
-    for lib in libraries:
-        if lib.get("library") == library_name:
-            lib_versions = [
-                (v.get("ref") or {}).get("version", "") for v in lib.get("versions", [])
-            ]
-            break
-    if version not in lib_versions:
-        return {"code": 404, "message": "该版本不存在", "data": None}
-
-    library = await document_library_repo.find_by_name(db, library_name)
-    if library is None:
-        return {"code": 404, "message": "文档库未注册", "data": None}
-    await document_library_repo.update_active_version(db, library.id, version)
-    await db.commit()
-    return {"code": 200, "message": "生效版本已设置", "data": None}
 
 
 @router.get("/libraries/{library_name}/search", summary="搜索文档")

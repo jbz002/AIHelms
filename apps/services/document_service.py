@@ -125,9 +125,7 @@ async def list_documents(
 ) -> dict:
     """查询文档列表，支持多条件过滤和分页。"""
     if library and not version:
-        version = await document_library_service.resolve_effective_version(
-            session, library
-        )
+        version = await _resolve_latest_version(library)
     version = await _normalize_version_filter(library, version)
     total = await document_repo.count_all(
         session, library, source_type, ingest_status, version, title
@@ -332,9 +330,7 @@ async def get_ingest_stats(
 ) -> dict:
     """获取文档入库统计。"""
     if library and not version:
-        version = await document_library_service.resolve_effective_version(
-            session, library
-        )
+        version = await _resolve_latest_version(library)
     version = await _normalize_version_filter(library, version)
     rows = await document_repo.count_grouped_by_status(session, library, version)
     by_status = {r["ingest_status"]: r["count"] for r in rows}

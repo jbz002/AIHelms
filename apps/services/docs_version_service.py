@@ -44,10 +44,6 @@ async def delete_version(
     await crawl_task_repo.delete_by_library_version(session, library_name, resolved)
     await doc_upload_repo.delete_by_library_version(session, library_name, resolved)
     await document_library_service.refresh_document_counts(session, library_name)
-    # 删的若是生效版本，清空 active_version，列表/检索自动回退最新 semver
-    lib = await document_library_repo.find_by_name(session, library_name)
-    if lib and lib.active_version == resolved:
-        await document_library_repo.update_active_version(session, lib.id, "")
     await session.commit()
     try:
         await docs_mcp_client.remove_version(library_name, resolved)

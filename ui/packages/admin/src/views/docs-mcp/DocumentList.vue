@@ -15,7 +15,6 @@ import {
   ingestDocumentBatch,
   deleteDocument,
   deleteDocsMcpVersion,
-  setDocsMcpActiveVersion,
   createCrawlTask,
   getDocsMcpEventSourceUrl,
   getDocsMcpLibraryDetail,
@@ -34,7 +33,6 @@ import {
   Code2,
   Trash2,
   Search,
-  CheckCircle2,
 } from 'lucide-vue-next'
 import ScrapeJobDialog from './components/ScrapeJobDialog.vue'
 import AddVersionDialog from './components/AddVersionDialog.vue'
@@ -46,12 +44,8 @@ const route = useRoute()
 const router = useRouter()
 const libraryName = computed(() => route.params.libraryName as string)
 const currentVersion = computed(() => (route.query.version as string) || '')
-// 平台侧生效版本（检索/列表默认口径）；为空时回退最新 semver
-const activeVersion = computed(() => library.value?.active_version || '')
-// 实际查看版本：路由显式选择 > 生效版本 > 最新
-const effectiveVersion = computed(
-  () => currentVersion.value || activeVersion.value || 'latest',
-)
+// 实际查看版本：路由显式选择 > 最新（与 docs-mcp 检索默认口径一致）
+const effectiveVersion = computed(() => currentVersion.value || 'latest')
 
 const documents = ref<Document[]>([])
 const total = ref(0)
@@ -65,7 +59,6 @@ const titleFilter = ref<string>('')
 const ingestingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
 const deletingVersion = ref(false)
-const settingActive = ref(false)
 const batchIngesting = ref(false)
 const showScrapeDialog = ref(false)
 const showUploadDialog = ref(false)
@@ -77,7 +70,7 @@ const showSummaryDrawer = ref(false)
 const showAddVersionDialog = ref(false)
 let eventSource: EventSource | null = null
 
-// 版本下拉：最新（持续锁定最新 semver）+ 库内全部具体版本，生效版本加标记。
+// 版本下拉：最新（持续锁定最新 semver）+ 库内全部具体版本。
 // 版本号强制 X.Y.Z 后无「无版本」桶，空 ref.version 一律跳过。
 const versionOptions = computed(() => {
   const options: Array<{ value: string; label: string }> = [
@@ -86,10 +79,7 @@ const versionOptions = computed(() => {
   for (const v of library.value?.versions ?? []) {
     const ver = v.ref.version || ''
     if (!ver) continue
-    options.push({
-      value: ver,
-      label: ver === activeVersion.value ? `${ver}（生效中）` : ver,
-    })
+    options.push({ value: ver, label: ver })
   }
   return options
 })
@@ -98,12 +88,6 @@ const versionOptions = computed(() => {
 const isLastVersion = computed(
   () => (library.value?.versions ?? []).length <= 1,
 )
-
-// 当前查看的是具体版本且非生效版本时，可设为生效版本
-const canSetActive = computed(() => {
-  const cv = currentVersion.value
-  return cv !== '' && cv !== 'latest' && cv !== activeVersion.value
-})
 
 // select v-model 代理：写时 router.replace 更新 query，读时取 effectiveVersion
 const selectedVersion = computed<string>({
@@ -276,22 +260,6 @@ async function handleDeleteVersion(): Promise<void> {
   }
 }
 
-async function handleSetActive(): Promise<void> {
-  if (settingActive.value || !canSetActive.value) return
-  settingActive.value = true
-  try {
-    await setDocsMcpActiveVersion(libraryName.value, currentVersion.value)
-    toast.success('已设为生效版本')
-    await loadLibrary()
-    await loadDocuments()
-    await loadStats()
-  } catch (e) {
-    toast.error((e as Error).message || '设置生效版本失败')
-  } finally {
-    settingActive.value = false
-  }
-}
-
 async function pollBatchStatus(): Promise<void> {
   const maxAttempts = 60
   for (let i = 0; i < maxAttempts; i++) {
@@ -439,17 +407,6 @@ onUnmounted(() => {
       >
         <option v-for="o in versionOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
       </select>
-      <button
-        v-if="canSetActive"
-        class="inline-flex items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-1.5 text-sm font-medium text-blue-600 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
-        :disabled="settingActive"
-        title="将当前版本设为生效版本（检索/列表默认口径）"
-        @click="handleSetActive"
-      >
-        <Loader2 v-if="settingActive" class="h-4 w-4 animate-spin" />
-        <CheckCircle2 v-else class="h-4 w-4" />
-        设为生效版本
-      </button>
       <button
         class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
         @click="showAddVersionDialog = true"
