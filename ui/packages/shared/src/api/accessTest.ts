@@ -5,7 +5,7 @@ function getToken(): string | null {
   return localStorage.getItem('aihelms_token')
 }
 
-export function testModelAccessStream(params: TestAccessParams): Promise<Response> {
+export function testModelAccessStream(params: TestAccessParams, signal?: AbortSignal): Promise<Response> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   }
@@ -18,6 +18,7 @@ export function testModelAccessStream(params: TestAccessParams): Promise<Respons
     method: 'POST',
     headers,
     body: JSON.stringify(params),
+    signal,
   })
 }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { testModelAccessStream, testEmbedding, testRerank } from '@aihelms/shared'
 import { X, Eye, EyeOff, Zap } from 'lucide-vue-next'
@@ -37,6 +37,26 @@ const showKeyFull = ref(false)
 const isTesting = ref(false)
 const testOutput = ref('')
 const testError = ref('')
+const abortController = ref<AbortController | null>(null)
+let testEpoch = 0
+
+// 切换模型 / 关闭弹窗时,中断进行中的流并清空残留结果,避免 A 模型回复串到 B 模型
+function resetTestState(): void {
+  testEpoch++
+  abortController.value?.abort()
+  abortController.value = null
+  isTesting.value = false
+  testOutput.value = ''
+  testError.value = ''
+}
+
+watch(() => props.visible, (v) => {
+  if (!v) resetTestState()
+})
+
+watch(() => props.model, () => {
+  resetTestState()
+})
 
 const isChat = computed(() => props.model?.category === 'chat')
 const showAnthropic = computed(() => !!props.model?.has_anthropic_deployment && isChat.value)
@@ -86,69 +106,83 @@ async function copyText(text: string, key: string): Promise<void> {
 async function handleTest(): Promise<void> {
   const m = props.model
   if (!m || isTesting.value) return
+  resetTestState()
+  const epoch = testEpoch
   isTesting.value = true
-  testOutput.value = ''
-  testError.value = ''
   try {
     if (m.category === 'embedding') {
       const res = await testEmbedding({ model: m.model_id, text: '你好世界' })
+      if (epoch !== testEpoch) return
       if (res.success === false) testError.value = res.error || res.error_detail?.title || t('modelSquare.access.testPlaceholder')
       else testOutput.value = `✓ ${res.model || m.model_id} · ${t('modelSquare.access.testResult')} ${res.dimensions ?? ''}`
     } else if (m.category === 'rerank') {
       const res = await testRerank({ model: m.model_id, query: 'AI', documents: ['人工智能是计算机科学的分支', '今天天气很好'] })
+      if (epoch !== testEpoch) return
       if (res.success === false) testError.value = res.error || res.error_detail?.title || t('modelSquare.access.testPlaceholder')
       else testOutput.value = `✓ ${res.model || m.model_id}\n${(res.results || []).map(r => `[${r.index}] ${r.relevance_score.toFixed(4)}`).join('\n')}`
     } else {
-      await runChatStream(m.model_id)
+      await runChatStream(m.model_id, epoch)
     }
   } catch (e) {
+    if (epoch !== testEpoch) return
+    if (e instanceof DOMException && e.name === 'AbortError') return
     testError.value = e instanceof Error ? e.message : String(e)
   } finally {
-    isTesting.value = false
+    if (epoch === testEpoch) isTesting.value = false
   }
 }
 
-async function runChatStream(modelId: string): Promise<void> {
-  const response = await testModelAccessStream({
-    model: modelId,
-    messages: [{ role: 'user', content: 'hi' }],
-    stream: true,
-    max_tokens: 100,
-  })
-  if (!response.ok) {
-    testError.value = `HTTP ${response.status}`
-    return
-  }
-  const contentType = response.headers.get('content-type') || ''
-  if (!contentType.includes('text/event-stream')) {
-    const json = await response.json()
-    if (json.data?.success === false) {
-      testError.value = json.data.error || json.data.error_detail?.title || t('modelSquare.access.testPlaceholder')
-    } else {
-      testOutput.value = json.data?.content || JSON.stringify(json.data || json)
+async function runChatStream(modelId: string, epoch: number): Promise<void> {
+  const controller = new AbortController()
+  abortController.value = controller
+  try {
+    const response = await testModelAccessStream({
+      model: modelId,
+      messages: [{ role: 'user', content: 'hi' }],
+      stream: true,
+      max_tokens: 100,
+    }, controller.signal)
+    if (!response.ok) {
+      if (epoch === testEpoch) testError.value = `HTTP ${response.status}`
+      return
     }
-    return
-  }
-  const reader = response.body?.getReader()
-  if (!reader) { testError.value = '无法读取响应流'; return }
-  const decoder = new TextDecoder()
-  let buffer = ''
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() || ''
-    for (const line of lines) {
-      if (!line.startsWith('data: ')) continue
-      const data = line.slice(6)
-      if (data === '[DONE]') return
-      if (data.startsWith('[ERROR]')) {
-        testError.value = data.slice(8).trim() || t('modelSquare.access.testPlaceholder')
-        return
+    const contentType = response.headers.get('content-type') || ''
+    if (!contentType.includes('text/event-stream')) {
+      const json = await response.json()
+      if (epoch !== testEpoch) return
+      if (json.data?.success === false) {
+        testError.value = json.data.error || json.data.error_detail?.title || t('modelSquare.access.testPlaceholder')
+      } else {
+        testOutput.value = json.data?.content || JSON.stringify(json.data || json)
       }
-      testOutput.value += data
+      return
     }
+    const reader = response.body?.getReader()
+    if (!reader) { if (epoch === testEpoch) testError.value = '无法读取响应流'; return }
+    const decoder = new TextDecoder()
+    let buffer = ''
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        const data = line.slice(6)
+        if (data === '[DONE]') return
+        if (data.startsWith('[ERROR]')) {
+          if (epoch === testEpoch) testError.value = data.slice(8).trim() || t('modelSquare.access.testPlaceholder')
+          return
+        }
+        if (epoch === testEpoch) testOutput.value += data
+      }
+    }
+  } catch (e) {
+    if (controller.signal.aborted || (e instanceof DOMException && e.name === 'AbortError')) return
+    throw e
+  } finally {
+    if (abortController.value === controller) abortController.value = null
   }
 }
 </script>
