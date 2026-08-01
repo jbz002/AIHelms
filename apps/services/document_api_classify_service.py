@@ -169,17 +169,17 @@ async def process_classification(session: AsyncSession, job_pk: int) -> dict:
         if not user or not getattr(user, "is_active", False):
             await _fail_job(session, job, "发起账号不存在或已停用")
             return _serialize_category_job(job)
-        platform_key = platform_llm.get_platform_api_key()
-        if not platform_key:
-            await _fail_job(session, job, "平台未配置 LLM 主密钥(LITELLM_MASTER_KEY)")
-            return _serialize_category_job(job)
-        litellm_user_id = platform_llm.platform_user(user)
-
         resolved = await platform_settings_service.resolve_default_model(session)
         if resolved is None:
             await _fail_job(session, job, "平台未配置默认模型，请在平台设置中配置")
             return _serialize_category_job(job)
         job.model_id, model_name = resolved
+        platform_key, litellm_user_id = await platform_llm.resolve_call_identity(
+            session, user, model_name
+        )
+        if not platform_key:
+            await _fail_job(session, job, "平台未配置 LLM 主密钥(LITELLM_MASTER_KEY)")
+            return _serialize_category_job(job)
 
         endpoints = await document_api_repo.list_by_library(session, job.library)
         if not endpoints:

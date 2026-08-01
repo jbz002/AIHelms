@@ -287,18 +287,18 @@ async def process_extraction(session: AsyncSession, spec_pk: int) -> dict:
         if user is None:
             await _fail_spec(session, spec, "发起账号不存在或已停用")
             return _serialize_spec(spec)
-        platform_key = platform_llm.get_platform_api_key()
-        if not platform_key:
-            await _fail_spec(session, spec, "平台未配置 LLM 主密钥(LITELLM_MASTER_KEY)")
-            return _serialize_spec(spec)
-        litellm_user_id = platform_llm.platform_user(user)
-
         resolved = await platform_settings_service.resolve_default_model(session)
         if resolved is None:
             await _fail_spec(session, spec, "平台未配置默认模型，请在平台设置中配置")
             return _serialize_spec(spec)
         model_id, model_name = resolved
         spec.model_id = model_id
+        platform_key, litellm_user_id = await platform_llm.resolve_call_identity(
+            session, user, model_name
+        )
+        if not platform_key:
+            await _fail_spec(session, spec, "平台未配置 LLM 主密钥(LITELLM_MASTER_KEY)")
+            return _serialize_spec(spec)
 
         doc = await document_repo.find_by_id(session, spec.document_id)
         if doc is None or not (doc.content or "").strip():

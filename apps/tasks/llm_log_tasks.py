@@ -305,6 +305,8 @@ async def _upsert_spend_log_rows(session: AsyncSession, rows) -> int:
             prompt_tokens, cache_read, cache_creation
         )
 
+        is_platform_call = api_key_token == "litellm_proxy_master_key"
+
         ai_key_id: int | None = None
         if api_key_token and api_key_token != "litellm_proxy_master_key":
             key_alias = metadata.get("user_api_key_alias") or ""
@@ -443,6 +445,7 @@ async def _upsert_spend_log_rows(session: AsyncSession, rows) -> int:
                 messages=_messages_from_payload(messages_raw, proxy_request_raw),
                 response=_json_payload_or_none(response_raw),
                 metadata_=metadata,
+                is_platform_call=is_platform_call,
             )
             .on_conflict_do_nothing(index_elements=["request_id"])
         )

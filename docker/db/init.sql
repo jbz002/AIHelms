@@ -605,6 +605,7 @@ CREATE TABLE IF NOT EXISTS aihelms.llm_call_logs (
     messages JSONB,
     response JSONB,
     metadata JSONB DEFAULT '{}',
+    is_platform_call BOOLEAN DEFAULT false,
     synced_at TIMESTAMPTZ DEFAULT NOW()
 );
 

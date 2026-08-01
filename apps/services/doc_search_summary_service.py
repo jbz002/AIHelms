@@ -75,11 +75,12 @@ async def stream_summary(
         return
     _, model_name = resolved
 
-    platform_key = platform_llm.get_platform_api_key()
+    platform_key, litellm_user_id = await platform_llm.resolve_call_identity(
+        session, current_user, model_name
+    )
     if not platform_key:
         yield sse("error", {"message": "平台未配置 LLM 主密钥(LITELLM_MASTER_KEY)"})
         return
-    litellm_user_id = platform_llm.platform_user(current_user)
 
     try:
         chunks = await docs_mcp_client.search(

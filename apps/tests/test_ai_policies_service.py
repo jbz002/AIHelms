@@ -16,6 +16,14 @@ from tasks import ai_policies_tasks
 CATEGORY_LABELS = {"AST02": "供应链投毒或依赖风险"}
 
 
+async def _fake_identity_with_key(session, user, model_name):
+    return ("sk-platform", "aihelms_user_48")
+
+
+async def _fake_identity_empty(session, user, model_name):
+    return ("", "")
+
+
 def test_safe_error_message_hides_generic_exception_details() -> None:
     message = ai_policies_service._safe_error_message(
         RuntimeError("token=secret-value host=10.0.0.1")
@@ -297,8 +305,8 @@ async def test_run_llm_review_uses_platform_model_and_returns_category_reviews(
     )
     monkeypatch.setattr(
         ai_policies_llm.platform_llm,
-        "get_platform_api_key",
-        lambda: "sk-platform",
+        "resolve_call_identity",
+        _fake_identity_with_key,
     )
     monkeypatch.setattr(
         ai_policies_llm.litellm_client,
@@ -412,8 +420,8 @@ async def test_run_llm_review_generates_intent_analysis_without_findings(
     )
     monkeypatch.setattr(
         ai_policies_llm.platform_llm,
-        "get_platform_api_key",
-        lambda: "sk-platform",
+        "resolve_call_identity",
+        _fake_identity_with_key,
     )
     monkeypatch.setattr(
         ai_policies_llm.litellm_client,
@@ -476,8 +484,8 @@ async def test_run_llm_review_does_not_fake_category_reviews_when_unparsed(
     )
     monkeypatch.setattr(
         ai_policies_llm.platform_llm,
-        "get_platform_api_key",
-        lambda: "sk-platform",
+        "resolve_call_identity",
+        _fake_identity_with_key,
     )
     monkeypatch.setattr(
         ai_policies_llm.litellm_client,
@@ -591,8 +599,8 @@ async def test_run_llm_review_skips_without_platform_key(
     )
     monkeypatch.setattr(
         ai_policies_llm.platform_llm,
-        "get_platform_api_key",
-        lambda: "",
+        "resolve_call_identity",
+        _fake_identity_empty,
     )
     monkeypatch.setattr(
         ai_policies_llm.litellm_client,

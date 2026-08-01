@@ -241,9 +241,16 @@ function isSuccess(status: string): boolean {
 }
 
 function userLabel(log: LlmLog): string {
+  if (log.is_platform_call) return '平台系统'
   if (!log.user) return '—'
   const dept = log.user.department_name ? ` (${log.user.department_name})` : ''
   return `${log.user.display_name || log.user.username}${dept}`
+}
+
+function keyLabel(log: LlmLog): string {
+  // 平台调用走 master key,不外露,统一掩码
+  if (log.is_platform_call) return '****'
+  return log.ai_key?.key_token || '—'
 }
 
 let refreshTimer: ReturnType<typeof setInterval> | null = null
@@ -379,7 +386,7 @@ onUnmounted(() => {
           >
             <td class="px-4 py-2.5 text-xs text-slate-500">{{ formatTime(log.started_at) }}</td>
             <td class="px-4 py-2.5 text-slate-900">{{ userLabel(log) }}</td>
-            <td class="px-4 py-2.5 text-slate-700 font-mono text-xs">{{ log.ai_key?.key_token || '—' }}</td>
+            <td class="px-4 py-2.5 text-slate-700 font-mono text-xs">{{ keyLabel(log) }}</td>
             <td class="px-4 py-2.5 text-slate-700">{{ log.model }}</td>
             <td class="px-4 py-2.5">
               <span
@@ -426,8 +433,8 @@ onUnmounted(() => {
       }"
       :info="[
         { label: '时间', value: formatTime(detail.started_at) },
-        { label: '操作人', value: detail.user ? `${detail.user.display_name || detail.user.username} / ${detail.user.department_name || '—'}` : '—' },
-        { label: 'Key', value: detail.ai_key?.key_token || '—' },
+        { label: '操作人', value: detail.is_platform_call ? '平台系统' : (detail.user ? `${detail.user.display_name || detail.user.username} / ${detail.user.department_name || '—'}` : '—') },
+        { label: 'Key', value: detail.is_platform_call ? '****' : (detail.ai_key?.key_token || '—') },
         { label: '模型', value: detail.model },
         { label: 'Provider', value: detail.provider },
         { label: 'Call Type', value: detail.call_type },

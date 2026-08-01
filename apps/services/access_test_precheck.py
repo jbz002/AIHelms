@@ -22,18 +22,20 @@ async def precheck_access_test(
 ) -> tuple[str | None, dict[str, object] | None]:
     """返回 (api_key, error_detail)。成功时 api_key 非空、error_detail 为 None。
 
-    管理员走平台 key（LITELLM_MASTER_KEY），无需个人 AiKey；普通用户走个人主 Key
-    并校验模型授权/发布状态。
+    管理员优先归因到个人主 Key（需授权目标模型），无权或缺失时回退 master key，
+    与平台默认模型调用统一；普通用户走个人主 Key 并校验模型授权/发布状态。
     """
     if is_admin:
-        return await _precheck_admin(session, model)
+        return await _precheck_admin(session, user_id, model, test_model)
     return await _precheck_user(session, user_id, model, test_model)
 
 
 async def _precheck_admin(
-    session: AsyncSession, model: Model | None
+    session: AsyncSession, user_id: int, model: Model | None, test_model: str
 ) -> tuple[str | None, dict[str, object] | None]:
-    platform_key = platform_llm.get_platform_api_key()
+    platform_key, _ = await platform_llm.resolve_call_identity(
+        session, {"id": user_id}, test_model
+    )
     if not platform_key:
         return None, build_error_detail("no_platform_key")
     if not model:

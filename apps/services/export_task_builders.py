@@ -160,13 +160,25 @@ async def _build_usage_log_rows(
         ], [
             [
                 item["started_at"],
-                _flatten_name(item.get("user")),
                 (
-                    (item.get("user") or {}).get("department_name", "")
-                    if isinstance(item.get("user"), dict)
-                    else ""
+                    "平台系统"
+                    if item.get("is_platform_call")
+                    else _flatten_name(item.get("user"))
                 ),
-                _key_name(item.get("ai_key")),
+                (
+                    ""
+                    if item.get("is_platform_call")
+                    else (
+                        (item.get("user") or {}).get("department_name", "")
+                        if isinstance(item.get("user"), dict)
+                        else ""
+                    )
+                ),
+                (
+                    "****"
+                    if item.get("is_platform_call")
+                    else _key_name(item.get("ai_key"))
+                ),
                 item["model"],
                 "是" if model_active.get(item["model"], False) else "否",
                 item["provider"],

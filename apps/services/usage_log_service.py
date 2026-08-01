@@ -209,6 +209,7 @@ def _serialize_llm(
         "ended_at": _fmt_time(log.ended_at),
         "session_id": log.session_id,
         "error_message": log.error_message,
+        "is_platform_call": log.is_platform_call,
     }
 
 

@@ -155,25 +155,25 @@ async def test_access_test_precheck_ready_returns_key_without_error(
     assert detail is None
 
 
-# ── 管理员：平台 Key（LITELLM_MASTER_KEY），无需个人 AiKey ──
+# ── 管理员：优先个人主 Key，回退 master key（统一归因）──
+
+
+async def _fake_resolve_with_key(session, user, model_name):
+    return ("sk-resolved", "aihelms_user_1")
+
+
+async def _fake_resolve_empty(session, user, model_name):
+    return ("", "")
 
 
 @pytest.mark.asyncio
-async def test_access_test_precheck_admin_ready_returns_platform_key(
+async def test_access_test_precheck_admin_ready_returns_resolved_key(
     monkeypatch,
 ) -> None:
-    async def fake_find_personal_main(session, user_id: int):
-        raise AssertionError("管理员路径不应查询个人主 Key")
-
     monkeypatch.setattr(
         access_test_precheck.platform_llm,
-        "get_platform_api_key",
-        lambda: "sk-platform",
-    )
-    monkeypatch.setattr(
-        access_test_precheck.ai_key_repo,
-        "find_personal_main",
-        fake_find_personal_main,
+        "resolve_call_identity",
+        _fake_resolve_with_key,
     )
     monkeypatch.setattr(
         access_test_precheck.model_repo,
@@ -194,18 +194,18 @@ async def test_access_test_precheck_admin_ready_returns_platform_key(
         is_admin=True,
     )
 
-    assert api_key == "sk-platform"
+    assert api_key == "sk-resolved"
     assert detail is None
 
 
 @pytest.mark.asyncio
-async def test_access_test_precheck_admin_model_none_returns_platform_key(
+async def test_access_test_precheck_admin_model_none_returns_resolved_key(
     monkeypatch,
 ) -> None:
     monkeypatch.setattr(
         access_test_precheck.platform_llm,
-        "get_platform_api_key",
-        lambda: "sk-platform",
+        "resolve_call_identity",
+        _fake_resolve_with_key,
     )
 
     api_key, detail = await access_test_precheck.precheck_access_test(
@@ -216,7 +216,7 @@ async def test_access_test_precheck_admin_model_none_returns_platform_key(
         is_admin=True,
     )
 
-    assert api_key == "sk-platform"
+    assert api_key == "sk-resolved"
     assert detail is None
 
 
@@ -226,8 +226,8 @@ async def test_access_test_precheck_admin_no_platform_key_returns_platform_help(
 ) -> None:
     monkeypatch.setattr(
         access_test_precheck.platform_llm,
-        "get_platform_api_key",
-        lambda: "",
+        "resolve_call_identity",
+        _fake_resolve_empty,
     )
 
     api_key, detail = await access_test_precheck.precheck_access_test(
@@ -254,8 +254,8 @@ async def test_access_test_precheck_admin_inactive_model_returns_deployment_help
 ) -> None:
     monkeypatch.setattr(
         access_test_precheck.platform_llm,
-        "get_platform_api_key",
-        lambda: "sk-platform",
+        "resolve_call_identity",
+        _fake_resolve_with_key,
     )
 
     api_key, detail = await access_test_precheck.precheck_access_test(
@@ -285,8 +285,8 @@ async def test_access_test_precheck_admin_no_deployment_returns_deployment_help(
 
     monkeypatch.setattr(
         access_test_precheck.platform_llm,
-        "get_platform_api_key",
-        lambda: "sk-platform",
+        "resolve_call_identity",
+        _fake_resolve_with_key,
     )
     monkeypatch.setattr(
         access_test_precheck.model_repo,

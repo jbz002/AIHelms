@@ -763,6 +763,7 @@ class LlmCallLog(Base):
     messages: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     response: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     metadata_: Mapped[dict] = mapped_column("metadata", JSONB, default=dict)
+    is_platform_call: Mapped[bool] = mapped_column(default=False)
     synced_at: Mapped[datetime] = mapped_column(server_default=func.now())
 
 

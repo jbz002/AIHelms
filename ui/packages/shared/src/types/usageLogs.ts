@@ -68,6 +68,7 @@ export interface LlmLog {
   ended_at: string | null
   session_id: string
   error_message: string | null
+  is_platform_call: boolean
 }
 
 export interface LlmLogDetail extends LlmLog {

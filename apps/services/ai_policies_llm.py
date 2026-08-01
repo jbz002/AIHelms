@@ -888,13 +888,14 @@ async def run_llm_review(
     )
     if not user or not getattr(user, "is_active", False):
         return {"status": "skipped", "message": "发起审查的管理员账号不可用"}
-    platform_key = platform_llm.get_platform_api_key()
+    platform_key, litellm_user_id = await platform_llm.resolve_call_identity(
+        session, user, model_name
+    )
     if not platform_key:
         return {
             "status": "skipped",
             "message": "平台未配置 LLM 主密钥(LITELLM_MASTER_KEY)",
         }
-    litellm_user_id = platform_llm.platform_user(user)
     metadata = _review_metadata(audit, user)
 
     reviewable_findings = [item for item in findings if not item.get("redline")][:10]
