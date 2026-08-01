@@ -1507,6 +1507,7 @@ class DocumentLibrary(Base):
     document_count: Mapped[int] = mapped_column(Integer, default=0)
     total_chunks: Mapped[int] = mapped_column(Integer, default=0)
     source_url: Mapped[str] = mapped_column(Text, default="")
+    active_version: Mapped[str] = mapped_column(String(200), default="")
     created_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
     )

@@ -124,6 +124,10 @@ async def list_documents(
     page_size: int = 20,
 ) -> dict:
     """查询文档列表，支持多条件过滤和分页。"""
+    if library and not version:
+        version = await document_library_service.resolve_effective_version(
+            session, library
+        )
     version = await _normalize_version_filter(library, version)
     total = await document_repo.count_all(
         session, library, source_type, ingest_status, version, title
@@ -235,7 +239,13 @@ async def ingest_document(
                 }
             ],
         )
-        chunk_count = result.get("ingested", 0)
+        # docs-mcp ingest-raw 返回 { ingested: 文档数, chunks: 块数 }；
+        # chunks 才是该文档真分块数，旧版无该字段时回退 ingested
+        chunk_count = (
+            (result.get("chunks") or result.get("ingested") or 0)
+            if isinstance(result, dict)
+            else 0
+        )
         await document_repo.update_ingest_status(
             session, document_id, "ingested", chunk_count=chunk_count
         )
@@ -291,7 +301,12 @@ async def ingest_batch(
                     }
                 ],
             )
-            chunk_count = result.get("ingested", 0) if isinstance(result, dict) else 0
+            # chunks 为真分块数（ingested 是批内文档数，单文档批恒为 1）
+            chunk_count = (
+                (result.get("chunks") or result.get("ingested") or 0)
+                if isinstance(result, dict)
+                else 0
+            )
             await document_repo.update_ingest_status(
                 session, doc.id, "ingested", chunk_count=chunk_count
             )
@@ -316,6 +331,10 @@ async def get_ingest_stats(
     version: str | None = None,
 ) -> dict:
     """获取文档入库统计。"""
+    if library and not version:
+        version = await document_library_service.resolve_effective_version(
+            session, library
+        )
     version = await _normalize_version_filter(library, version)
     rows = await document_repo.count_grouped_by_status(session, library, version)
     by_status = {r["ingest_status"]: r["count"] for r in rows}

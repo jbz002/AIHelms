@@ -32,6 +32,7 @@ class DocsMcpClient:
         path: str,
         params: dict | None = None,
         json_data: object | None = None,
+        timeout: float | None = None,
     ) -> object:
         """调用 REST 接口。
 
@@ -40,11 +41,12 @@ class DocsMcpClient:
             path: API 路径（如 "/api/libraries"）。
             params: query 参数。
             json_data: JSON body。
+            timeout: 单请求超时（秒），缺省用 DOCS_MCP_TIMEOUT。批量灌入等慢操作可调大。
         """
         url = f"{self._base_url}{path}"
         try:
             async with httpx.AsyncClient(
-                timeout=DOCS_MCP_TIMEOUT, proxy=None
+                timeout=timeout or DOCS_MCP_TIMEOUT, proxy=None
             ) as client:
                 logger.info(f"docs-mcp {method}: {url}")
                 resp = await client.request(method, url, params=params, json=json_data)
@@ -251,6 +253,7 @@ class DocsMcpClient:
         library: str,
         version: str | None,
         documents: list[dict],
+        timeout: float | None = None,
     ) -> dict:
         """提交原始内容到 docs-mcp，由 docs-mcp 负责分块入库。
 
@@ -258,6 +261,7 @@ class DocsMcpClient:
             library: 文档库名。
             version: 版本号，可选。
             documents: 文档列表，每个包含 url, title, contentType, content。
+            timeout: 单请求超时（秒），批量灌入等慢操作可调大。
         """
         return await self._call(
             "POST",
@@ -267,6 +271,7 @@ class DocsMcpClient:
                 "version": version or None,
                 "documents": documents,
             },
+            timeout=timeout,
         )
 
     async def ensure_library(

@@ -44,6 +44,21 @@ async def update_document_count(
     await session.flush()
 
 
+async def update_counts(
+    session: AsyncSession,
+    library_id: int,
+    document_count: int,
+    total_chunks: int,
+) -> None:
+    """同时刷新库的文档数与分块总数（两者同源同刷，避免 total_chunks 漂移）。"""
+    await session.execute(
+        update(DocumentLibrary)
+        .where(DocumentLibrary.id == library_id)
+        .values(document_count=document_count, total_chunks=total_chunks)
+    )
+    await session.flush()
+
+
 async def update_source_url(
     session: AsyncSession, library_id: int, source_url: str
 ) -> None:
@@ -51,6 +66,18 @@ async def update_source_url(
         update(DocumentLibrary)
         .where(DocumentLibrary.id == library_id)
         .values(source_url=source_url)
+    )
+    await session.flush()
+
+
+async def update_active_version(
+    session: AsyncSession, library_id: int, active_version: str
+) -> None:
+    """设置文档库生效版本（平台侧生效指针，docs-mcp 不感知）。"""
+    await session.execute(
+        update(DocumentLibrary)
+        .where(DocumentLibrary.id == library_id)
+        .values(active_version=active_version)
     )
     await session.flush()
 

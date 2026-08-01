@@ -83,6 +83,21 @@ async def count_by_library(session: AsyncSession, library: str) -> int:
     return result.scalar_one()
 
 
+async def count_and_chunks_by_library(
+    session: AsyncSession, library: str
+) -> tuple[int, int]:
+    """一次查询返回 (文档数, 分块总数)，供库计数刷新避免两次往返。"""
+    stmt = select(
+        func.count().label("document_count"),
+        func.coalesce(func.sum(Document.chunk_count), 0).label("total_chunks"),
+    ).where(
+        func.lower(Document.library) == library.lower(),
+        Document.ingest_status != "duplicate",
+    )
+    row = (await session.execute(stmt)).one()
+    return int(row.document_count), int(row.total_chunks)
+
+
 async def update_ingest_status(
     session: AsyncSession,
     document_id: int,
@@ -152,6 +167,10 @@ async def upsert_by_source(
     existing.chunk_count = chunk_count
     existing.metadata_ = metadata_
     existing.content_hash = content_hash
+    # 随当前入库上下文同步 library/version：再爬虫复用同一 source_id 时，
+    # 修正旧 version 漂移（否则文档留在旧版本桶，与新任务版本不一致）。
+    existing.library = library
+    existing.version = version
     if force_status:
         existing.ingest_status = force_status
         existing.error_message = ""

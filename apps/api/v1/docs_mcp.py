@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from core.database import async_session
 from core.deps import get_current_user, get_db
-from exceptions import NotFoundError
+from exceptions import NotFoundError, ValidationError
+from repositories import document_library_repo
 from services import (
     doc_search_summary_service,
     doc_upload_service,
@@ -19,9 +20,8 @@ from services import (
 )
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 from services.docs_version import (
-    DOCS_VERSION_ERROR_MSG,
-    is_valid_docs_version,
     normalize_docs_version,
+    require_docs_version,
 )
 
 logger = logging.getLogger(__name__)
@@ -92,8 +92,13 @@ async def create_job(body: dict, _: dict = Depends(get_current_user)):
             return {"code": 400, "message": "url 不能为空", "data": None}
         if not library:
             return {"code": 400, "message": "library 不能为空", "data": None}
-        if not is_valid_docs_version(version):
-            return {"code": 400, "message": DOCS_VERSION_ERROR_MSG, "data": None}
+
+        # latest→具体；空/库空 latest→None；再强校验非空 X.Y.Z，禁止「无版本」桶
+        version = await docs_mcp_client.resolve_version(library, version)
+        try:
+            version = require_docs_version(version)
+        except ValidationError as e:
+            return {"code": 400, "message": str(e), "data": None}
 
         additional_options = body.get("options") or {}
         if not isinstance(additional_options, dict):
@@ -102,13 +107,9 @@ async def create_job(body: dict, _: dict = Depends(get_current_user)):
         scraper_options = {
             "url": url,
             "library": library,
-            "version": version or "",
+            "version": version,
             **additional_options,
         }
-
-        # latest 哨兵解析为当时最新版本，落具体版本桶（enqueue 前同步 options）
-        version = await docs_mcp_client.resolve_version(library, version)
-        scraper_options["version"] = version or ""
 
         logger.info("create_job: library=%s, version=%s", library, version)
 
@@ -168,10 +169,58 @@ async def get_library_detail(library_name: str, _: dict = Depends(get_current_us
         libraries = await docs_mcp_client.list_libraries()
         for lib in libraries:
             if lib.get("library") == library_name:
-                return {"code": 200, "message": "ok", "data": lib}
+                # 注入平台侧生效版本指针，供前端标记/切换生效版本
+                data = dict(lib)
+                async with async_session() as session:
+                    plat = await document_library_repo.find_by_name(
+                        session, library_name
+                    )
+                if plat is not None:
+                    data["active_version"] = plat.active_version
+                return {"code": 200, "message": "ok", "data": data}
         return {"code": 404, "message": "文档库不存在", "data": None}
     except DocsMcpError as e:
         return {"code": 500, "message": str(e), "data": None}
+
+
+class SetActiveVersionRequest(BaseModel):
+    version: str
+
+
+@router.put("/libraries/{library_name}/active-version", summary="设置文档库生效版本")
+async def set_library_active_version(
+    library_name: str,
+    body: SetActiveVersionRequest,
+    _: dict = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """切换平台侧生效版本（检索/列表默认口径）。docs-mcp 不感知，仅平台 DB 落指针。"""
+    try:
+        version = require_docs_version(body.version.strip())
+    except ValidationError as e:
+        return {"code": 400, "message": str(e), "data": None}
+
+    try:
+        libraries = await docs_mcp_client.list_libraries()
+    except DocsMcpError as e:
+        return {"code": 500, "message": str(e), "data": None}
+
+    lib_versions: list[str] = []
+    for lib in libraries:
+        if lib.get("library") == library_name:
+            lib_versions = [
+                (v.get("ref") or {}).get("version", "") for v in lib.get("versions", [])
+            ]
+            break
+    if version not in lib_versions:
+        return {"code": 404, "message": "该版本不存在", "data": None}
+
+    library = await document_library_repo.find_by_name(db, library_name)
+    if library is None:
+        return {"code": 404, "message": "文档库未注册", "data": None}
+    await document_library_repo.update_active_version(db, library.id, version)
+    await db.commit()
+    return {"code": 200, "message": "生效版本已设置", "data": None}
 
 
 @router.get("/libraries/{library_name}/search", summary="搜索文档")
@@ -403,9 +452,13 @@ async def upload_document(
     """上传本地文档，提取内容。auto_ingest=true 时自动入库，false 时仅提取。"""
     if not library.strip():
         return {"code": 400, "message": "library 不能为空", "data": None}
+    library_name = library.strip()
     version = normalize_docs_version(version)
-    if not is_valid_docs_version(version):
-        return {"code": 400, "message": DOCS_VERSION_ERROR_MSG, "data": None}
+    version = await docs_mcp_client.resolve_version(library_name, version)
+    try:
+        version = require_docs_version(version)
+    except ValidationError as e:
+        return {"code": 400, "message": str(e), "data": None}
     if not file.filename:
         return {"code": 400, "message": "文件名不能为空", "data": None}
 
@@ -464,9 +517,13 @@ async def upload_documents_batch(
     """
     if not library.strip():
         return {"code": 400, "message": "library 不能为空", "data": None}
+    library_name = library.strip()
     version = normalize_docs_version(version)
-    if not is_valid_docs_version(version):
-        return {"code": 400, "message": DOCS_VERSION_ERROR_MSG, "data": None}
+    version = await docs_mcp_client.resolve_version(library_name, version)
+    try:
+        version = require_docs_version(version)
+    except ValidationError as e:
+        return {"code": 400, "message": str(e), "data": None}
     if not files:
         return {"code": 400, "message": "请至少选择一个文件", "data": None}
 
@@ -626,8 +683,13 @@ async def create_crawl_task(
         return {"code": 400, "message": "url 不能为空", "data": None}
     if not library:
         return {"code": 400, "message": "library 不能为空", "data": None}
-    if not is_valid_docs_version(version):
-        return {"code": 400, "message": DOCS_VERSION_ERROR_MSG, "data": None}
+
+    # latest→具体；空/库空 latest→None；再强校验非空 X.Y.Z，禁止「无版本」桶
+    version = await docs_mcp_client.resolve_version(library, version)
+    try:
+        version = require_docs_version(version)
+    except ValidationError as e:
+        return {"code": 400, "message": str(e), "data": None}
 
     additional_options = body.get("options") or {}
     if not isinstance(additional_options, dict):
@@ -636,7 +698,7 @@ async def create_crawl_task(
     scraper_options = {
         "url": url,
         "library": library,
-        "version": version or "",
+        "version": version,
         **additional_options,
     }
 
@@ -649,7 +711,7 @@ async def create_crawl_task(
                 session=session,
                 url=url,
                 library=library,
-                version=version or None,
+                version=version,
                 scraper_options=scraper_options,
                 created_by=created_by,
                 auto_ingest=body.get("auto_ingest", False),

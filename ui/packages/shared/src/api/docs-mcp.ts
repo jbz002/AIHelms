@@ -194,6 +194,14 @@ export function deleteDocsMcpVersion(libraryName: string, version: string) {
   })
 }
 
+export function setDocsMcpActiveVersion(libraryName: string, version: string) {
+  return request<void>('/api/v1/docs-mcp/libraries/{name}/active-version'
+    .replace('{name}', libraryName), {
+    method: 'PUT',
+    body: { version },
+  })
+}
+
 export function getDocsMcpEventSourceUrl(): string {
   return '/api/v1/docs-mcp/events'
 }

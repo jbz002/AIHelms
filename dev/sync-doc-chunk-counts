@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(dirname "$(realpath "$0")")"
+ROOT="$(dirname "$SCRIPT_DIR")"
+
+cd "$ROOT/apps"
+
+# 按 docs-mcp 当前真实分块数校正平台 documents.chunk_count 与库 total_chunks。
+# 需 docs-mcp-worker 容器运行中（dev 在 WSL2 docker，prod 原生 docker）。
+uv run python -m core.sync_doc_chunk_counts

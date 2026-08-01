@@ -27,10 +27,23 @@ def _serialize_library(lib: DocumentLibrary) -> dict:
         "document_count": lib.document_count,
         "total_chunks": lib.total_chunks,
         "source_url": lib.source_url,
+        "active_version": lib.active_version,
         "created_by": lib.created_by,
         "created_at": lib.created_at.isoformat() if lib.created_at else None,
         "updated_at": lib.updated_at.isoformat() if lib.updated_at else None,
     }
+
+
+async def resolve_effective_version(session: AsyncSession, library: str) -> str | None:
+    """生效版本口径：active_version 非空 → 返回；否则回退最新 semver（docs-mcp best-match）。
+
+    active_version 的诚实性由删除路径保证（删掉的若是 active 则清空，触发回退），
+    故此处不额外打 docs-mcp 校验存在性，避免每次列表/检索都往返。
+    """
+    lib = await document_library_repo.find_by_name(session, library)
+    if lib and lib.active_version:
+        return lib.active_version
+    return await docs_mcp_client.resolve_version(library, "latest")
 
 
 async def ensure_library_exists(
@@ -57,12 +70,19 @@ async def ensure_library_exists(
 
 
 async def refresh_document_counts(session: AsyncSession, library_name: str) -> None:
-    """从 documents 表重新计算文档计数，写回 document_libraries。"""
+    """从 documents 表重新计算文档数与分块总数，一并写回 document_libraries。
+
+    total_chunks 与 document_count 同源同刷，防止只更新其一导致库卡片分块数长期漂移。
+    """
     library = await document_library_repo.find_by_name(session, library_name)
     if library is None:
         return
-    count = await document_repo.count_by_library(session, library_name)
-    await document_library_repo.update_document_count(session, library.id, count)
+    document_count, total_chunks = await document_repo.count_and_chunks_by_library(
+        session, library_name
+    )
+    await document_library_repo.update_counts(
+        session, library.id, document_count, total_chunks
+    )
 
 
 async def list_libraries(session: AsyncSession) -> list[dict]:

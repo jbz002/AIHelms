@@ -1,0 +1,256 @@
+<script setup lang="ts">
+import { ref } from 'vue'
+import type { DocsMcpScrapeOptions } from '@aihelms/shared'
+import { toast } from '@aihelms/shared'
+import { ChevronDown, ChevronUp, Plus, Trash2, AlertTriangle } from 'lucide-vue-next'
+
+const DOCS_VERSION_RE = /^v?\d+\.\d+\.\d+$/
+
+type IngestMode = 'direct' | 'crawl-only'
+
+interface Props {
+  defaultLibrary: string
+}
+
+interface Emits {
+  close: []
+  submit: [params: { url: string; library: string; version: string; options: DocsMcpScrapeOptions; ingestMode: IngestMode }]
+}
+
+const props = defineProps<Props>()
+const emit = defineEmits<Emits>()
+
+const url = ref('')
+const library = ref(props.defaultLibrary)
+const version = ref('')
+const ingestMode = ref<IngestMode>('direct')
+const showAdvanced = ref(false)
+const submitting = ref(false)
+const maxPages = ref(1000)
+const maxDepth = ref(3)
+const scope = ref<'subpages' | 'hostname' | 'domain'>('subpages')
+const scrapeMode = ref<'fetch' | 'playwright' | 'auto'>('auto')
+const includePatterns = ref<string[]>([])
+const DEFAULT_EXCLUDE_PATTERNS = [
+  '**/CHANGELOG.md',
+  '**/CHANGELOG/**',
+  '**/LICENSE',
+  '**/LICENSE/**',
+  '**/*.lock',
+  '**/package-lock.json',
+  '**/yarn.lock',
+  '**/pnpm-lock.yaml',
+  '**/go.sum',
+  '**/*.min.js',
+  '**/*.min.css',
+  '**/*.map',
+  '**/*.d.ts',
+  '**/.DS_Store',
+  '**/Thumbs.db',
+  '**/archive/**',
+  '**/archived/**',
+  '**/deprecated/**',
+  '**/legacy/**',
+  '**/old/**',
+  '**/test/**',
+  '**/tests/**',
+  '**/__tests__/**',
+  '**/spec/**',
+  '**/dist/**',
+  '**/build/**',
+  '**/out/**',
+  '**/target/**',
+  '**/.next/**',
+  '**/.nuxt/**',
+  '**/.vscode/**',
+  '**/.idea/**',
+  '**/docs/old/**',
+]
+
+const excludePatterns = ref<string[]>([...DEFAULT_EXCLUDE_PATTERNS])
+const customHeaders = ref<{ key: string; value: string }[]>([])
+const followRedirects = ref(true)
+const ignoreErrors = ref(true)
+
+const inputCls = 'w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500'
+const smInputCls = 'w-full rounded-md border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:outline-none'
+
+function addHeader(): void {
+  customHeaders.value.push({ key: '', value: '' })
+}
+
+function removeHeader(index: number): void {
+  customHeaders.value.splice(index, 1)
+}
+
+function onIncludePatternsInput(e: Event): void {
+  includePatterns.value = (e.target as HTMLTextAreaElement).value.split('\n')
+}
+
+function onExcludePatternsInput(e: Event): void {
+  excludePatterns.value = (e.target as HTMLTextAreaElement).value.split('\n')
+}
+
+function handleSubmit(): void {
+  if (!url.value || !library.value) return
+  const versionInput = version.value.trim()
+  if (!versionInput) {
+    toast.error('请填写版本号（如 1.0.0）')
+    return
+  }
+  if (!DOCS_VERSION_RE.test(versionInput)) {
+    toast.error('版本号格式无效，请填写完整版本号（如 1.0.0）')
+    return
+  }
+  submitting.value = true
+  const options: DocsMcpScrapeOptions = {}
+  if (maxPages.value) options.maxPages = maxPages.value
+  if (maxDepth.value) options.maxDepth = maxDepth.value
+  if (scope.value !== 'subpages') options.scope = scope.value
+  if (scrapeMode.value !== 'auto') options.scrapeMode = scrapeMode.value
+  const inc = includePatterns.value.filter((p) => p.trim())
+  if (inc.length > 0) options.includePatterns = inc
+  const exc = excludePatterns.value.filter((p) => p.trim())
+  if (exc.length > 0) options.excludePatterns = exc
+  const headers: Record<string, string> = {}
+  for (const h of customHeaders.value) {
+    if (h.key.trim()) headers[h.key.trim()] = h.value
+  }
+  if (Object.keys(headers).length > 0) options.headers = headers
+  if (!followRedirects.value) options.followRedirects = false
+  if (!ignoreErrors.value) options.ignoreErrors = false
+  emit('submit', { url: url.value, library: library.value, version: versionInput, options, ingestMode: ingestMode.value })
+  submitting.value = false
+}
+</script>
+
+<template>
+  <div class="space-y-4">
+    <div class="flex items-center gap-6 rounded-md border border-gray-200 px-4 py-3">
+      <label class="flex cursor-pointer items-center gap-2">
+        <input v-model="ingestMode" type="radio" name="addVersionCrawlMode" value="direct" class="accent-blue-600" />
+        <div>
+          <span class="text-sm font-medium text-gray-900">爬取入库</span>
+          <p class="text-xs text-gray-500">爬取完成后自动入库，可立即搜索</p>
+        </div>
+      </label>
+      <label class="flex cursor-pointer items-center gap-2">
+        <input v-model="ingestMode" type="radio" name="addVersionCrawlMode" value="crawl-only" class="accent-emerald-600" />
+        <div>
+          <span class="text-sm font-medium text-gray-900">仅爬取</span>
+          <p class="text-xs text-gray-500">先爬取不入库，可预览后手动入库</p>
+        </div>
+      </label>
+    </div>
+
+    <div>
+      <label class="mb-1 block text-sm font-medium text-gray-700">文档 URL *</label>
+      <input v-model="url" type="url" placeholder="https://docs.example.com" :class="inputCls" />
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="mb-1 block text-sm font-medium text-gray-700">库名 *</label>
+        <input
+          :value="library"
+          type="text"
+          disabled
+          :class="inputCls"
+          class="disabled:bg-slate-50 disabled:text-slate-400"
+        />
+        <div class="mt-1 flex items-center gap-1 text-xs text-amber-600">
+          <AlertTriangle class="h-3 w-3" />
+          该文档库已存在，爬取将新增版本
+        </div>
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-medium text-gray-700">版本 *</label>
+        <input
+          v-model="version"
+          type="text"
+          placeholder="填写新版本号，如 1.0.0"
+          :class="inputCls"
+        />
+      </div>
+    </div>
+    <div class="rounded-md border border-gray-200">
+      <button class="flex w-full items-center justify-between px-3 py-2 text-sm font-medium text-gray-700" @click="showAdvanced = !showAdvanced">
+        高级选项
+        <ChevronDown v-if="!showAdvanced" class="h-4 w-4" />
+        <ChevronUp v-else class="h-4 w-4" />
+      </button>
+      <div v-if="showAdvanced" class="space-y-3 border-t border-gray-200 px-3 py-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="mb-1 block text-xs text-gray-500">最大页数</label>
+            <input v-model.number="maxPages" type="number" placeholder="不限" :class="smInputCls" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs text-gray-500">最大深度</label>
+            <input v-model.number="maxDepth" type="number" placeholder="不限" :class="smInputCls" />
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="mb-1 block text-xs text-gray-500">抓取范围</label>
+            <select v-model="scope" :class="smInputCls">
+              <option value="subpages">子页面</option>
+              <option value="hostname">同主机名</option>
+              <option value="domain">同域名</option>
+            </select>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs text-gray-500">抓取模式</label>
+            <select v-model="scrapeMode" :class="smInputCls">
+              <option value="auto">自动</option>
+              <option value="fetch">简单抓取</option>
+              <option value="playwright">浏览器渲染</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="mb-1 block text-xs text-gray-500">URL 包含模式 (每行一个)</label>
+          <textarea :value="includePatterns.join('\n')" rows="2" placeholder="例如: /docs/.*\.md" :class="smInputCls" @input="onIncludePatternsInput" />
+        </div>
+        <div>
+          <label class="mb-1 block text-xs text-gray-500">URL 排除模式 (每行一个)</label>
+          <textarea :value="excludePatterns.join('\n')" rows="2" placeholder="例如: /api/.*" :class="smInputCls" @input="onExcludePatternsInput" />
+        </div>
+        <div>
+          <div class="mb-1 flex items-center justify-between">
+            <label class="text-xs text-gray-500">自定义 Headers</label>
+            <button class="text-xs text-blue-600 hover:text-blue-700" @click="addHeader">
+              <Plus class="inline h-3 w-3" /> 添加
+            </button>
+          </div>
+          <div v-for="(h, i) in customHeaders" :key="i" class="mb-1 flex gap-2">
+            <input v-model="h.key" placeholder="Name" class="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none" />
+            <input v-model="h.value" placeholder="Value" class="flex-1 rounded-md border border-gray-300 px-2 py-1 text-sm focus:border-blue-500 focus:outline-none" />
+            <button class="rounded p-1 text-gray-400 hover:text-red-500" @click="removeHeader(i)">
+              <Trash2 class="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+        <div class="flex items-center gap-6">
+          <label class="flex cursor-pointer items-center gap-2">
+            <input v-model="followRedirects" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            <span class="text-xs text-gray-600">跟随重定向</span>
+          </label>
+          <label class="flex cursor-pointer items-center gap-2">
+            <input v-model="ignoreErrors" type="checkbox" class="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            <span class="text-xs text-gray-600">忽略抓取错误</span>
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-6 flex justify-end gap-3">
+    <button class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50" @click="emit('close')">取消</button>
+    <button
+      class="rounded-md px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
+      :class="ingestMode === 'crawl-only' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'"
+      :disabled="!url || !library || !version.trim() || submitting"
+      @click="handleSubmit"
+    >提交任务</button>
+  </div>
+</template>

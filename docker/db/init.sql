@@ -1436,6 +1436,7 @@ CREATE TABLE IF NOT EXISTS aihelms.document_libraries (
     document_count INT NOT NULL DEFAULT 0,
     total_chunks INT NOT NULL DEFAULT 0,
     source_url TEXT NOT NULL DEFAULT '',
+    active_version VARCHAR(200) NOT NULL DEFAULT '',
     created_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
