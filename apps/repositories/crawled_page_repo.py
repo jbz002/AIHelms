@@ -30,6 +30,17 @@ async def upsert_by_task_url(
     return page
 
 
+async def list_urls_by_task(session: AsyncSession, crawl_task_id: int) -> set[str]:
+    """返回某任务下已存在的 crawled_page url 集合。
+
+    用于入库前从 docs-mcp 回补时判重，只补 SSE 期间丢失的 url。
+    """
+    result = await session.execute(
+        select(CrawledPage.url).where(CrawledPage.crawl_task_id == crawl_task_id)
+    )
+    return {row[0] for row in result.all()}
+
+
 async def list_by_task_id(
     session: AsyncSession,
     crawl_task_id: int,

@@ -3,7 +3,7 @@
 import hashlib
 import logging
 
-from sqlalchemy import delete
+from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import CrawledPage, CrawlTask, Document
@@ -16,16 +16,24 @@ logger = logging.getLogger(__name__)
 
 # docs-mcp Fastify 默认 bodyLimit 1MB，留半给 JSON/url/title 开销
 INGEST_BYTE_BUDGET = 512 * 1024
+# 单批文档数上限：docs-mcp 顺序 embedding，小页扎堆成一批会撞超时（即使字节未超）
+MAX_BATCH_DOCS = 5
 
 
-def _chunk_by_bytes(pages: list[CrawledPage], budget: int) -> list[list[CrawledPage]]:
-    """按累计 text_content 字节切批，单批 ≤ budget；单页超 budget 自成一批。"""
+def _chunk_by_bytes(
+    pages: list[CrawledPage], budget: int, max_docs: int
+) -> list[list[CrawledPage]]:
+    """按累计字节 + 文档数双限切批。
+
+    单批 ≤ budget 字节且 ≤ max_docs 页；单页超 budget 自成一批。
+    双限避免小页扎堆成一批，导致 docs-mcp 顺序 embedding 超时。
+    """
     batches: list[list[CrawledPage]] = []
     batch: list[CrawledPage] = []
     size = 0
     for p in pages:
         psize = len((p.text_content or "").encode("utf-8"))
-        if batch and size + psize > budget:
+        if batch and (size + psize > budget or len(batch) >= max_docs):
             batches.append(batch)
             batch = [p]
             size = psize
@@ -48,6 +56,11 @@ def _serialize_task(task: CrawlTask) -> dict:
         "pages_total": task.pages_total,
         "pages_crawled": task.pages_crawled,
         "pages_ingested": task.pages_ingested,
+        "is_partial": (
+            task.status in ("crawled", "ingesting", "ingested")
+            and (task.pages_total or 0) > 0
+            and (task.pages_crawled or 0) < (task.pages_total or 0)
+        ),
         "current_url": task.current_url,
         "error_message": task.error_message,
         "created_by": task.created_by,
@@ -276,7 +289,23 @@ async def sync_task_status(
 
     try:
         detail = await docs_mcp_client.get_job_detail(task.job_id)
-    except DocsMcpError:
+    except DocsMcpError as e:
+        # 404 = docs-mcp 已无此 job（job_id 仅内存，服务重启后旧 id 失效）。
+        # 任务成孤儿：标 failed 并给可操作提示，避免永久卡在 crawling/pending。
+        if e.status_code == 404:
+            await crawl_task_repo.update_status(
+                session,
+                task.id,
+                "failed",
+                error_message="docs-mcp 任务已丢失（服务可能重启），请重新爬取",
+            )
+            await session.refresh(task)
+            logger.info(
+                "sync_task_status: job %s gone (404), task %s -> failed",
+                task.job_id,
+                task.id,
+            )
+            return _serialize_task(task)
         logger.warning(
             "sync_task_status: failed to fetch job %s from docs-mcp",
             task.job_id,
@@ -332,6 +361,127 @@ async def sync_task_status(
     return synced
 
 
+async def reconcile_stale_tasks(session: AsyncSession) -> None:
+    """周期兜底（celery beat 驱动），自愈 SSE/进程中断导致的卡死任务。
+
+    - crawling/pending 卡死 → sync_task_status（含 job 404 标孤儿 failed）；
+      若远程 completed 且 auto_ingest，sync 内部会触发入库。
+    - ingesting 卡死（celery worker 已死）→ 重新触发 ingest_crawl_task（幂等可重入，
+      advisory lock 防双跑）。
+
+    阈值：crawling 3min、pending 5min、ingesting 10min（大于单批 180s 超时，避免误杀在跑入库）。
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import select
+
+    from tasks.doc_tasks import ingest_crawl_task
+
+    now = datetime.now(timezone.utc)
+    crawling_cutoff = now - timedelta(minutes=3)
+    pending_cutoff = now - timedelta(minutes=5)
+    ingesting_cutoff = now - timedelta(minutes=10)
+
+    # crawling 卡死：job_id 非空 + started_at 早于 3min 前
+    result = await session.execute(
+        select(CrawlTask).where(
+            CrawlTask.status == "crawling",
+            CrawlTask.job_id != "",
+            CrawlTask.started_at.isnot(None),
+            CrawlTask.started_at < crawling_cutoff,
+        )
+    )
+    for task in result.scalars().all():
+        try:
+            await sync_task_status(session, task.id)
+        except Exception:
+            logger.debug(
+                "reconcile: sync crawling task %s failed", task.id, exc_info=True
+            )
+
+    # pending 卡死：created_at 早于 5min 前
+    result = await session.execute(
+        select(CrawlTask).where(
+            CrawlTask.status == "pending",
+            CrawlTask.job_id != "",
+            CrawlTask.created_at < pending_cutoff,
+        )
+    )
+    for task in result.scalars().all():
+        try:
+            await sync_task_status(session, task.id)
+        except Exception:
+            logger.debug(
+                "reconcile: sync pending task %s failed", task.id, exc_info=True
+            )
+
+    # ingesting 卡死：started_at 早于 10min 前 → 重新触发入库
+    result = await session.execute(
+        select(CrawlTask).where(
+            CrawlTask.status == "ingesting",
+            CrawlTask.started_at.isnot(None),
+            CrawlTask.started_at < ingesting_cutoff,
+        )
+    )
+    for task in result.scalars().all():
+        logger.info("reconcile: re-trigger ingest for stale ingesting task %s", task.id)
+        ingest_crawl_task.delay(task.id)
+
+
+async def _backfill_pages_from_docs_mcp(session: AsyncSession, task: CrawlTask) -> None:
+    """从 docs-mcp crawl_results 回补 SSE 断连期间丢失的页面。
+
+    crawlOnly 模式下 docs-mcp 持久化了全部抓取页原文（SSE 仅作实时进度）。
+    入库前以 (library, version) 为权威源，把本地 crawled_pages 缺失的 url 补齐为
+    pending，使 get_for_ingest 取到完整页集合。仅补缺失 url，不覆盖已存在页
+    （避免重置已 ingested 页状态）。docs-mcp 不可达时静默跳过，不阻断入库。
+    """
+    existing_urls = await crawled_page_repo.list_urls_by_task(session, task.id)
+    backfilled = 0
+    page_no = 1
+    while True:
+        try:
+            result = await docs_mcp_client.list_crawl_results(
+                task.library, task.version or None, page=page_no, page_size=100
+            )
+        except DocsMcpError as e:
+            logger.warning("backfill crawl_results failed: %s", str(e))
+            return
+        if not isinstance(result, dict):
+            return
+        items = result.get("items") or []
+        if not items:
+            break
+        for item in items:
+            url = item.get("url") or ""
+            if not url or url in existing_urls:
+                continue
+            await crawled_page_repo.upsert_by_task_url(
+                session,
+                crawl_task_id=task.id,
+                url=url,
+                title=item.get("title") or "",
+                source_content_type=item.get("contentType") or "",
+                content_type=item.get("contentType") or "",
+                text_content=item.get("textContent") or "",
+                links=[],
+                chunks=[],
+                depth=item.get("depth") or 0,
+            )
+            existing_urls.add(url)
+            backfilled += 1
+        total = result.get("total", 0) or 0
+        if page_no * 100 >= total:
+            break
+        page_no += 1
+
+    # 回补后 pages_crawled 反映真实抓取页数（SSE + REST），保证 is_partial 准确
+    if backfilled:
+        await crawl_task_repo.update_progress(
+            session, task.id, pages_crawled=len(existing_urls)
+        )
+
+
 async def ingest_crawl_task(
     session: AsyncSession,
     task_id: int,
@@ -340,6 +490,8 @@ async def ingest_crawl_task(
 
     按字节分批避免单请求超 docs-mcp bodyLimit(1MB)。
     支持失败重试：只取 ingest_status='pending' 的页，已入库页跳过。
+    入库前从 docs-mcp crawl_results 回补 SSE 期间丢失的页（页级恢复）。
+    事务级 advisory lock 防双跑。
     """
     task = await crawl_task_repo.find_by_id(session, task_id)
     if task is None:
@@ -347,7 +499,27 @@ async def ingest_crawl_task(
     if task.status not in ("crawled", "failed", "ingesting"):
         raise ValueError(f"crawl task status is {task.status}, expected crawled/failed")
 
-    await crawl_task_repo.update_status(session, task_id, "ingesting")
+    # 事务级 advisory lock：防止 beat 重触发与手动重触发并发双跑（ingest 幂等可重入，
+    # 但双跑会重复向量化、progress 双计）。锁随 celery 任务提交/回滚自动释放。
+    lock_key = 91020250700 + task_id
+    got_lock = (
+        await session.execute(
+            text("SELECT pg_try_advisory_xact_lock(:k)"), {"k": lock_key}
+        )
+    ).scalar()
+    if not got_lock:
+        logger.info(
+            "ingest_crawl_task: task %s already running (lock held), skip", task_id
+        )
+        return _serialize_task(task)
+
+    # 入库前从 docs-mcp 权威源回补 SSE 断连期间丢失的页（页级恢复核心）
+    await _backfill_pages_from_docs_mcp(session, task)
+
+    # error_message=None 清掉上轮 failed 残留错误信息
+    await crawl_task_repo.update_status(
+        session, task_id, "ingesting", error_message=None
+    )
     await session.refresh(task)
 
     pages = await crawled_page_repo.get_for_ingest(session, task_id)
@@ -357,7 +529,7 @@ async def ingest_crawl_task(
         return _serialize_task(task)
 
     try:
-        for batch in _chunk_by_bytes(pages, INGEST_BYTE_BUDGET):
+        for batch in _chunk_by_bytes(pages, INGEST_BYTE_BUDGET, MAX_BATCH_DOCS):
             # 页级判重：同 library+version+content_hash 已入库成功 → 标 duplicate，不调 docs-mcp
             to_ingest: list[CrawledPage] = []
             dup_page_ids: list[int] = []

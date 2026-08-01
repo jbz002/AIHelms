@@ -208,6 +208,7 @@ export interface DocTask {
   started_at: string | null
   finished_at: string | null
   can_ingest: boolean
+  is_partial: boolean
 }
 
 export interface DocTaskListResult {

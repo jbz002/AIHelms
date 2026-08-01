@@ -14,10 +14,17 @@ from core.config import settings
 logger = logging.getLogger(__name__)
 
 DOCS_MCP_TIMEOUT = 30.0
+# ingest-raw 服务端做分块 + embedding 向量化，远慢于普通 REST；
+# 30s 默认超时下大语料/大文档必然 ReadTimeout，单独放大。
+INGEST_TIMEOUT = 180.0
 
 
 class DocsMcpError(Exception):
-    pass
+    def __init__(self, message: str, status_code: int | None = None) -> None:
+        super().__init__(message)
+        # HTTP 状态码（仅来自 HTTP 错误响应；连接异常为 None）。
+        # 调用方据此区分 404（资源不存在，如 docs-mcp 重启后旧 job_id 失效）等。
+        self.status_code = status_code
 
 
 class DocsMcpClient:
@@ -62,7 +69,8 @@ class DocsMcpClient:
                         },
                     )
                     raise DocsMcpError(
-                        f"docs-mcp {method} {path} failed: {resp.status_code} {resp.text[:200]}"
+                        f"docs-mcp {method} {path} failed: {resp.status_code} {resp.text[:200]}",
+                        status_code=resp.status_code,
                     )
 
                 return resp.json()
@@ -271,7 +279,27 @@ class DocsMcpClient:
                 "version": version or None,
                 "documents": documents,
             },
-            timeout=timeout,
+            timeout=INGEST_TIMEOUT if timeout is None else timeout,
+        )
+
+    async def list_crawl_results(
+        self,
+        library: str,
+        version: str | None,
+        page: int = 1,
+        page_size: int = 100,
+    ) -> dict:
+        """读取 crawlOnly 持久化的原始抓取结果（分页）。
+
+        docs-mcp 在 crawlOnly 模式下落库的页面原文缓存，用于入库前回补
+        SSE 断连期间丢失的页。version 为空/None 时走 latest（unversioned 桶）。
+        返回 {items:[{url,title,textContent,contentType,depth}], total, page, pageSize}。
+        """
+        params = {"page": str(page), "pageSize": str(page_size)}
+        return await self._call(
+            "GET",
+            f"/api/libraries/{library}/versions/{version or 'latest'}/crawl-results",
+            params=params,
         )
 
     async def ensure_library(

@@ -41,6 +41,31 @@ def ingest_crawl_task(task_id: int) -> None:
         raise
 
 
+@celery_app.task(name="doc.reconcile_crawl")
+def reconcile_crawl_tasks() -> None:
+    """周期兜底：crawling/pending 卡死同步状态，ingesting 卡死重触发入库。
+
+    修 SSE 丢事件 / 进程重启导致的永久卡死。具体阈值与逻辑见
+    crawl_task_service.reconcile_stale_tasks。
+    """
+    from services import crawl_task_service
+
+    async def _run() -> None:
+        async with get_worker_session_factory()() as session:
+            try:
+                await crawl_task_service.reconcile_stale_tasks(session)
+                await session.commit()
+            except Exception:
+                await session.rollback()
+                raise
+
+    try:
+        _run_async(_run())
+    except Exception:
+        logger.exception("celery reconcile_crawl_tasks failed")
+        raise
+
+
 @celery_app.task(name="doc.ingest_upload")
 def ingest_upload_task(record_id: int) -> None:
     """上传文档入库。"""

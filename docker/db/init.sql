@@ -1427,6 +1427,7 @@ CREATE TABLE IF NOT EXISTS aihelms.crawled_pages (
 
 CREATE INDEX IF NOT EXISTS idx_crawled_pages_task_id ON aihelms.crawled_pages(crawl_task_id);
 CREATE INDEX IF NOT EXISTS idx_crawled_pages_ingest_status ON aihelms.crawled_pages(ingest_status);
+CREATE INDEX IF NOT EXISTS idx_crawled_pages_task_ingest ON aihelms.crawled_pages(crawl_task_id, ingest_status);
 
 -- ─── 文档知识库注册表 ──────────────────────────────────────────────────
 
@@ -1470,6 +1471,7 @@ CREATE TABLE IF NOT EXISTS aihelms.documents (
 );
 
 CREATE INDEX IF NOT EXISTS idx_documents_library_version ON aihelms.documents(library, version);
+CREATE INDEX IF NOT EXISTS idx_documents_lib_ver_hash ON aihelms.documents(library, version, content_hash);
 CREATE INDEX IF NOT EXISTS idx_documents_source ON aihelms.documents(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_documents_ingest_status ON aihelms.documents(ingest_status);
 CREATE INDEX IF NOT EXISTS idx_documents_created_by ON aihelms.documents(created_by);

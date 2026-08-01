@@ -92,6 +92,11 @@ def _from_crawl(task: object) -> dict:
         "finished_at": _fmt_dt(task.finished_at),
         "can_ingest": task.status == "crawled"
         or (task.status == "failed" and task.pages_crawled > 0),
+        "is_partial": (
+            task.status in ("crawled", "ingesting", "ingested")
+            and (task.pages_total or 0) > 0
+            and (task.pages_crawled or 0) < (task.pages_total or 0)
+        ),
     }
 
 
@@ -115,6 +120,7 @@ def _from_upload(record: object) -> dict:
         "finished_at": _fmt_dt(record.finished_at),
         "can_ingest": record.status == "extracted"
         or (record.status == "failed" and bool(record.extracted_content)),
+        "is_partial": False,
     }
 
 

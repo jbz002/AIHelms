@@ -19,11 +19,30 @@ from services import crawl_task_service, doc_upload_service
 from services.docs_mcp_client import docs_mcp_client
 
 
+class _FakeResult:
+    """伪查询结果：scalar() 给 advisory lock 用，all() 给 list_urls_by_task 用。"""
+
+    def scalar(self):
+        return True
+
+    def all(self):
+        return []
+
+
 class FakeSession:
     """最小会话：repo 被 monkeypatch 后不触碰 DB。"""
 
     async def refresh(self, obj) -> None:
         pass
+
+    async def execute(self, *args, **kwargs):
+        # advisory lock（pg_try_advisory_xact_lock）与 list_urls_by_task 走此路径
+        return _FakeResult()
+
+
+async def _async_empty_crawl_results():
+    """伪 list_crawl_results：无持久化缓存，回补 no-op。"""
+    return {"items": [], "total": 0}
 
 
 def _make_record(content: str = "abc") -> DocUploadRecord:
@@ -224,6 +243,12 @@ async def test_crawl_ingest_splits_duplicate_and_new_pages(monkeypatch) -> None:
         crawl_task_service.document_library_service,
         "refresh_document_counts",
         fake_refresh_counts,
+    )
+    # 入库前 REST 回补：docs-mcp 无持久化缓存 → 返回空，回补 no-op
+    monkeypatch.setattr(
+        docs_mcp_client,
+        "list_crawl_results",
+        lambda *a, **k: _async_empty_crawl_results(),
     )
 
     await crawl_task_service.ingest_crawl_task(FakeSession(), 1)

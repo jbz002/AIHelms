@@ -52,6 +52,10 @@ celery_app.conf.beat_schedule = {
         "task": "storage_deletion_compensation.retry",
         "schedule": crontab(minute=15),
     },
+    "reconcile-crawl-tasks": {
+        "task": "doc.reconcile_crawl",
+        "schedule": 120,
+    },
 }
 
 # 显式导入 tasks 包以注册所有 celery 任务

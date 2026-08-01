@@ -332,6 +332,10 @@ defineExpose({ loadTasks })
             <Loader2 v-if="(statusConfig[task.status] ?? statusConfig.failed).spin" class="mr-1 inline h-3 w-3 animate-spin" />
             {{ (statusConfig[task.status] ?? statusConfig.failed).label }}
           </span>
+          <span v-if="task.is_partial" class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700" title="爬取中断/SSE 断连导致部分页缺失，入库前已从 docs-mcp 缓存回补；若仍不足建议重新爬取">
+            <AlertCircle class="h-3 w-3" />
+            部分页缺失
+          </span>
           <div class="flex shrink-0 items-center">
             <button
               v-if="task.source === 'external_crawl' && (task.status === 'processing' || task.status === 'failed')"
