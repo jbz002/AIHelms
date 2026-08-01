@@ -32,6 +32,7 @@ import {
   Upload,
   Code2,
   Trash2,
+  Search,
 } from 'lucide-vue-next'
 import ScrapeJobDialog from './components/ScrapeJobDialog.vue'
 import UploadDialog from './components/UploadDialog.vue'
@@ -51,6 +52,7 @@ const loading = ref(false)
 const stats = ref<IngestStats | null>(null)
 const sourceFilter = ref<string>('')
 const statusFilter = ref<string>('')
+const titleFilter = ref<string>('')
 const ingestingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
 const deletingVersion = ref(false)
@@ -139,6 +141,7 @@ async function loadDocuments(): Promise<void> {
       page.value,
       pageSize.value,
       currentVersion.value || undefined,
+      titleFilter.value || undefined,
     )
     documents.value = res.items ?? []
     total.value = res.total ?? 0
@@ -362,6 +365,13 @@ watch([sourceFilter, statusFilter], () => {
   loadDocuments()
 })
 
+let titleTimer: ReturnType<typeof setTimeout> | null = null
+watch(titleFilter, () => {
+  page.value = 1
+  if (titleTimer) clearTimeout(titleTimer)
+  titleTimer = setTimeout(() => loadDocuments(), 350)
+})
+
 watch(currentVersion, () => {
   page.value = 1
   loadDocuments()
@@ -475,6 +485,15 @@ onUnmounted(() => {
         <select v-model="statusFilter" class="rounded-md border border-gray-300 px-2 py-1 text-xs">
           <option v-for="o in ingestStatusOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
+        <div class="relative">
+          <Search class="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+          <input
+            v-model="titleFilter"
+            type="text"
+            placeholder="按标题搜索"
+            class="w-44 rounded-md border border-gray-300 py-1 pl-7 pr-2 text-xs"
+          />
+        </div>
         <button
           v-if="pendingCount > 0"
           class="ml-auto flex items-center gap-1 rounded-md bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100"

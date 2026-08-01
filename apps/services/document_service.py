@@ -119,16 +119,24 @@ async def list_documents(
     source_type: str | None = None,
     ingest_status: str | None = None,
     version: str | None = None,
+    title: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> dict:
     """查询文档列表，支持多条件过滤和分页。"""
     version = await _normalize_version_filter(library, version)
     total = await document_repo.count_all(
-        session, library, source_type, ingest_status, version
+        session, library, source_type, ingest_status, version, title
     )
     docs = await document_repo.list_all(
-        session, library, source_type, ingest_status, version, page, page_size
+        session,
+        library,
+        source_type,
+        ingest_status,
+        version,
+        title,
+        page,
+        page_size,
     )
     return {
         "items": [_serialize_document(d) for d in docs],

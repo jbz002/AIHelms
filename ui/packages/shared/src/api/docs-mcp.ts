@@ -352,6 +352,7 @@ export function getDocuments(
   page?: number,
   pageSize?: number,
   version?: string,
+  title?: string,
 ) {
   return request<DocumentListResult>('/api/v1/documents', {
     params: {
@@ -361,6 +362,7 @@ export function getDocuments(
       version,
       page,
       page_size: pageSize,
+      title,
     } as Record<string, string | number | undefined>,
   })
 }

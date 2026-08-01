@@ -195,6 +195,7 @@ async def list_all(
     source_type: str | None = None,
     ingest_status: str | None = None,
     version: str | None = None,
+    title: str | None = None,
     page: int = 1,
     page_size: int = 20,
 ) -> list[Document]:
@@ -207,6 +208,8 @@ async def list_all(
         stmt = stmt.where(Document.ingest_status == ingest_status)
     if version is not None:
         stmt = stmt.where(Document.version == version)
+    if title:
+        stmt = stmt.where(Document.title.ilike(f"%{title}%"))
     stmt = (
         stmt.order_by(Document.id.desc())
         .limit(page_size)
@@ -222,6 +225,7 @@ async def count_all(
     source_type: str | None = None,
     ingest_status: str | None = None,
     version: str | None = None,
+    title: str | None = None,
 ) -> int:
     stmt = select(func.count())
     if library:
@@ -232,6 +236,8 @@ async def count_all(
         stmt = stmt.where(Document.ingest_status == ingest_status)
     if version is not None:
         stmt = stmt.where(Document.version == version)
+    if title:
+        stmt = stmt.where(Document.title.ilike(f"%{title}%"))
     result = await session.execute(stmt)
     return result.scalar_one()
 

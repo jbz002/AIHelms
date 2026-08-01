@@ -234,6 +234,7 @@ async def list_documents(
     source_type: str | None = Query(None, max_length=20),
     ingest_status: str | None = Query(None, max_length=20),
     version: str | None = Query(None, max_length=200),
+    title: str | None = Query(None, max_length=200),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
@@ -245,6 +246,7 @@ async def list_documents(
         source_type=source_type,
         ingest_status=ingest_status,
         version=version,
+        title=title,
         page=page,
         page_size=page_size,
     )
