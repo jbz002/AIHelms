@@ -216,14 +216,14 @@ onMounted(loadData)
         <div class="max-h-[520px] overflow-auto">
           <table v-if="activeTab === 'mcp'" class="min-w-[980px] w-full text-sm">
             <thead class="sticky top-0 z-10 bg-white"><tr class="border-b border-slate-200 text-left text-xs text-slate-400">
-              <th class="py-2.5 font-medium">MCP名称</th><th class="py-2.5 font-medium">Server Name</th><th class="py-2.5 text-right font-medium">工具数</th><th class="py-2.5 font-medium">发布</th><th class="py-2.5 font-medium">状态</th><th class="py-2.5 font-medium">最后检查</th><th class="py-2.5 font-medium">错误信息</th>
+              <th class="py-2.5 font-medium">MCP名称</th><th class="py-2.5 font-medium">Server Name</th><th class="py-2.5 pr-6 text-right font-medium">工具数</th><th class="py-2.5 pl-6 font-medium">发布</th><th class="py-2.5 font-medium">状态</th><th class="py-2.5 font-medium">最后检查</th><th class="py-2.5 font-medium">错误信息</th>
             </tr></thead>
             <tbody>
               <tr v-for="row in data.mcp_servers" :key="row.id" class="border-b border-slate-50 last:border-0 hover:bg-slate-50/40">
                 <td class="py-3 font-medium text-slate-800">{{ row.name }}</td>
                 <td class="py-3 text-slate-600">{{ row.server_name }}</td>
-                <td class="py-3 text-right text-slate-700">{{ row.tool_count }}</td>
-                <td class="py-3 text-slate-600">{{ row.is_published ? '是' : '否' }}</td>
+                <td class="py-3 pr-6 text-right text-slate-700">{{ row.tool_count }}</td>
+                <td class="py-3 pl-6 text-slate-600">{{ row.is_published ? '是' : '否' }}</td>
                 <td class="py-3"><span class="rounded-full border px-2 py-0.5 text-xs" :class="stateClass(['healthy', 'success', 'online', 'ok'].includes(row.status) ? 'healthy' : row.status === 'unhealthy' ? 'danger' : 'unknown')">{{ mcpStatusLabel(row.status) }}</span></td>
                 <td class="py-3 text-slate-600">{{ formatDateTime(row.last_check) }}</td>
                 <td class="py-3 text-slate-500">{{ row.error || '--' }}</td>

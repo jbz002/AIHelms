@@ -97,7 +97,7 @@
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
                     <button v-if="item.main_key" class="text-xs text-purple-600 hover:text-purple-800" @click="handleEdit(item.main_key!)">编辑</button>
-                    <button class="text-xs text-purple-600 hover:text-purple-800" @click="handleCreateForUser(item.user.id, item.main_key)">+场景Key</button>
+                    <button class="text-xs text-purple-600 hover:text-purple-800" @click="handleCreateForUser(item.user.id, item.main_key)">+Key</button>
                   </div>
                 </td>
               </tr>
@@ -219,7 +219,7 @@
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
                     <button v-if="item.main_key" class="text-xs text-purple-600 hover:text-purple-800" @click="handleEdit(item.main_key!)">编辑</button>
-                    <button class="text-xs text-purple-600 hover:text-purple-800" @click="handleCreateForOwner('department', item.department.id, item.main_key)">+场景Key</button>
+                    <button class="text-xs text-purple-600 hover:text-purple-800" @click="handleCreateForOwner('department', item.department.id, item.main_key)">+Key</button>
                   </div>
                 </td>
               </tr>
@@ -354,7 +354,7 @@
                 <td class="px-4 py-3">
                   <div class="flex items-center gap-2">
                     <button v-if="item.main_key" class="text-xs text-purple-600 hover:text-purple-800" @click="handleEdit(item.main_key!)">编辑</button>
-                    <button class="text-xs text-purple-600 hover:text-purple-800" @click="handleCreateForOwner('project', item.project.id, item.main_key)">+场景Key</button>
+                    <button class="text-xs text-purple-600 hover:text-purple-800" @click="handleCreateForOwner('project', item.project.id, item.main_key)">+Key</button>
                   </div>
                 </td>
               </tr>

@@ -30,7 +30,7 @@ function handleLogout(): void {
     </div>
     <div class="flex items-center gap-2 sm:gap-4">
       <AdminMcpStatus />
-      <span class="hidden text-sm text-slate-600 sm:inline">{{ currentUser?.username }}</span>
+      <span class="hidden text-sm text-slate-600 sm:inline">{{ currentUser?.display_name || currentUser?.username }}</span>
       <button
         class="rounded-lg px-3 py-1.5 text-sm text-slate-600 transition-colors hover:bg-slate-100/80"
         @click="handleLogout"
