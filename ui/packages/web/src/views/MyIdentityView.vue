@@ -27,9 +27,9 @@ const mcpNames = ref<Record<number, string>>({})
 const skillNames = ref<Record<number, string>>({})
 const modelIconUrls = ref<Record<string, string>>({})
 const isLoading = ref(true)
-const copied = ref(false)
 const showFullKey = ref(false)
 const endpointUrl = ref('')
+const copiedField = ref('')
 
 const maskedKey = computed(() => {
   const val = mainKey.value?.key_value || mainKey.value?.litellm_key_id
@@ -40,6 +40,10 @@ const maskedKey = computed(() => {
 const fullKey = computed(() => mainKey.value?.key_value || mainKey.value?.litellm_key_id || '')
 
 const displayKey = computed(() => showFullKey.value ? fullKey.value : maskedKey.value)
+
+const openaiBaseUrl = computed(() => endpointUrl.value ? `${endpointUrl.value}/v1` : '')
+
+const anthropicBaseUrl = computed(() => endpointUrl.value)
 
 const budgetDisplay = computed(() => {
   if (!mainKey.value) return '无限制'
@@ -108,14 +112,14 @@ const chartOption = computed(() => ({
   }],
 }))
 
-async function handleCopy(): Promise<void> {
-  if (!fullKey.value) return
+async function copyText(text: string, field: string): Promise<void> {
+  if (!text) return
   try {
     if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(fullKey.value)
+      await navigator.clipboard.writeText(text)
     } else {
       const ta = document.createElement('textarea')
-      ta.value = fullKey.value
+      ta.value = text
       ta.style.position = 'fixed'
       ta.style.opacity = '0'
       document.body.appendChild(ta)
@@ -123,8 +127,8 @@ async function handleCopy(): Promise<void> {
       document.execCommand('copy')
       document.body.removeChild(ta)
     }
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 2000)
+    copiedField.value = field
+    setTimeout(() => { if (copiedField.value === field) copiedField.value = '' }, 2000)
   } catch {
     /* ignore */
   }
@@ -234,12 +238,38 @@ onMounted(async () => {
                     <EyeOff v-if="showFullKey" class="h-4 w-4" />
                     <Eye v-else class="h-4 w-4" />
                   </button>
-                  <button @click="handleCopy"
+                  <button @click="copyText(fullKey, 'key')"
                     class="flex items-center gap-1 rounded-lg border border-purple-200/60 bg-white px-3 py-1.5 text-xs font-medium text-purple-700 transition-colors hover:bg-purple-50">
-                    <Check v-if="copied" class="h-3 w-3 text-green-600" />
+                    <Check v-if="copiedField === 'key'" class="h-3 w-3 text-green-600" />
                     <Copy v-else class="h-3 w-3" />
-                    {{ copied ? '已复制' : '复制' }}
+                    {{ copiedField === 'key' ? '已复制' : '复制' }}
                   </button>
+                </div>
+              </div>
+
+              <!-- Base URL -->
+              <div v-if="anthropicBaseUrl" class="mt-3 grid grid-cols-1 gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2">
+                <div>
+                  <div class="text-[10px] font-bold tracking-[1px] text-[#7B61FF]">BASE URL · OpenAI</div>
+                  <div class="mt-1 flex items-center gap-1.5">
+                    <code class="flex-1 truncate text-xs font-bold text-gray-900">{{ openaiBaseUrl }}</code>
+                    <button @click="copyText(openaiBaseUrl, 'openai')"
+                      class="flex shrink-0 items-center justify-center rounded-md border border-slate-200/60 bg-white p-1 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700">
+                      <Check v-if="copiedField === 'openai'" class="h-3 w-3 text-green-600" />
+                      <Copy v-else class="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <div class="text-[10px] font-bold tracking-[1px] text-[#7B61FF]">BASE URL · Anthropic</div>
+                  <div class="mt-1 flex items-center gap-1.5">
+                    <code class="flex-1 truncate text-xs font-bold text-gray-900">{{ anthropicBaseUrl }}</code>
+                    <button @click="copyText(anthropicBaseUrl, 'anthropic')"
+                      class="flex shrink-0 items-center justify-center rounded-md border border-slate-200/60 bg-white p-1 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700">
+                      <Check v-if="copiedField === 'anthropic'" class="h-3 w-3 text-green-600" />
+                      <Copy v-else class="h-3 w-3" />
+                    </button>
+                  </div>
                 </div>
               </div>
 
