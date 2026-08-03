@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import type { DocTask, DocTaskSource, DocTaskStatus, CrawledPage } from '@aihelms/shared'
 import {
   getDocTasks,
@@ -50,6 +50,24 @@ const contentExpandedKey = ref<string | null>(null)
 const contentLoadingKey = ref<string | null>(null)
 const contentCache = ref<Record<string, string>>({})
 const copiedKey = ref<string | null>(null)
+
+const pollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
+const IN_FLIGHT_STATUSES = new Set<DocTaskStatus>(['pending', 'processing', 'ingesting'])
+
+function schedulePoll(): void {
+  if (pollTimer.value) return
+  pollTimer.value = setTimeout(async () => {
+    pollTimer.value = null
+    await loadTasks()
+  }, 2000)
+}
+
+function stopPoll(): void {
+  if (pollTimer.value) {
+    clearTimeout(pollTimer.value)
+    pollTimer.value = null
+  }
+}
 
 const statusConfig: Record<DocTaskStatus, { label: string; cls: string; spin: boolean }> = {
   pending: { label: '等待中', cls: 'bg-gray-100 text-gray-700', spin: false },
@@ -122,6 +140,13 @@ function displayUrl(currentUrl: string, sourceUrl: string): string {
   return currentUrl
 }
 
+function partialHint(task: DocTask): string {
+  const parts: string[] = []
+  if (task.pages_backfilled) parts.push(`${task.pages_backfilled} 页为 SSE 中断后从 docs-mcp 回补`)
+  if (task.pages_empty) parts.push(`${task.pages_empty} 页内容为空未向量化`)
+  return `部分页未完整入库：${parts.join('；')}。非爬取异常，已入库内容完整可用`
+}
+
 async function loadTasks(): Promise<void> {
   loading.value = true
   try {
@@ -140,6 +165,13 @@ async function loadTasks(): Promise<void> {
     total.value = 0
   } finally {
     loading.value = false
+  }
+  // 有 in-flight 任务时轮询(配合后端分阶段 commit,可见 ingesting 态与入库进度);
+  // 全稳态时停止。SSE 事件仍会触发 loadTasks,双通道保障。
+  if (tasks.value.some((t) => IN_FLIGHT_STATUSES.has(t.status))) {
+    schedulePoll()
+  } else {
+    stopPoll()
   }
 }
 
@@ -264,10 +296,13 @@ async function handleCopyContent(task: DocTask): Promise<void> {
 
 watch([sourceFilter, statusFilter, dateFilter], () => {
   page.value = 1
+  stopPoll()
   loadTasks()
 })
 
 onMounted(loadTasks)
+
+onUnmounted(stopPoll)
 
 defineExpose({ loadTasks })
 </script>
@@ -332,9 +367,9 @@ defineExpose({ loadTasks })
             <Loader2 v-if="(statusConfig[task.status] ?? statusConfig.failed).spin" class="mr-1 inline h-3 w-3 animate-spin" />
             {{ (statusConfig[task.status] ?? statusConfig.failed).label }}
           </span>
-          <span v-if="task.is_partial" class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700" title="爬取中断/SSE 断连导致部分页缺失，入库前已从 docs-mcp 缓存回补；若仍不足建议重新爬取">
+          <span v-if="task.is_partial" class="inline-flex shrink-0 items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700" :title="partialHint(task)">
             <AlertCircle class="h-3 w-3" />
-            部分页缺失
+            部分页未入库
           </span>
           <div class="flex shrink-0 items-center">
             <button

@@ -16,7 +16,7 @@ from repositories import (
     document_repo,
 )
 from services import crawl_task_service, doc_upload_service
-from services.docs_mcp_client import docs_mcp_client
+from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
 
 class _FakeResult:
@@ -35,8 +35,11 @@ class FakeSession:
     async def refresh(self, obj) -> None:
         pass
 
+    async def commit(self) -> None:
+        pass
+
     async def execute(self, *args, **kwargs):
-        # advisory lock（pg_try_advisory_xact_lock）与 list_urls_by_task 走此路径
+        # advisory lock（pg_try_advisory_lock）与 list_urls_by_task 走此路径
         return _FakeResult()
 
 
@@ -261,3 +264,145 @@ async def test_crawl_ingest_splits_duplicate_and_new_pages(monkeypatch) -> None:
     assert len(ingest_docs) == 1
     assert [d["url"] for d in ingest_docs[0]] == ["http://b"]
     assert "ingested" in status_updates
+
+
+@pytest.mark.asyncio
+async def test_create_crawl_task_rejects_active_duplicate(monkeypatch) -> None:
+    """同 (library, version) 已有 active 任务 → 抛 CrawlTaskConflictError，不 enqueue。"""
+
+    class _ActivePresent:
+        def scalar_one(self) -> int:
+            return 1  # 已有 1 个 active crawl task
+
+    session = FakeSession()
+
+    async def fake_execute(*args, **kwargs):
+        return _ActivePresent()
+
+    session.execute = fake_execute  # type: ignore[method-assign]
+
+    enqueue_calls: list = []
+
+    async def fake_enqueue(**kwargs):
+        enqueue_calls.append(kwargs)
+        return {"jobId": "j1"}
+
+    monkeypatch.setattr(docs_mcp_client, "enqueue_scrape_job", fake_enqueue)
+
+    with pytest.raises(crawl_task_service.CrawlTaskConflictError):
+        await crawl_task_service.create_crawl_task(
+            session=session,
+            url="http://a",
+            library="api",
+            version="1.0.0",
+            scraper_options={},
+            created_by=None,
+        )
+    assert enqueue_calls == []  # 拒绝创建,未 enqueue docs-mcp job
+
+
+@pytest.mark.asyncio
+async def test_sync_404_salvages_when_pages_exist(monkeypatch) -> None:
+    """docs-mcp job 404 但 crawl_results 有页 → salvage 置 crawled 触发 ingest,不标 failed。"""
+    task = CrawlTask(
+        id=5,
+        library="api",
+        version="1.0.0",
+        status="crawling",
+        job_id="gone-job",
+        auto_ingest=True,
+        pages_crawled=0,
+        created_by=None,
+    )
+
+    async def fake_find(session, tid):
+        return task
+
+    async def fake_get_job_detail(job_id):
+        raise DocsMcpError("not found", status_code=404)
+
+    backfill_called: list = []
+
+    async def fake_backfill(session, t):
+        t.pages_crawled = 3  # salvage 到 3 页
+        backfill_called.append(t.id)
+
+    status_updates: list = []
+
+    async def fake_update_status(session, tid, status, **kw):
+        task.status = status
+        status_updates.append(status)
+
+    dispatched: list = []
+
+    class _FakeDelay:
+        def delay(self, tid):
+            dispatched.append(tid)
+
+    import tasks.doc_tasks as doc_tasks_mod
+
+    monkeypatch.setattr(crawl_task_repo, "find_by_id", fake_find)
+    monkeypatch.setattr(docs_mcp_client, "get_job_detail", fake_get_job_detail)
+    monkeypatch.setattr(
+        crawl_task_service, "_backfill_pages_from_docs_mcp", fake_backfill
+    )
+    monkeypatch.setattr(crawl_task_repo, "update_status", fake_update_status)
+    monkeypatch.setattr(doc_tasks_mod, "ingest_crawl_task", _FakeDelay())
+
+    result = await crawl_task_service.sync_task_status(FakeSession(), 5)
+
+    assert backfill_called == [5]
+    assert "crawled" in status_updates
+    assert "failed" not in status_updates
+    assert dispatched == [5]  # auto_ingest → 救回后触发入库
+    assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_sync_404_fails_and_clears_when_no_salvage(monkeypatch) -> None:
+    """docs-mcp job 404 且 crawl_results 无页 → 标 failed + 清理 docs-mcp 悬空 crawl_results。"""
+    task = CrawlTask(
+        id=6,
+        library="api",
+        version="1.0.0",
+        status="crawling",
+        job_id="gone-job",
+        auto_ingest=False,
+        pages_crawled=0,
+        created_by=None,
+    )
+
+    async def fake_find(session, tid):
+        return task
+
+    async def fake_get_job_detail(job_id):
+        raise DocsMcpError("not found", status_code=404)
+
+    async def fake_backfill(session, t):
+        # salvage 不到任何页,pages_crawled 仍 0
+        return None
+
+    status_updates: list = []
+
+    async def fake_update_status(session, tid, status, **kw):
+        task.status = status
+        status_updates.append(status)
+
+    clear_calls: list = []
+
+    async def fake_clear(library, version):
+        clear_calls.append((library, version))
+
+    monkeypatch.setattr(crawl_task_repo, "find_by_id", fake_find)
+    monkeypatch.setattr(docs_mcp_client, "get_job_detail", fake_get_job_detail)
+    monkeypatch.setattr(
+        crawl_task_service, "_backfill_pages_from_docs_mcp", fake_backfill
+    )
+    monkeypatch.setattr(crawl_task_repo, "update_status", fake_update_status)
+    monkeypatch.setattr(docs_mcp_client, "clear_crawl_results", fake_clear)
+
+    result = await crawl_task_service.sync_task_status(FakeSession(), 6)
+
+    assert "failed" in status_updates
+    assert clear_calls == [("api", "1.0.0")]  # 清理 docs-mcp 悬空缓存
+    assert result is not None

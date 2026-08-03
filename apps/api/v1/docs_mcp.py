@@ -669,6 +669,8 @@ async def create_crawl_task(
             )
             await session.commit()
             return {"code": 200, "message": "爬取任务创建成功", "data": result}
+        except crawl_task_service.CrawlTaskConflictError as e:
+            return {"code": 409, "message": str(e), "data": None}
         except ValueError as e:
             return {"code": 400, "message": str(e), "data": None}
 

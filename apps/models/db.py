@@ -1456,6 +1456,8 @@ class CrawlTask(Base):
     pages_crawled: Mapped[int] = mapped_column(Integer, default=0)
     current_url: Mapped[str] = mapped_column(Text, default="")
     pages_ingested: Mapped[int] = mapped_column(Integer, default=0)
+    pages_backfilled: Mapped[int] = mapped_column(Integer, default=0)
+    pages_empty: Mapped[int] = mapped_column(Integer, default=0)
     error_message: Mapped[str] = mapped_column(Text, default="")
     scraper_options: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_by: Mapped[int | None] = mapped_column(

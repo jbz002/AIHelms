@@ -302,6 +302,17 @@ class DocsMcpClient:
             params=params,
         )
 
+    async def clear_crawl_results(self, library: str, version: str | None) -> None:
+        """清空 docs-mcp 侧 crawlOnly 持久化的抓取结果缓存。
+
+        用于任务判废（docs-mcp 重启 job 丢失且本地无 salvage 数据）后清理悬空缓存，
+        避免与未来同 version 爬取的 crawl_results 混淆。version 为空/None 时走 latest。
+        """
+        await self._call(
+            "DELETE",
+            f"/api/libraries/{library}/versions/{version or 'latest'}/crawl-results",
+        )
+
     async def ensure_library(
         self,
         library: str,

@@ -2,10 +2,20 @@
 
 from datetime import datetime
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import case, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import CrawlTask
+
+# 状态优先级:单向状态机 guard 用(pending→crawling→crawled→ingesting→ingested)。
+# update_status 只允许前进或转 failed,禁止回退(防 SSE/beat 竞态把 ingesting 写回 crawled)。
+_STATUS_PRIORITY: dict[str, int] = {
+    "pending": 0,
+    "crawling": 1,
+    "crawled": 2,
+    "ingesting": 3,
+    "ingested": 4,
+}
 
 
 async def create(session: AsyncSession, task: CrawlTask) -> CrawlTask:
@@ -68,9 +78,27 @@ async def update_status(
         values["started_at"] = datetime.now()
     if status in ("crawled", "ingested", "failed"):
         values["finished_at"] = datetime.now()
-    await session.execute(
-        update(CrawlTask).where(CrawlTask.id == task_id).values(**values)
-    )
+
+    # 状态机单向 guard:status 只能前进或转 failed,禁止回退。
+    # 防 sync_task_status 与 SSE 竞态(读后网络往返期间状态已前进)把 ingesting 写回 crawled。
+    # failed↔任意 自由(支持失败重试)。0 行 update 时 started_at/finished_at 也不动。
+    where_clauses: list[object] = [CrawlTask.id == task_id]
+    if status != "failed":
+        cur_priority = case(
+            (CrawlTask.status == "pending", 0),
+            (CrawlTask.status == "crawling", 1),
+            (CrawlTask.status == "crawled", 2),
+            (CrawlTask.status == "ingesting", 3),
+            (CrawlTask.status == "ingested", 4),
+            else_=0,
+        )
+        where_clauses.append(
+            or_(
+                CrawlTask.status == "failed",
+                cur_priority <= _STATUS_PRIORITY.get(status, 0),
+            )
+        )
+    await session.execute(update(CrawlTask).where(*where_clauses).values(**values))
     await session.flush()
 
 
@@ -90,6 +118,8 @@ async def update_progress(
     pages_crawled: int | None = None,
     pages_ingested: int | None = None,
     current_url: str | None = None,
+    pages_backfilled: int | None = None,
+    pages_empty: int | None = None,
 ) -> None:
     """Update crawl task progress fields. Only non-None values are applied."""
     values: dict[str, object] = {}
@@ -101,6 +131,10 @@ async def update_progress(
         values["pages_ingested"] = pages_ingested
     if current_url is not None:
         values["current_url"] = current_url
+    if pages_backfilled is not None:
+        values["pages_backfilled"] = pages_backfilled
+    if pages_empty is not None:
+        values["pages_empty"] = pages_empty
     if values:
         await session.execute(
             update(CrawlTask).where(CrawlTask.id == task_id).values(**values)

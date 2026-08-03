@@ -175,14 +175,16 @@ async function loadStats(): Promise<void> {
   }
 }
 
-async function loadLibrary(): Promise<void> {
-  libraryLoading.value = true
+// silent=true：SSE 后台刷新用，不动 libraryLoading，避免爬取时进度事件频繁触发导致
+// 版本下拉 / 删除版本按钮的 disabled 状态反复跳变（闪烁）。
+async function loadLibrary(silent = false): Promise<void> {
+  if (!silent) libraryLoading.value = true
   try {
     library.value = await getDocsMcpLibraryDetail(libraryName.value)
   } catch (e) {
     toast.error((e as Error).message || '加载文档库失败')
   } finally {
-    libraryLoading.value = false
+    if (!silent) libraryLoading.value = false
   }
 }
 
@@ -339,24 +341,24 @@ function connectSSE(): void {
   const url = getDocsMcpEventSourceUrl()
   eventSource = new EventSource(url)
   eventSource.addEventListener('job-status-change', () => {
-    loadLibrary()
+    loadLibrary(true)
     loadDocuments()
     loadStats()
   })
   eventSource.addEventListener('job-progress', () => {
-    loadLibrary()
+    loadLibrary(true)
     loadDocuments()
     loadStats()
   })
   eventSource.addEventListener('job-list-change', () => {
-    loadLibrary()
+    loadLibrary(true)
     loadDocuments()
     loadStats()
   })
   // 上传走 Celery 异步：Document 行在后台提取/入库后才落库，
   // 完成时 docs-mcp 发 library-change（爬取发 job-* 上面已订阅），此处兜底重载。
   eventSource.addEventListener('library-change', () => {
-    loadLibrary()
+    loadLibrary(true)
     loadDocuments()
     loadStats()
   })

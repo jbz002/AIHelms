@@ -108,6 +108,24 @@ async def mark_duplicate(session: AsyncSession, page_ids: list[int]) -> None:
     await session.flush()
 
 
+async def mark_failed(session: AsyncSession, page_ids: list[int]) -> None:
+    """标记页面入库失败（如内容为空未向量化），get_for_ingest 不再取这些页。
+
+    对标 mark_duplicate/mark_ingested。空内容页 docs-mcp addDocuments 不写向量，
+    AIHelms 不应标 ingested（否则双边对「是否真入库」不一致），改标 failed 如实暴露。
+    """
+    from sqlalchemy import update
+
+    if not page_ids:
+        return
+    await session.execute(
+        update(CrawledPage)
+        .where(CrawledPage.id.in_(page_ids))
+        .values(ingest_status="failed")
+    )
+    await session.flush()
+
+
 async def delete_by_task_id(session: AsyncSession, crawl_task_id: int) -> None:
     from sqlalchemy import delete
 

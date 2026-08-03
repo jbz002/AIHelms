@@ -65,7 +65,7 @@ def _from_crawl(task: object) -> dict:
     elif task.status == "ingested":
         progress_text = f"已入库 {task.pages_ingested} 页"
     else:
-        progress_text = f"{task.pages_crawled}/{task.pages_total} 页"
+        progress_text = f"{task.pages_crawled} 页"
     logger.debug(
         "_from_crawl: task=%s status=%s progress_text=%s current_url=%s",
         task.id,
@@ -92,11 +92,9 @@ def _from_crawl(task: object) -> dict:
         "finished_at": _fmt_dt(task.finished_at),
         "can_ingest": task.status == "crawled"
         or (task.status == "failed" and task.pages_crawled > 0),
-        "is_partial": (
-            task.status in ("crawled", "ingesting", "ingested")
-            and (task.pages_total or 0) > 0
-            and (task.pages_crawled or 0) < (task.pages_total or 0)
-        ),
+        "is_partial": (task.pages_backfilled or 0) > 0 or (task.pages_empty or 0) > 0,
+        "pages_backfilled": task.pages_backfilled or 0,
+        "pages_empty": task.pages_empty or 0,
     }
 
 

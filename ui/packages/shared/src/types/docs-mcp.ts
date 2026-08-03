@@ -209,6 +209,8 @@ export interface DocTask {
   finished_at: string | null
   can_ingest: boolean
   is_partial: boolean
+  pages_backfilled: number
+  pages_empty: number
 }
 
 export interface DocTaskListResult {
