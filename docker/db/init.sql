@@ -370,6 +370,9 @@ CREATE TABLE IF NOT EXISTS aihelms.models (
     supports_parallel_function_calling BOOLEAN DEFAULT false,
     supports_tool_choice BOOLEAN DEFAULT false,
     litellm_provider VARCHAR(64) DEFAULT '',
+    deprecation_date DATE,                       -- 模型弃用日期（注册表回填，过期则前端警示）
+    registry_rpm INT,                            -- 注册表声明的 provider 速率硬限 RPM（只读快照，非平台限流配置）
+    registry_tpm INT,                            -- 注册表声明的 provider 速率硬限 TPM（只读快照，非平台限流配置）
     registry_synced_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -611,6 +614,7 @@ CREATE TABLE IF NOT EXISTS aihelms.llm_call_logs (
     total_tokens INT DEFAULT 0,
     cache_read_tokens INT DEFAULT 0,
     cache_creation_tokens INT DEFAULT 0,
+    reasoning_tokens INT DEFAULT 0,
     external_cost NUMERIC(12,6) DEFAULT 0,
     internal_cost NUMERIC(12,6) DEFAULT 0,
     duration_ms INT,
@@ -1135,6 +1139,7 @@ CREATE TABLE IF NOT EXISTS aihelms.cost_summary_daily (
     cache_tokens BIGINT DEFAULT 0,
     cache_read_tokens BIGINT DEFAULT 0,
     cache_creation_tokens BIGINT DEFAULT 0,
+    reasoning_tokens BIGINT DEFAULT 0,
     external_cost NUMERIC(14,6) DEFAULT 0,
     internal_cost NUMERIC(14,6) DEFAULT 0,
     total_duration_ms BIGINT DEFAULT 0,

@@ -126,6 +126,10 @@ const registryLoading = ref(false)
 const formMaxInputTokens = ref('')
 const formMaxOutputTokens = ref('')
 const formLitellmProvider = ref('')
+const formDeprecationDate = ref('')
+const formRegistryRpm = ref<number | null>(null)
+const formRegistryTpm = ref<number | null>(null)
+const formRegistryEndpoints = ref<string[]>([])
 const formSupports = ref({
   vision: false,
   function_calling: false,
@@ -157,12 +161,14 @@ const deployInputCostPerToken = ref('')
 const deployOutputCostPerToken = ref('')
 const deployCacheReadCostPerToken = ref('')
 const deployCacheCreationCostPerToken = ref('')
+const deployReasoningCostPerToken = ref('')
 const deployCostPerCall = ref('')
 // 内部结算定价（Token: ¥/百万token, Token Plan: ¥/次）
 const deployInternalInputCost = ref('')
 const deployInternalOutputCost = ref('')
 const deployInternalCacheReadCost = ref('')
 const deployInternalCacheCreationCost = ref('')
+const deployInternalReasoningCost = ref('')
 const deployInternalCostPerCall = ref('')
 // 高级
 const deployUseInPassThrough = ref(false)
@@ -228,6 +234,12 @@ const SUPPORTS_TO_CAPABILITY: Record<string, ModelCapability> = {
   response_schema: 'response_schema',
   parallel_function_calling: 'parallel_tool_calling',
   tool_choice: 'tool_choice',
+  prompt_caching: 'prompt_caching',
+  pdf_input: 'pdf_input',
+  web_search: 'web_search',
+  system_messages: 'system_messages',
+  audio_input: 'audio_input',
+  audio_output: 'audio_output',
 }
 
 const formFilteredCredentials = computed(() => {
@@ -470,6 +482,10 @@ function handleCreateModel(): void {
   formMaxInputTokens.value = ''
   formMaxOutputTokens.value = ''
   formLitellmProvider.value = ''
+  formDeprecationDate.value = ''
+  formRegistryRpm.value = null
+  formRegistryTpm.value = null
+  formRegistryEndpoints.value = []
   formSupports.value = {
     vision: false,
     function_calling: false,
@@ -503,6 +519,10 @@ function handleEditModel(): void {
       ? String(selectedModel.value.max_output_tokens)
       : ''
   formLitellmProvider.value = selectedModel.value.litellm_provider || ''
+  formDeprecationDate.value = selectedModel.value.deprecation_date || ''
+  formRegistryRpm.value = selectedModel.value.registry_rpm ?? null
+  formRegistryTpm.value = selectedModel.value.registry_tpm ?? null
+  formRegistryEndpoints.value = []
   formSupports.value = {
     vision: !!selectedModel.value.supports_vision,
     function_calling: !!selectedModel.value.supports_function_calling,
@@ -555,6 +575,10 @@ async function handleRegistryFill(): Promise<void> {
       }
       formMode.value = entry.mode
     }
+    formDeprecationDate.value = entry.deprecation_date || ''
+    formRegistryRpm.value = entry.rpm ?? null
+    formRegistryTpm.value = entry.tpm ?? null
+    formRegistryEndpoints.value = entry.supported_endpoints || []
     formSupports.value = {
       vision: !!entry.supports_vision,
       function_calling: !!entry.supports_function_calling,
@@ -571,6 +595,12 @@ async function handleRegistryFill(): Promise<void> {
       response_schema: entry.supports_response_schema,
       parallel_function_calling: entry.supports_parallel_function_calling,
       tool_choice: entry.supports_tool_choice,
+      prompt_caching: entry.supports_prompt_caching,
+      pdf_input: entry.supports_pdf_input,
+      web_search: entry.supports_web_search,
+      system_messages: entry.supports_system_messages,
+      audio_input: entry.supports_audio_input,
+      audio_output: entry.supports_audio_output,
     }
     const mapped: ModelCapability[] = []
     for (const [k, cap] of Object.entries(SUPPORTS_TO_CAPABILITY)) {
@@ -585,6 +615,39 @@ async function handleRegistryFill(): Promise<void> {
     errorMessage.value = e instanceof Error ? e.message : '查询失败'
   } finally {
     registryLoading.value = false
+  }
+}
+
+async function handleFetchOfficialPricing(): Promise<void> {
+  const name = selectedModel.value?.model_id
+  if (!name) {
+    errorMessage.value = '该模型无 model_id，无法查注册表'
+    return
+  }
+  errorMessage.value = ''
+  try {
+    const entry = await registryLookup(name)
+    if (!entry) {
+      errorMessage.value = `注册表无「${name}」官方定价`
+      return
+    }
+    if (entry.input_cost_per_million_tokens_cny != null) {
+      deployInputCostPerToken.value = String(entry.input_cost_per_million_tokens_cny)
+    }
+    if (entry.output_cost_per_million_tokens_cny != null) {
+      deployOutputCostPerToken.value = String(entry.output_cost_per_million_tokens_cny)
+    }
+    if (entry.cache_read_input_cost_per_million_tokens_cny != null) {
+      deployCacheReadCostPerToken.value = String(entry.cache_read_input_cost_per_million_tokens_cny)
+    }
+    if (entry.cache_creation_input_cost_per_million_tokens_cny != null) {
+      deployCacheCreationCostPerToken.value = String(entry.cache_creation_input_cost_per_million_tokens_cny)
+    }
+    if (entry.output_cost_per_reasoning_token_per_million_tokens_cny != null) {
+      deployReasoningCostPerToken.value = String(entry.output_cost_per_reasoning_token_per_million_tokens_cny)
+    }
+  } catch (e) {
+    errorMessage.value = e instanceof Error ? e.message : '查询失败'
   }
 }
 
@@ -618,6 +681,9 @@ async function handleSubmitModel(): Promise<void> {
         supports_parallel_function_calling: formSupports.value.parallel_function_calling,
         supports_tool_choice: formSupports.value.tool_choice,
         litellm_provider: formLitellmProvider.value || undefined,
+        deprecation_date: formDeprecationDate.value || null,
+        registry_rpm: formRegistryRpm.value,
+        registry_tpm: formRegistryTpm.value,
       })
       await fetchModelDetail(selectedModel.value.id)
     } else {
@@ -638,6 +704,9 @@ async function handleSubmitModel(): Promise<void> {
         supports_parallel_function_calling: formSupports.value.parallel_function_calling,
         supports_tool_choice: formSupports.value.tool_choice,
         litellm_provider: formLitellmProvider.value || undefined,
+        deprecation_date: formDeprecationDate.value || null,
+        registry_rpm: formRegistryRpm.value,
+        registry_tpm: formRegistryTpm.value,
       })
     }
     showModelForm.value = false
@@ -681,11 +750,13 @@ function resetDeployForm(): void {
   deployOutputCostPerToken.value = ''
   deployCacheReadCostPerToken.value = ''
   deployCacheCreationCostPerToken.value = ''
+  deployReasoningCostPerToken.value = ''
   deployCostPerCall.value = ''
   deployInternalInputCost.value = ''
   deployInternalOutputCost.value = ''
   deployInternalCacheReadCost.value = ''
   deployInternalCacheCreationCost.value = ''
+  deployInternalReasoningCost.value = ''
   deployInternalCostPerCall.value = ''
   deployUseInPassThrough.value = false
   deployDropParams.value = false
@@ -734,6 +805,7 @@ function handleEditDeployment(d: Deployment): void {
   deployOutputCostPerToken.value = params.output_cost_per_token ? String(params.output_cost_per_token) : ''
   deployCacheReadCostPerToken.value = params.cache_read_input_token_cost ? String(params.cache_read_input_token_cost) : ''
   deployCacheCreationCostPerToken.value = params.cache_creation_input_token_cost ? String(params.cache_creation_input_token_cost) : ''
+  deployReasoningCostPerToken.value = params.output_cost_per_reasoning_token ? String(params.output_cost_per_reasoning_token) : ''
   deployCostPerCall.value = d.cost_per_call ? String(d.cost_per_call) : ''
   // 内部定价从 model_info 中读取
   const mInfo = (d.model_info || {}) as Record<string, unknown>
@@ -741,6 +813,7 @@ function handleEditDeployment(d: Deployment): void {
   deployInternalOutputCost.value = mInfo.internal_output_cost ? String(mInfo.internal_output_cost) : ''
   deployInternalCacheReadCost.value = mInfo.internal_cache_read_cost ? String(mInfo.internal_cache_read_cost) : ''
   deployInternalCacheCreationCost.value = mInfo.internal_cache_creation_cost ? String(mInfo.internal_cache_creation_cost) : ''
+  deployInternalReasoningCost.value = mInfo.internal_output_reasoning_cost ? String(mInfo.internal_output_reasoning_cost) : ''
   deployInternalCostPerCall.value = mInfo.internal_cost_per_call ? String(mInfo.internal_cost_per_call) : ''
   deployUseInPassThrough.value = params.use_in_pass_through === true
   deployDropParams.value = params.drop_params === true
@@ -761,6 +834,7 @@ function buildLitellmParams(): Record<string, unknown> {
   if (deployOutputCostPerToken.value) litellmParams.output_cost_per_token = Number(deployOutputCostPerToken.value)
   if (deployCacheReadCostPerToken.value) litellmParams.cache_read_input_token_cost = Number(deployCacheReadCostPerToken.value)
   if (deployCacheCreationCostPerToken.value) litellmParams.cache_creation_input_token_cost = Number(deployCacheCreationCostPerToken.value)
+  if (deployReasoningCostPerToken.value) litellmParams.output_cost_per_reasoning_token = Number(deployReasoningCostPerToken.value)
   litellmParams.use_in_pass_through = deployUseInPassThrough.value
   if (deployDropParams.value) litellmParams.drop_params = true
   return litellmParams
@@ -788,6 +862,7 @@ async function handleSubmitDeployment(): Promise<void> {
     if (deployInternalOutputCost.value) modelInfo.internal_output_cost = Number(deployInternalOutputCost.value)
     if (deployInternalCacheReadCost.value) modelInfo.internal_cache_read_cost = Number(deployInternalCacheReadCost.value)
     if (deployInternalCacheCreationCost.value) modelInfo.internal_cache_creation_cost = Number(deployInternalCacheCreationCost.value)
+    if (deployInternalReasoningCost.value) modelInfo.internal_output_reasoning_cost = Number(deployInternalReasoningCost.value)
   } else {
     if (deployInternalCostPerCall.value) modelInfo.internal_cost_per_call = Number(deployInternalCostPerCall.value)
   }
@@ -1492,6 +1567,15 @@ onMounted(() => {
               <button type="button" :disabled="registryLoading" class="shrink-0 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-50" @click="handleRegistryFill">{{ registryLoading ? '查询中' : '查询' }}</button>
             </div>
             <p class="mt-1 text-xs text-slate-400">平台内置注册表快照,未覆盖模型请手填下方属性</p>
+            <div v-if="formDeprecationDate" class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <span class="text-xs font-medium text-amber-700">注意：该模型注册表标注弃用日期 {{ formDeprecationDate }}，建议尽快迁移替代方案</span>
+            </div>
+            <div v-if="formRegistryRpm || formRegistryTpm" class="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+              <span class="text-xs font-medium text-sky-700">官方限流：RPM {{ formRegistryRpm ?? '—' }} / TPM {{ formRegistryTpm ?? '—' }}（provider 对该模型的速率硬限参考，非平台限流配置）</span>
+            </div>
+            <div v-if="formRegistryEndpoints.length" class="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <span class="text-xs font-medium text-slate-600">支持端点：{{ formRegistryEndpoints.join('、') }}</span>
+            </div>
           </div>
           <div class="mb-3 grid grid-cols-2 gap-2">
             <div>
@@ -1662,7 +1746,10 @@ onMounted(() => {
 
               <!-- Token 计费：外部官方定价 -->
               <div v-if="deployBillingType === 'token'">
-                <h4 class="mb-2 text-xs font-medium text-slate-500">外部官方定价 (¥/百万token)</h4>
+                <div class="mb-2 flex items-center justify-between">
+                  <h4 class="text-xs font-medium text-slate-500">外部官方定价 (¥/百万token)</h4>
+                  <button type="button" class="rounded bg-slate-100 px-2 py-1 text-xs text-slate-700 transition-colors hover:bg-slate-200" @click="handleFetchOfficialPricing">从注册表拉取官方价</button>
+                </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>
                     <label class="mb-1 block text-xs text-slate-500">输入</label>
@@ -1679,6 +1766,10 @@ onMounted(() => {
                   <div>
                     <label class="mb-1 block text-xs text-slate-500">缓存写入</label>
                     <input v-model="deployCacheCreationCostPerToken" type="number" step="0.000001" placeholder="可选" class="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs text-slate-500">推理输出</label>
+                    <input v-model="deployReasoningCostPerToken" type="number" step="0.000001" placeholder="可选" class="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
                   </div>
                 </div>
               </div>
@@ -1713,6 +1804,10 @@ onMounted(() => {
                   <div>
                     <label class="mb-1 block text-xs text-slate-500">缓存写入</label>
                     <input v-model="deployInternalCacheCreationCost" type="number" step="0.000001" placeholder="可选" class="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
+                  </div>
+                  <div>
+                    <label class="mb-1 block text-xs text-slate-500">推理输出</label>
+                    <input v-model="deployInternalReasoningCost" type="number" step="0.000001" placeholder="可选" class="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
                   </div>
                 </div>
               </div>

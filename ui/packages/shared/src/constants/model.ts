@@ -23,6 +23,12 @@ export type ModelCapability =
   | 'tts'
   | 'stt'
   | 'video_gen'
+  | 'prompt_caching'
+  | 'pdf_input'
+  | 'web_search'
+  | 'system_messages'
+  | 'audio_input'
+  | 'audio_output'
 
 /** admin 端展示文案（admin 未 i18n）。web 端不使用此映射，走 i18n key。 */
 export const CAPABILITY_LABELS: Record<ModelCapability, string> = {
@@ -40,6 +46,12 @@ export const CAPABILITY_LABELS: Record<ModelCapability, string> = {
   tts: '语音合成',
   stt: '语音识别',
   video_gen: '文生视频',
+  prompt_caching: '提示缓存',
+  pdf_input: 'PDF输入',
+  web_search: '联网搜索',
+  system_messages: '系统消息',
+  audio_input: '音频输入',
+  audio_output: '音频输出',
 }
 
 /** 按 category 联动的能力候选（含模态标记，便于在对应分类下直接勾选）。 */
@@ -55,6 +67,12 @@ export const CATEGORY_CAPABILITIES: Record<string, ModelCapability[]> = {
     'multimodal',
     'code',
     'long_context',
+    'prompt_caching',
+    'pdf_input',
+    'web_search',
+    'system_messages',
+    'audio_input',
+    'audio_output',
   ],
   embedding: ['multilingual', 'multimodal', 'code', 'long_context'],
   rerank: ['multilingual', 'multimodal'],

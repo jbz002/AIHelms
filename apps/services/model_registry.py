@@ -10,6 +10,8 @@ import logging
 from functools import lru_cache
 from pathlib import Path
 
+from core.config import settings
+
 logger = logging.getLogger(__name__)
 
 _REGISTRY_PATH = Path(__file__).resolve().parent.parent / "data" / "model_registry.json"
@@ -64,6 +66,30 @@ def lookup(name: str) -> dict | None:
         raw_key, entry = matches[0]
         return {"model_name": raw_key, **entry}
     return None
+
+
+# LiteLLM 原始 USD/token 键 → 平台折算后的 ¥/百万token 键
+_CNY_PRICING_MAP = {
+    "input_cost_per_token": "input_cost_per_million_tokens_cny",
+    "output_cost_per_token": "output_cost_per_million_tokens_cny",
+    "cache_read_input_token_cost": "cache_read_input_cost_per_million_tokens_cny",
+    "cache_creation_input_token_cost": "cache_creation_input_cost_per_million_tokens_cny",
+    "output_cost_per_reasoning_token": "output_cost_per_reasoning_token_per_million_tokens_cny",
+}
+
+
+def lookup_with_cny_pricing(name: str) -> dict | None:
+    """lookup + 附加 ¥/百万token 折算字段（部署表单回填官方价用）。"""
+    entry = lookup(name)
+    if not entry:
+        return None
+    rate = settings.usd_to_cny_rate
+    for src, dst in _CNY_PRICING_MAP.items():
+        val = entry.get(src)
+        entry[dst] = (
+            round(float(val) * rate * 1_000_000, 6) if val is not None else None
+        )
+    return entry
 
 
 def search(keyword: str, limit: int = 20) -> list[str]:

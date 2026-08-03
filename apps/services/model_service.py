@@ -1,4 +1,5 @@
 import logging
+from datetime import date
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -74,6 +75,11 @@ async def get_all_active_models(session: AsyncSession) -> list[dict]:
             "is_active": m.is_active,
             "is_published": m.is_published,
             "requires_approval": m.requires_approval,
+            "deprecation_date": (
+                m.deprecation_date.isoformat() if m.deprecation_date else None
+            ),
+            "registry_rpm": m.registry_rpm,
+            "registry_tpm": m.registry_tpm,
             "has_anthropic_deployment": m.model_id in anthropic_set,
         }
         for m in models
@@ -107,6 +113,9 @@ async def create_model(
     supports_tool_choice: bool | None = None,
     litellm_provider: str | None = None,
     mode: str | None = None,
+    deprecation_date: date | None = None,
+    registry_rpm: int | None = None,
+    registry_tpm: int | None = None,
 ) -> dict:
     effective_model_id = model_id.strip() or None
     if effective_model_id:
@@ -132,6 +141,9 @@ async def create_model(
         supports_parallel_function_calling=supports_parallel_function_calling or False,
         supports_tool_choice=supports_tool_choice or False,
         litellm_provider=litellm_provider or "",
+        deprecation_date=deprecation_date,
+        registry_rpm=registry_rpm,
+        registry_tpm=registry_tpm,
     )
     model = await model_repo.create(session, model)
     await session.commit()
@@ -159,6 +171,9 @@ async def update_model(
     supports_tool_choice: bool | None = None,
     litellm_provider: str | None = None,
     mode: str | None = None,
+    deprecation_date: date | None = None,
+    registry_rpm: int | None = None,
+    registry_tpm: int | None = None,
 ) -> dict:
     model = await model_repo.find_by_id(session, model_id)
     if not model:
@@ -206,6 +221,12 @@ async def update_model(
         model.supports_tool_choice = supports_tool_choice
     if litellm_provider is not None:
         model.litellm_provider = litellm_provider
+    if deprecation_date is not None:
+        model.deprecation_date = deprecation_date
+    if registry_rpm is not None:
+        model.registry_rpm = registry_rpm
+    if registry_tpm is not None:
+        model.registry_tpm = registry_tpm
 
     if renamed:
         await _sync_model_rename(session, model, old_model_id)
@@ -357,6 +378,7 @@ def _merge_external_cost_to_model_info(model_info: dict, litellm_params: dict) -
         "cache_read_input_token_cost": "cache_read_cost",
         "cache_creation_input_token_cost": "cache_creation_cost",
         "output_cost_per_image": "output_cost_per_image",
+        "output_cost_per_reasoning_token": "output_reasoning_cost",
     }
     for param_key, info_key in cost_fields.items():
         if param_key in litellm_params:
@@ -376,6 +398,7 @@ def _convert_cost_for_litellm(litellm_params: dict) -> dict:
         "output_cost_per_token",
         "cache_read_input_token_cost",
         "cache_creation_input_token_cost",
+        "output_cost_per_reasoning_token",
     ]
     for key in cost_keys:
         if key in result and result[key]:
@@ -947,6 +970,11 @@ def _serialize_model(model: Model) -> dict:
         "visibility_type": model.visibility_type,
         "max_input_tokens": model.max_input_tokens,
         "max_output_tokens": model.max_output_tokens,
+        "deprecation_date": (
+            model.deprecation_date.isoformat() if model.deprecation_date else None
+        ),
+        "registry_rpm": model.registry_rpm,
+        "registry_tpm": model.registry_tpm,
         "supports_vision": model.supports_vision,
         "supports_function_calling": model.supports_function_calling,
         "supports_reasoning": model.supports_reasoning,

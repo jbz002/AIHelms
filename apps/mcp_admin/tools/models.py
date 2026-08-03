@@ -1,5 +1,7 @@
 """模型管理工具。"""
 
+from datetime import date
+
 from pydantic import BaseModel, Field
 
 from core.database import async_session
@@ -42,6 +44,15 @@ class CreateModelInput(BaseModel):
         default=None,
         description="LiteLLM mode，如 image_generation/audio_speech/audio_transcription/video_generation",
     )
+    deprecation_date: date | None = Field(
+        default=None, description="模型弃用日期（YYYY-MM-DD）"
+    )
+    registry_rpm: int | None = Field(
+        default=None, ge=1, description="注册表声明的 provider 速率硬限 RPM（只读快照）"
+    )
+    registry_tpm: int | None = Field(
+        default=None, ge=1, description="注册表声明的 provider 速率硬限 TPM（只读快照）"
+    )
 
 
 class UpdateModelInput(BaseModel):
@@ -68,6 +79,15 @@ class UpdateModelInput(BaseModel):
     mode: str | None = Field(
         default=None,
         description="LiteLLM mode，如 image_generation/audio_speech/audio_transcription/video_generation",
+    )
+    deprecation_date: date | None = Field(
+        default=None, description="模型弃用日期（YYYY-MM-DD）"
+    )
+    registry_rpm: int | None = Field(
+        default=None, ge=1, description="注册表声明的 provider 速率硬限 RPM（只读快照）"
+    )
+    registry_tpm: int | None = Field(
+        default=None, ge=1, description="注册表声明的 provider 速率硬限 TPM（只读快照）"
     )
 
 
@@ -154,6 +174,9 @@ async def admin_create_model(params: CreateModelInput) -> str:
                 supports_tool_choice=params.supports_tool_choice,
                 litellm_provider=params.litellm_provider,
                 mode=params.mode,
+                deprecation_date=params.deprecation_date,
+                registry_rpm=params.registry_rpm,
+                registry_tpm=params.registry_tpm,
             )
         except (NotFoundError, ConflictError, ValidationError) as e:
             return error_text(e)
@@ -194,6 +217,9 @@ async def admin_update_model(params: UpdateModelInput) -> str:
                 supports_tool_choice=params.supports_tool_choice,
                 litellm_provider=params.litellm_provider,
                 mode=params.mode,
+                deprecation_date=params.deprecation_date,
+                registry_rpm=params.registry_rpm,
+                registry_tpm=params.registry_tpm,
             )
         except (NotFoundError, ConflictError, ValidationError) as e:
             return error_text(e)

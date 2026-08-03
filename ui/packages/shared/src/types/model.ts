@@ -20,6 +20,9 @@ export interface ModelInfo {
   supports_parallel_function_calling?: boolean
   supports_tool_choice?: boolean
   litellm_provider?: string
+  deprecation_date?: string | null
+  registry_rpm?: number | null
+  registry_tpm?: number | null
   deployment_count: number
   created_at: string | null
   updated_at: string | null
@@ -60,6 +63,9 @@ export interface CreateModelParams {
   supports_parallel_function_calling?: boolean
   supports_tool_choice?: boolean
   litellm_provider?: string
+  deprecation_date?: string | null
+  registry_rpm?: number | null
+  registry_tpm?: number | null
 }
 
 export interface UpdateModelParams {
@@ -80,6 +86,9 @@ export interface UpdateModelParams {
   supports_parallel_function_calling?: boolean
   supports_tool_choice?: boolean
   litellm_provider?: string
+  deprecation_date?: string | null
+  registry_rpm?: number | null
+  registry_tpm?: number | null
 }
 
 export interface CreateDeploymentParams {
@@ -133,6 +142,9 @@ export interface ActiveModel {
   supports_parallel_function_calling?: boolean
   supports_tool_choice?: boolean
   litellm_provider?: string
+  deprecation_date?: string | null
+  registry_rpm?: number | null
+  registry_tpm?: number | null
 }
 
 export interface RegistryEntry {
@@ -150,9 +162,27 @@ export interface RegistryEntry {
   supports_tool_choice?: boolean
   supports_system_messages?: boolean
   supports_prompt_caching?: boolean
+  supports_pdf_input?: boolean
+  supports_web_search?: boolean
+  supports_audio_input?: boolean
+  supports_audio_output?: boolean
+  deprecation_date?: string
+  /** 注册表声明的模型支持端点（如 /v1/chat/completions），仅展示不入库 */
+  supported_endpoints?: string[]
+  /** 注册表声明的 provider 对该模型的速率硬限（RPM/TPM），只读快照 */
+  rpm?: number
+  tpm?: number
   input_cost_per_token?: number
   output_cost_per_token?: number
   cache_read_input_token_cost?: number
+  cache_creation_input_token_cost?: number
+  output_cost_per_reasoning_token?: number
+  /** 后端按 usd_to_cny_rate 折算后的 ¥/百万token（registry-lookup 附加，部署定价回填用） */
+  input_cost_per_million_tokens_cny?: number | null
+  output_cost_per_million_tokens_cny?: number | null
+  cache_read_input_cost_per_million_tokens_cny?: number | null
+  cache_creation_input_cost_per_million_tokens_cny?: number | null
+  output_cost_per_reasoning_token_per_million_tokens_cny?: number | null
 }
 
 export interface AccessGroup {

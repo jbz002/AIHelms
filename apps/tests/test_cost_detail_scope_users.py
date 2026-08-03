@@ -18,7 +18,7 @@ def _mock_session(rows: list[tuple]) -> AsyncMock:
 
 @pytest.mark.asyncio
 async def test_scope_users_department_penetrates_subtree_and_maps_path():
-    row = (7, "alice", "Alice", "技术中心 / 前端组", 12.5, 10.0, 30, 100, 200, 5, 8)
+    row = (7, "alice", "Alice", "技术中心 / 前端组", 12.5, 10.0, 30, 100, 200, 5, 8, 0)
     session = _mock_session([row])
 
     result = await efficiency_cost_repo.get_cost_detail_scope_users(
@@ -45,6 +45,7 @@ async def test_scope_users_department_penetrates_subtree_and_maps_path():
             "output_tokens": 200,
             "cache_read_tokens": 5,
             "cache_creation_tokens": 8,
+            "reasoning_tokens": 0,
         }
     ]
 
@@ -67,7 +68,7 @@ async def test_scope_users_project_filters_by_user_projects():
 
 @pytest.mark.asyncio
 async def test_scope_users_falls_back_to_username_when_display_name_empty():
-    row = (9, "bob", "", "", 1.0, 1.0, 1, 0, 0, 0, 0)
+    row = (9, "bob", "", "", 1.0, 1.0, 1, 0, 0, 0, 0, 0)
     session = _mock_session([row])
 
     result = await efficiency_cost_repo.get_cost_detail_scope_users(

@@ -130,10 +130,12 @@ def _llm_cost_breakdown(log: LlmCallLog, deployment: dict | None) -> dict[str, s
     keys = [
         "internal_input_cost",
         "internal_output_cost",
+        "internal_output_reasoning_cost",
         "internal_cache_read_cost",
         "internal_cache_creation_cost",
         "external_input_cost",
         "external_output_cost",
+        "external_output_reasoning_cost",
         "external_cache_read_cost",
         "external_cache_creation_cost",
     ]
@@ -149,13 +151,20 @@ def _llm_cost_breakdown(log: LlmCallLog, deployment: dict | None) -> dict[str, s
     cache_read = log.cache_read_tokens or 0
     cache_creation = log.cache_creation_tokens or 0
     input_tokens = max((log.prompt_tokens or 0) - cache_read - cache_creation, 0)
-    output_tokens = log.completion_tokens or 0
+    # reasoning token 是 completion 子集，单独计价；剩余按 output 价
+    reasoning = min(log.reasoning_tokens or 0, log.completion_tokens or 0)
+    output_tokens = (log.completion_tokens or 0) - reasoning
     components = {
         "internal_input_cost": _decimal(model_info.get("internal_input_cost"))
         * input_tokens
         / million,
         "internal_output_cost": _decimal(model_info.get("internal_output_cost"))
         * output_tokens
+        / million,
+        "internal_output_reasoning_cost": _decimal(
+            model_info.get("internal_output_reasoning_cost")
+        )
+        * reasoning
         / million,
         "internal_cache_read_cost": _decimal(model_info.get("internal_cache_read_cost"))
         * cache_read
@@ -170,6 +179,11 @@ def _llm_cost_breakdown(log: LlmCallLog, deployment: dict | None) -> dict[str, s
         / million,
         "external_output_cost": _decimal(model_info.get("output_cost"))
         * output_tokens
+        / million,
+        "external_output_reasoning_cost": _decimal(
+            model_info.get("output_reasoning_cost")
+        )
+        * reasoning
         / million,
         "external_cache_read_cost": _decimal(model_info.get("cache_read_cost"))
         * cache_read
@@ -200,6 +214,7 @@ def _serialize_llm(
         "total_tokens": log.total_tokens,
         "cache_read_tokens": log.cache_read_tokens,
         "cache_creation_tokens": log.cache_creation_tokens,
+        "reasoning_tokens": log.reasoning_tokens,
         **_llm_cost_breakdown(log, deployment),
         "external_cost": str(log.external_cost),
         "internal_cost": str(log.internal_cost),

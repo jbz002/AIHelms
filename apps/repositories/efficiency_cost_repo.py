@@ -373,7 +373,8 @@ async def get_cost_detail_by_model(
         f" COALESCE(SUM(c.input_tokens), 0) AS input_tokens,"
         f" COALESCE(SUM(c.output_tokens), 0) AS output_tokens,"
         f" COALESCE(SUM(c.cache_read_tokens), 0) AS cache_read_tokens,"
-        f" COALESCE(SUM(c.cache_creation_tokens), 0) AS cache_creation_tokens"
+        f" COALESCE(SUM(c.cache_creation_tokens), 0) AS cache_creation_tokens,"
+        f" COALESCE(SUM(c.reasoning_tokens), 0) AS reasoning_tokens"
         f" FROM aihelms.cost_summary_daily c"
         f" LEFT JOIN aihelms.credentials cr ON cr.id = c.provider_id"
         f" LEFT JOIN aihelms.providers p ON p.id = cr.provider_id"
@@ -417,6 +418,7 @@ async def get_cost_detail_by_model(
             "output_tokens": int(r[14]),
             "cache_read_tokens": int(r[15]),
             "cache_creation_tokens": int(r[16]),
+            "reasoning_tokens": int(r[17]),
         }
         for r in result.fetchall()
     ]
@@ -551,10 +553,18 @@ async def get_cost_attribution_detail(
         " - COALESCE(c.cache_creation_tokens, 0), 0)"
     )
     output_tokens = "COALESCE(c.output_tokens, 0)"
+    reasoning_tokens = "COALESCE(c.reasoning_tokens, 0)"
+    # reasoning 是 completion 子集，单独计价；剩余按 output 价
+    non_reasoning_output = f"GREATEST({output_tokens} - {reasoning_tokens}, 0)"
     cache_read = "COALESCE(c.cache_read_tokens, 0)"
     cache_creation = "COALESCE(c.cache_creation_tokens, 0)"
     internal_input = _llm_cost_component_expr("internal_input_cost", billable_input)
-    internal_output = _llm_cost_component_expr("internal_output_cost", output_tokens)
+    internal_output = _llm_cost_component_expr(
+        "internal_output_cost", non_reasoning_output
+    )
+    internal_output_reasoning = _llm_cost_component_expr(
+        "internal_output_reasoning_cost", reasoning_tokens
+    )
     internal_cache_read = _llm_cost_component_expr(
         "internal_cache_read_cost", cache_read
     )
@@ -562,7 +572,10 @@ async def get_cost_attribution_detail(
         "internal_cache_creation_cost", cache_creation
     )
     external_input = _llm_cost_component_expr("input_cost", billable_input)
-    external_output = _llm_cost_component_expr("output_cost", output_tokens)
+    external_output = _llm_cost_component_expr("output_cost", non_reasoning_output)
+    external_output_reasoning = _llm_cost_component_expr(
+        "output_reasoning_cost", reasoning_tokens
+    )
     external_cache_read = _llm_cost_component_expr("cache_read_cost", cache_read)
     external_cache_creation = _llm_cost_component_expr(
         "cache_creation_cost", cache_creation
@@ -572,12 +585,15 @@ async def get_cost_attribution_detail(
         f" COALESCE(u.display_name, u.username, ''), COALESCE(k.name, ''), COALESCE({scope_expr}, ''),"
         f" COALESCE(SUM(c.total_requests),0), COALESCE(SUM(c.input_tokens),0), COALESCE(SUM(c.output_tokens),0),"
         f" COALESCE(SUM(c.cache_read_tokens),0), COALESCE(SUM(c.cache_creation_tokens),0),"
+        f" COALESCE(SUM(c.reasoning_tokens),0),"
         f" COALESCE(SUM({internal_input}),0) AS internal_input_cost,"
         f" COALESCE(SUM({internal_output}),0) AS internal_output_cost,"
+        f" COALESCE(SUM({internal_output_reasoning}),0) AS internal_output_reasoning_cost,"
         f" COALESCE(SUM({internal_cache_read}),0) AS internal_cache_read_cost,"
         f" COALESCE(SUM({internal_cache_creation}),0) AS internal_cache_creation_cost,"
         f" COALESCE(SUM({external_input}),0) AS external_input_cost,"
         f" COALESCE(SUM({external_output}),0) AS external_output_cost,"
+        f" COALESCE(SUM({external_output_reasoning}),0) AS external_output_reasoning_cost,"
         f" COALESCE(SUM({external_cache_read}),0) AS external_cache_read_cost,"
         f" COALESCE(SUM({external_cache_creation}),0) AS external_cache_creation_cost,"
         f" COALESCE(SUM(c.internal_cost),0) AS internal_cost, COALESCE(SUM(c.external_cost),0) AS external_cost,"
@@ -619,21 +635,24 @@ async def get_cost_attribution_detail(
             "output_tokens": int(r[8] or 0),
             "cache_read_tokens": int(r[9] or 0),
             "cache_creation_tokens": int(r[10] or 0),
-            "internal_input_cost": float(r[11] or 0),
-            "internal_output_cost": float(r[12] or 0),
-            "internal_cache_read_cost": float(r[13] or 0),
-            "internal_cache_creation_cost": float(r[14] or 0),
-            "external_input_cost": float(r[15] or 0),
-            "external_output_cost": float(r[16] or 0),
-            "external_cache_read_cost": float(r[17] or 0),
-            "external_cache_creation_cost": float(r[18] or 0),
-            "internal_cost": float(r[19] or 0),
-            "external_cost": float(r[20] or 0),
-            "cost_diff": round(float(r[19] or 0) - float(r[20] or 0), 4),
-            "user_id": r[21],
-            "ai_key_id": r[22],
-            "model": r[23] or "",
-            "server_id": r[24],
+            "reasoning_tokens": int(r[11] or 0),
+            "internal_input_cost": float(r[12] or 0),
+            "internal_output_cost": float(r[13] or 0),
+            "internal_output_reasoning_cost": float(r[14] or 0),
+            "internal_cache_read_cost": float(r[15] or 0),
+            "internal_cache_creation_cost": float(r[16] or 0),
+            "external_input_cost": float(r[17] or 0),
+            "external_output_cost": float(r[18] or 0),
+            "external_output_reasoning_cost": float(r[19] or 0),
+            "external_cache_read_cost": float(r[20] or 0),
+            "external_cache_creation_cost": float(r[21] or 0),
+            "internal_cost": float(r[22] or 0),
+            "external_cost": float(r[23] or 0),
+            "cost_diff": round(float(r[22] or 0) - float(r[23] or 0), 4),
+            "user_id": r[24],
+            "ai_key_id": r[25],
+            "model": r[26] or "",
+            "server_id": r[27],
         }
         for r in result.fetchall()
     ]
@@ -684,7 +703,8 @@ async def get_cost_detail_scope_users(
         " COALESCE(SUM(c.input_tokens), 0) AS input_tokens,"
         " COALESCE(SUM(c.output_tokens), 0) AS output_tokens,"
         " COALESCE(SUM(c.cache_read_tokens), 0) AS cache_read_tokens,"
-        " COALESCE(SUM(c.cache_creation_tokens), 0) AS cache_creation_tokens"
+        " COALESCE(SUM(c.cache_creation_tokens), 0) AS cache_creation_tokens,"
+        " COALESCE(SUM(c.reasoning_tokens), 0) AS reasoning_tokens"
         " FROM aihelms.cost_summary_daily c"
         " JOIN aihelms.users u ON u.id = c.user_id"
         " LEFT JOIN user_dept udp ON udp.user_id = c.user_id"
@@ -706,6 +726,7 @@ async def get_cost_detail_scope_users(
             "output_tokens": int(r[8]),
             "cache_read_tokens": int(r[9]),
             "cache_creation_tokens": int(r[10]),
+            "reasoning_tokens": int(r[11]),
         }
         for r in result.fetchall()
     ]
@@ -753,6 +774,7 @@ async def get_user_top10(
         " COALESCE(SUM(c.output_tokens), 0) AS output_tokens,"
         " COALESCE(SUM(c.cache_read_tokens), 0) AS cache_read_tokens,"
         " COALESCE(SUM(c.cache_creation_tokens), 0) AS cache_creation_tokens,"
+        " COALESCE(SUM(c.reasoning_tokens), 0) AS reasoning_tokens,"
         " COALESCE(SUM(c.total_requests), 0) AS requests"
         " FROM aihelms.cost_summary_daily c"
         " JOIN aihelms.users u ON u.id = c.user_id AND u.is_active = true"
@@ -770,6 +792,7 @@ async def get_user_top10(
         output_tokens = int(row[5])
         cache_read_tokens = int(row[6])
         cache_creation_tokens = int(row[7])
+        reasoning_tokens = int(row[8])
         rows.append(
             {
                 "user_id": int(row[0]),
@@ -780,11 +803,13 @@ async def get_user_top10(
                 "output_tokens": output_tokens,
                 "cache_read_tokens": cache_read_tokens,
                 "cache_creation_tokens": cache_creation_tokens,
+                "reasoning_tokens": reasoning_tokens,
+                # reasoning 已含在 output(completion) 内，total 不重复累加
                 "total_tokens": input_tokens
                 + output_tokens
                 + cache_read_tokens
                 + cache_creation_tokens,
-                "requests": int(row[8]),
+                "requests": int(row[9]),
             }
         )
     return rows

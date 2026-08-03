@@ -1,12 +1,12 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
-    Index,
     Integer,
     Numeric,
     SmallInteger,
@@ -14,7 +14,6 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
-    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -358,6 +357,9 @@ class Model(Base):
     )
     supports_tool_choice: Mapped[bool] = mapped_column(Boolean, default=False)
     litellm_provider: Mapped[str] = mapped_column(String(64), default="")
+    deprecation_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    registry_rpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    registry_tpm: Mapped[int | None] = mapped_column(Integer, nullable=True)
     registry_synced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
@@ -749,6 +751,7 @@ class LlmCallLog(Base):
     total_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cache_read_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cache_creation_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    reasoning_tokens: Mapped[int] = mapped_column(Integer, default=0)
     external_cost: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
     internal_cost: Mapped[Decimal] = mapped_column(Numeric(12, 6), default=0)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -1310,6 +1313,7 @@ class CostSummaryDaily(Base):
     cache_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
     cache_read_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
     cache_creation_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
+    reasoning_tokens: Mapped[int] = mapped_column(BigInteger, default=0)
     external_cost: Mapped[Decimal] = mapped_column(Numeric(14, 6), default=0)
     internal_cost: Mapped[Decimal] = mapped_column(Numeric(14, 6), default=0)
     total_duration_ms: Mapped[int] = mapped_column(BigInteger, default=0)

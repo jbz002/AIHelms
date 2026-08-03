@@ -35,10 +35,11 @@ def _one_session(row: tuple) -> AsyncMock:
 # get_user_top10 (repo)
 # 期望 SELECT 列顺序（tuple 字段顺序必须与之一致）：
 #   user_id, user_name, department, internal_cost,
-#   input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, requests
+#   input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
+#   reasoning_tokens, requests
 # ---------------------------------------------------------------------------
 
-_TOP10_ROW = (7, "Alice", "技术中心 / 前端组", 120.5, 1000, 2000, 300, 40, 55)
+_TOP10_ROW = (7, "Alice", "技术中心 / 前端组", 120.5, 1000, 2000, 300, 40, 0, 55)
 
 
 @pytest.mark.asyncio

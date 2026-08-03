@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +28,9 @@ class CreateModelRequest(BaseModel):
     supports_tool_choice: bool | None = None
     litellm_provider: str | None = Field(None, max_length=64)
     mode: str | None = Field(None, max_length=32)
+    deprecation_date: date | None = None
+    registry_rpm: int | None = Field(None, ge=1)
+    registry_tpm: int | None = Field(None, ge=1)
 
 
 class UpdateModelRequest(BaseModel):
@@ -46,6 +51,9 @@ class UpdateModelRequest(BaseModel):
     supports_tool_choice: bool | None = None
     litellm_provider: str | None = Field(None, max_length=64)
     mode: str | None = Field(None, max_length=32)
+    deprecation_date: date | None = None
+    registry_rpm: int | None = Field(None, ge=1)
+    registry_tpm: int | None = Field(None, ge=1)
 
 
 class CreateDeploymentRequest(BaseModel):
@@ -132,7 +140,7 @@ async def registry_lookup(
     name: str = Query(..., min_length=1, max_length=128),
     _: dict = Depends(require_permission("user:read")),
 ):
-    entry = model_registry.lookup(name)
+    entry = model_registry.lookup_with_cny_pricing(name)
     return {"code": 200, "message": "ok", "data": entry}
 
 
@@ -161,6 +169,9 @@ async def create_model(
             supports_tool_choice=req.supports_tool_choice,
             litellm_provider=req.litellm_provider,
             mode=req.mode,
+            deprecation_date=req.deprecation_date,
+            registry_rpm=req.registry_rpm,
+            registry_tpm=req.registry_tpm,
         )
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -208,6 +219,9 @@ async def update_model(
             supports_tool_choice=req.supports_tool_choice,
             litellm_provider=req.litellm_provider,
             mode=req.mode,
+            deprecation_date=req.deprecation_date,
+            registry_rpm=req.registry_rpm,
+            registry_tpm=req.registry_tpm,
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="模型不存在")

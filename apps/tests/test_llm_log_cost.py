@@ -3,7 +3,11 @@ from repositories.usage_log_repo import (
     _is_current_llm_model,
 )
 from services.usage_log_service import _llm_cost_breakdown
-from tasks.llm_log_tasks import _billable_prompt_tokens, _parse_cache_tokens
+from tasks.llm_log_tasks import (
+    _billable_prompt_tokens,
+    _parse_cache_tokens,
+    _parse_reasoning_tokens,
+)
 
 
 def test_llm_log_cost_deepseek_cached_tokens_are_subtracted() -> None:
@@ -62,6 +66,7 @@ class _Log:
     completion_tokens = 200
     cache_read_tokens = 300
     cache_creation_tokens = 100
+    reasoning_tokens = 0
 
 
 def test_llm_log_cost_breakdown_uses_billable_input_tokens() -> None:
@@ -89,6 +94,51 @@ def test_llm_log_cost_breakdown_uses_billable_input_tokens() -> None:
     assert breakdown["external_output_cost"] == "0.001600"
     assert breakdown["external_cache_read_cost"] == "0.000150"
     assert breakdown["external_cache_creation_cost"] == "0.000075"
+
+
+def test_parse_reasoning_tokens_from_completion_details() -> None:
+    metadata = {
+        "usage_object": {
+            "completion_tokens": 500,
+            "completion_tokens_details": {"reasoning_tokens": 350},
+        }
+    }
+    assert _parse_reasoning_tokens(metadata) == 350
+
+
+def test_parse_reasoning_tokens_missing_details_falls_back_to_zero() -> None:
+    assert _parse_reasoning_tokens({"usage_object": {"completion_tokens": 10}}) == 0
+    assert _parse_reasoning_tokens({"usage_object": {}}) == 0
+    assert _parse_reasoning_tokens({}) == 0
+
+
+def test_llm_log_cost_breakdown_splits_reasoning_tokens() -> None:
+    class _ReasoningLog:
+        prompt_tokens = 1000
+        completion_tokens = 500
+        cache_read_tokens = 0
+        cache_creation_tokens = 0
+        reasoning_tokens = 300
+
+    deployment = {
+        "billing_type": "token",
+        "model_info": {
+            "internal_input_cost": 10,
+            "internal_output_cost": 20,
+            "internal_output_reasoning_cost": 5,
+            "input_cost": 5,
+            "output_cost": 8,
+            "output_reasoning_cost": 2,
+        },
+    }
+
+    breakdown = _llm_cost_breakdown(_ReasoningLog(), deployment)
+
+    # reasoning 是 completion 子集：非 reasoning 输出 = 500 - 300 = 200
+    assert breakdown["internal_output_cost"] == "0.004000"  # 20 * 200 / 1e6
+    assert breakdown["internal_output_reasoning_cost"] == "0.001500"  # 5 * 300 / 1e6
+    assert breakdown["external_output_cost"] == "0.001600"  # 8 * 200 / 1e6
+    assert breakdown["external_output_reasoning_cost"] == "0.000600"  # 2 * 300 / 1e6
 
 
 def test_llm_log_filter_marks_model_aliases_as_current() -> None:

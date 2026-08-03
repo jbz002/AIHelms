@@ -87,6 +87,22 @@ def _billable_prompt_tokens(
     return max(prompt_tokens - cache_read - cache_creation, 0)
 
 
+def _parse_reasoning_tokens(metadata: dict) -> int:
+    """解析推理 token（completion_tokens 的推理子集）。
+
+    OpenAI o 系列 / DeepSeek-R1 / Qwen-QwQ 等推理模型在
+    usage.completion_tokens_details.reasoning_tokens 返回推理 token；
+    provider 对其按 output_cost_per_reasoning_token 单独计价。
+    """
+    usage_obj = metadata.get("usage_object") or {}
+    if not isinstance(usage_obj, dict):
+        return 0
+    details = usage_obj.get("completion_tokens_details") or {}
+    if isinstance(details, dict):
+        return _safe_int(details.get("reasoning_tokens"))
+    return 0
+
+
 def _to_utc_naive(value: datetime) -> datetime:
     if value.tzinfo:
         return value.astimezone(timezone.utc).replace(tzinfo=None)
@@ -301,6 +317,7 @@ async def _upsert_spend_log_rows(session: AsyncSession, rows) -> int:
         spend_log_model_id = str(row[20]) if row[20] else ""
 
         cache_read, cache_creation = _parse_cache_tokens(metadata)
+        reasoning_tokens = _parse_reasoning_tokens(metadata)
         billable_prompt_tokens = _billable_prompt_tokens(
             prompt_tokens, cache_read, cache_creation
         )
@@ -386,6 +403,7 @@ async def _upsert_spend_log_rows(session: AsyncSession, rows) -> int:
                 completion_tokens,
                 cache_read,
                 cache_creation,
+                reasoning_tokens,
             )
             external_cost = _calc_external_cost(
                 deployment,
@@ -393,6 +411,7 @@ async def _upsert_spend_log_rows(session: AsyncSession, rows) -> int:
                 completion_tokens,
                 cache_read,
                 cache_creation,
+                reasoning_tokens,
             )
 
         duration_ms = None
@@ -434,6 +453,7 @@ async def _upsert_spend_log_rows(session: AsyncSession, rows) -> int:
                 total_tokens=total_tokens,
                 cache_read_tokens=cache_read,
                 cache_creation_tokens=cache_creation,
+                reasoning_tokens=reasoning_tokens,
                 external_cost=external_cost,
                 internal_cost=internal_cost,
                 duration_ms=duration_ms,
@@ -461,6 +481,7 @@ def _calc_internal_cost(
     completion_tokens: int,
     cache_read: int,
     cache_creation: int,
+    reasoning_tokens: int = 0,
 ) -> Decimal:
     """根据 deployment.model_info 中的内部定价算成本（单位 ¥/百万 token）。"""
     info = deployment.model_info or {}
@@ -475,11 +496,17 @@ def _calc_internal_cost(
     output_price = Decimal(str(info.get("internal_output_cost") or 0))
     cache_read_price = Decimal(str(info.get("internal_cache_read_cost") or 0))
     cache_creation_price = Decimal(str(info.get("internal_cache_creation_cost") or 0))
+    reasoning_price = Decimal(str(info.get("internal_output_reasoning_cost") or 0))
+
+    # reasoning token 是 completion 子集，单独计价；剩余按 output 价
+    reasoning = min(reasoning_tokens, completion_tokens)
+    non_reasoning_output = completion_tokens - reasoning
 
     million = Decimal("1000000")
     cost = (
         input_price * prompt_tokens / million
-        + output_price * completion_tokens / million
+        + output_price * non_reasoning_output / million
+        + reasoning_price * reasoning / million
         + cache_read_price * cache_read / million
         + cache_creation_price * cache_creation / million
     )
@@ -492,6 +519,7 @@ def _calc_external_cost(
     completion_tokens: int,
     cache_read: int,
     cache_creation: int,
+    reasoning_tokens: int = 0,
 ) -> Decimal:
     """根据 deployment.model_info 中的外部定价算成本（单位 ¥/百万 token）。"""
     info = deployment.model_info or {}
@@ -506,11 +534,17 @@ def _calc_external_cost(
     output_price = Decimal(str(info.get("output_cost") or 0))
     cache_read_price = Decimal(str(info.get("cache_read_cost") or 0))
     cache_creation_price = Decimal(str(info.get("cache_creation_cost") or 0))
+    reasoning_price = Decimal(str(info.get("output_reasoning_cost") or 0))
+
+    # reasoning token 是 completion 子集，单独计价；剩余按 output 价
+    reasoning = min(reasoning_tokens, completion_tokens)
+    non_reasoning_output = completion_tokens - reasoning
 
     million = Decimal("1000000")
     cost = (
         input_price * prompt_tokens / million
-        + output_price * completion_tokens / million
+        + output_price * non_reasoning_output / million
+        + reasoning_price * reasoning / million
         + cache_read_price * cache_read / million
         + cache_creation_price * cache_creation / million
     )
@@ -539,6 +573,7 @@ async def _recalc_cost(batch_size: int) -> dict[str, int]:
             for log, deployment in rows:
                 last_id = log.id
                 cache_read, cache_creation = _parse_cache_tokens(log.metadata_ or {})
+                reasoning_tokens = _parse_reasoning_tokens(log.metadata_ or {})
                 billable_prompt_tokens = _billable_prompt_tokens(
                     log.prompt_tokens, cache_read, cache_creation
                 )
@@ -551,6 +586,7 @@ async def _recalc_cost(batch_size: int) -> dict[str, int]:
                         log.completion_tokens,
                         cache_read,
                         cache_creation,
+                        reasoning_tokens,
                     )
                     external_cost = _calc_external_cost(
                         deployment,
@@ -558,10 +594,12 @@ async def _recalc_cost(batch_size: int) -> dict[str, int]:
                         log.completion_tokens,
                         cache_read,
                         cache_creation,
+                        reasoning_tokens,
                     )
 
                 log.cache_read_tokens = cache_read
                 log.cache_creation_tokens = cache_creation
+                log.reasoning_tokens = reasoning_tokens
                 log.internal_cost = internal_cost
                 log.external_cost = external_cost
                 processed += 1
