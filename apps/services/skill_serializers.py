@@ -111,8 +111,6 @@ def _serialize(
         "install_count": skill.install_count,
         "frontmatter": skill.frontmatter,
         "summary_text": skill.summary_text,
-        "is_builtin": skill.is_builtin,
-        "builtin_slug": skill.builtin_slug,
         "security_status": skill.security_status,
         "security_decision": skill.security_decision,
         "security_severity": skill.security_severity,

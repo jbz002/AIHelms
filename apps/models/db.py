@@ -334,6 +334,7 @@ class Model(Base):
         String(128), unique=True, nullable=True
     )
     category: Mapped[str] = mapped_column(String(50), default="chat")
+    mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
     capabilities: Mapped[list] = mapped_column(JSONB, default=list)
     description: Mapped[str] = mapped_column(Text, default="")
     logo_provider_type: Mapped[str] = mapped_column(String(50), default="")
@@ -949,7 +950,9 @@ class Skill(Base):
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
     visibility_type: Mapped[str] = mapped_column(String(20), default="all")
     hidden: Mapped[bool] = mapped_column(Boolean, default=False)
-    hidden_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    hidden_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     hidden_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id"), nullable=True
     )
@@ -965,8 +968,6 @@ class Skill(Base):
     )
     frontmatter: Mapped[dict] = mapped_column(JSONB, default=dict)
     summary_text: Mapped[str] = mapped_column(Text, default="")
-    is_builtin: Mapped[bool] = mapped_column(Boolean, default=False)
-    builtin_slug: Mapped[str] = mapped_column(String(64), default="")
     current_version_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("aihelms.skill_versions.id", ondelete="SET NULL"),

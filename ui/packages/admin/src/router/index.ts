@@ -99,12 +99,6 @@ const router = createRouter({
           meta: { permission: 'skill:read' },
         },
         {
-          path: 'skills/builtin',
-          name: 'SkillBuiltin',
-          component: () => import('../views/skills/BuiltinSkills.vue'),
-          meta: { permission: 'skill:update' },
-        },
-        {
           path: 'ai-policies',
           name: 'AiPolicies',
           component: () => import('../views/ai-policies/AiPoliciesView.vue'),

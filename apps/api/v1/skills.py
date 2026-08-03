@@ -18,15 +18,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.deps import get_ai_key_identity, get_current_user, get_db, require_permission
 from core.public_urls import resolve_platform_public_url
 from exceptions import ConflictError, NotFoundError, ValidationError
-from repositories import skill_repo
 from services import (
     ai_policies_service,
-    builtin_skills_service,
     skill_drift_service,
     skill_service,
     skill_view_service,
 )
-from services.skill_serializers import _latest_audit_map, _serialize
 from services.visibility_service import can_access
 
 router = APIRouter(prefix="/skills", tags=["skills"])
@@ -118,49 +115,18 @@ async def list_skills(
     category: str | None = None,
     is_published: bool | None = None,
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permission("skill:read")),
+    current_user: dict = Depends(require_permission("skill:read")),
 ):
     data = await skill_service.list_skills(
-        session, page, page_size, category, is_published
+        session,
+        page,
+        page_size,
+        category,
+        is_published,
+        viewer_id=current_user["id"],
+        is_admin=current_user["is_admin"],
     )
     return {"code": 200, "message": "ok", "data": data}
-
-
-# ─── 内置 Skills（S8）────────────────────────────────────────────────
-
-
-@router.get("/builtin", summary="查询内置Skills")
-async def list_builtin_skills(
-    session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permission("skill:read")),
-):
-    skills = await skill_repo.list_builtin(session)
-    latest_audit_map = await _latest_audit_map(session, skills)
-    items = [_serialize(s, latest_audit_map) for s in skills]
-    return {"code": 200, "message": "ok", "data": {"items": items, "total": len(items)}}
-
-
-@router.get("/builtin/status", summary="查询内置Skills同步状态")
-async def get_builtin_skills_status(
-    session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permission("skill:read")),
-):
-    rows = await builtin_skills_service.build_status(session)
-    return {"code": 200, "message": "ok", "data": rows}
-
-
-@router.post("/builtin/sync", status_code=202, summary="重新同步内置Skills")
-async def sync_builtin_skills(
-    _: dict = Depends(require_permission("skill:update")),
-):
-    from tasks.builtin_skills_tasks import sync_builtin_skills as _task
-
-    _task.delay()
-    return {
-        "code": 202,
-        "message": "内置 Skills 同步任务已派发",
-        "data": {"task": "queued"},
-    }
 
 
 @router.get("/{skill_id}")

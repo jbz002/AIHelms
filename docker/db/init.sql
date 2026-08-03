@@ -254,7 +254,7 @@ CREATE TABLE IF NOT EXISTS aihelms.provider_prefix_map (
     id BIGSERIAL PRIMARY KEY,
     provider_type VARCHAR(50) NOT NULL,
     format VARCHAR(20) NOT NULL,            -- 'openai' | 'anthropic' | 'ollama'
-    category VARCHAR(50) NOT NULL,          -- 'chat' | 'embedding' | 'rerank' | 'completion' | 'image' | 'audio'
+    category VARCHAR(50) NOT NULL,          -- 'chat' | 'embedding' | 'rerank' | 'completion' | 'image' | 'audio' | 'video'
     prefix VARCHAR(50) NOT NULL,            -- LiteLLM 路由前缀，如 'openai', 'anthropic', 'hosted_vllm'
     needs_v1 BOOLEAN DEFAULT false,         -- api_base 是否需要自动补 /v1
     UNIQUE(provider_type, format, category)
@@ -312,7 +312,23 @@ INSERT INTO aihelms.provider_prefix_map (provider_type, format, category, prefix
     -- 其他
     ('other', 'openai', 'chat', 'openai', true),
     ('other', 'openai', 'embedding', 'openai', true),
-    ('other', 'anthropic', 'chat', 'anthropic', false)
+    ('other', 'anthropic', 'chat', 'anthropic', false),
+    -- 多模态（文生图 / 语音 / 文生视频）
+    ('openai', 'openai', 'video', 'openai', false),
+    ('azure', 'openai', 'image', 'azure', false),
+    ('azure', 'openai', 'audio', 'azure', false),
+    ('azure', 'openai', 'video', 'azure', false),
+    ('google', 'openai', 'image', 'gemini', false),
+    ('google', 'openai', 'audio', 'gemini', false),
+    ('google', 'openai', 'video', 'gemini', false),
+    ('bedrock', 'openai', 'image', 'bedrock', false),
+    ('bedrock', 'openai', 'audio', 'bedrock', false),
+    ('vertex_ai', 'openai', 'image', 'vertex_ai', false),
+    ('vertex_ai', 'openai', 'audio', 'vertex_ai', false),
+    ('vertex_ai', 'openai', 'video', 'vertex_ai', false),
+    ('other', 'openai', 'image', 'openai', true),
+    ('other', 'openai', 'audio', 'openai', true),
+    ('other', 'openai', 'video', 'openai', true)
 ON CONFLICT DO NOTHING;
 
 -- 凭证（对齐 LiteLLM CredentialsTable）
@@ -334,8 +350,9 @@ CREATE TABLE IF NOT EXISTS aihelms.models (
     id BIGSERIAL PRIMARY KEY,
     name VARCHAR(128) NOT NULL,
     model_id VARCHAR(128) UNIQUE,              -- 用户请求时用的名称 = LiteLLM model_name，首次添加凭证时设置
-    category VARCHAR(50) DEFAULT 'chat',
-    capabilities JSONB DEFAULT '[]',
+    category VARCHAR(50) DEFAULT 'chat',      -- 'chat' | 'embedding' | 'rerank' | 'completion' | 'image' | 'audio' | 'video'
+    mode VARCHAR(32),                         -- LiteLLM 精确 mode（同步用），如 image_generation/audio_speech/audio_transcription/video_generation
+    capabilities JSONB DEFAULT '[]',          -- 统一结构化能力枚举（英文 snake_case），取代旧 supports_* 手填
     description TEXT DEFAULT '',
     logo_provider_type VARCHAR(50) DEFAULT '',
     business_scenario_id BIGINT REFERENCES aihelms.business_scenarios(id) ON DELETE SET NULL,
@@ -713,8 +730,6 @@ CREATE TABLE IF NOT EXISTS aihelms.skills (
     install_count INTEGER DEFAULT 0,
     frontmatter JSONB DEFAULT '{}',
     summary_text TEXT DEFAULT '',
-    is_builtin BOOLEAN DEFAULT false,                       -- S8 内置 skill 标记（幂等键 + 列表查询）
-    builtin_slug VARCHAR(64) DEFAULT '',                    -- S8 内置 skill 的稳定 slug（kebab-case）
     created_by BIGINT REFERENCES aihelms.users(id),
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
@@ -726,7 +741,6 @@ CREATE INDEX IF NOT EXISTS idx_skills_published ON aihelms.skills(is_published);
 CREATE INDEX IF NOT EXISTS idx_skills_business_scenario ON aihelms.skills(business_scenario_id);
 CREATE INDEX IF NOT EXISTS idx_skills_visibility ON aihelms.skills(visibility_type);
 CREATE INDEX IF NOT EXISTS idx_skills_hidden ON aihelms.skills(hidden) WHERE hidden = true;
-CREATE INDEX IF NOT EXISTS idx_skills_builtin_slug ON aihelms.skills(builtin_slug) WHERE is_builtin = true;
 
 
 -- AI Policies 审查基线

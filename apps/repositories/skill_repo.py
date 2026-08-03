@@ -30,24 +30,6 @@ async def find_by_name(session: AsyncSession, name: str) -> Skill | None:
     return result.scalar_one_or_none()
 
 
-async def find_by_builtin_slug(session: AsyncSession, slug: str) -> Skill | None:
-    """S8 · 按 builtin_slug 查内置 skill（幂等键查重）。"""
-    result = await session.execute(
-        select(Skill).where(Skill.is_builtin.is_(True), Skill.builtin_slug == slug)
-    )
-    return result.scalar_one_or_none()
-
-
-async def list_builtin(session: AsyncSession) -> list[Skill]:
-    """S8 · 全部内置 skill（按 builtin_slug 升序）。"""
-    result = await session.execute(
-        select(Skill)
-        .where(Skill.is_builtin.is_(True))
-        .order_by(Skill.builtin_slug.asc())
-    )
-    return list(result.scalars().all())
-
-
 async def find_all(
     session: AsyncSession,
     page: int = 1,
