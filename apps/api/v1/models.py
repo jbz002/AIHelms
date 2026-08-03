@@ -144,6 +144,16 @@ async def registry_lookup(
     return {"code": 200, "message": "ok", "data": entry}
 
 
+@router.get("/registry-search", summary="搜索注册表候选")
+async def registry_search(
+    keyword: str = Query("", max_length=128),
+    limit: int = Query(20, ge=1, le=50),
+    _: dict = Depends(require_permission("user:read")),
+):
+    keys = model_registry.search(keyword, limit)
+    return {"code": 200, "message": "ok", "data": keys}
+
+
 @router.post("", summary="创建模型")
 async def create_model(
     req: CreateModelRequest,

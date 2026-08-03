@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import {
   getModels,
   getModelById,
@@ -42,6 +42,7 @@ import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import AccessTestDialog from '../../components/AccessTestDialog.vue'
 import ProviderIcon from '../../components/ProviderIcon.vue'
 import HostedIcon from '@aihelms/shared/src/components/HostedIcon.vue'
+import ModelRegistryPicker from '../../components/ModelRegistryPicker.vue'
 
 const { hasPermission } = usePermission()
 
@@ -142,6 +143,11 @@ const formSupports = ref({
 // Deployment form — simplified
 const deployModelIdStr = ref('')  // 平台模型 ID（用户请求时使用）
 const deployModelName = ref('')  // 管理员填的模型名称（如 claude-sonnet-4-20250514）
+// 定价拉取的注册表查询名：默认跟随厂商模型名（裸名作搜索起点），用户可在 picker 选 provider 全名
+const deployPricingLookupName = ref('')
+watch(deployModelName, (v) => {
+  deployPricingLookupName.value = v
+})
 const deployProviderId = ref<number | null>(null)
 const deployCredentialId = ref<number | null>(null)
 const deployName = ref('')
@@ -619,9 +625,9 @@ async function handleRegistryFill(): Promise<void> {
 }
 
 async function handleFetchOfficialPricing(): Promise<void> {
-  const name = selectedModel.value?.model_id
+  const name = deployPricingLookupName.value.trim()
   if (!name) {
-    errorMessage.value = '该模型无 model_id，无法查注册表'
+    errorMessage.value = '请填写注册表查询名（厂商模型名或 provider 全名）'
     return
   }
   errorMessage.value = ''
@@ -1542,6 +1548,23 @@ onMounted(() => {
             </div>
           </div>
           <div class="mb-3">
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">从注册表回填属性</label>
+            <div class="flex gap-2">
+              <ModelRegistryPicker v-model="formRegistryName" placeholder="LiteLLM 模型名,如 glm-4.7" />
+              <button type="button" :disabled="registryLoading" class="shrink-0 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-50" @click="handleRegistryFill">{{ registryLoading ? '查询中' : '查询' }}</button>
+            </div>
+            <p class="mt-1 text-xs text-slate-400">平台内置注册表快照,未覆盖模型请手填下方属性</p>
+            <div v-if="formDeprecationDate" class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+              <span class="text-xs font-medium text-amber-700">注意：该模型注册表标注弃用日期 {{ formDeprecationDate }}，建议尽快迁移替代方案</span>
+            </div>
+            <div v-if="formRegistryRpm || formRegistryTpm" class="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
+              <span class="text-xs font-medium text-sky-700">官方限流：RPM {{ formRegistryRpm ?? '—' }} / TPM {{ formRegistryTpm ?? '—' }}（provider 对该模型的速率硬限参考，非平台限流配置）</span>
+            </div>
+            <div v-if="formRegistryEndpoints.length" class="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+              <span class="text-xs font-medium text-slate-600">支持端点：{{ formRegistryEndpoints.join('、') }}</span>
+            </div>
+          </div>
+          <div class="mb-3">
             <label class="mb-1.5 block text-sm font-medium text-slate-700">能力标签</label>
             <div class="flex flex-wrap gap-2">
               <label
@@ -1558,23 +1581,6 @@ onMounted(() => {
                 />
                 {{ tag.label }}
               </label>
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="mb-1.5 block text-sm font-medium text-slate-700">从注册表回填属性</label>
-            <div class="flex gap-2">
-              <input v-model="formRegistryName" placeholder="LiteLLM 模型名,如 glm-4.7" class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
-              <button type="button" :disabled="registryLoading" class="shrink-0 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-50" @click="handleRegistryFill">{{ registryLoading ? '查询中' : '查询' }}</button>
-            </div>
-            <p class="mt-1 text-xs text-slate-400">平台内置注册表快照,未覆盖模型请手填下方属性</p>
-            <div v-if="formDeprecationDate" class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-              <span class="text-xs font-medium text-amber-700">注意：该模型注册表标注弃用日期 {{ formDeprecationDate }}，建议尽快迁移替代方案</span>
-            </div>
-            <div v-if="formRegistryRpm || formRegistryTpm" class="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2">
-              <span class="text-xs font-medium text-sky-700">官方限流：RPM {{ formRegistryRpm ?? '—' }} / TPM {{ formRegistryTpm ?? '—' }}（provider 对该模型的速率硬限参考，非平台限流配置）</span>
-            </div>
-            <div v-if="formRegistryEndpoints.length" class="mt-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-              <span class="text-xs font-medium text-slate-600">支持端点：{{ formRegistryEndpoints.join('、') }}</span>
             </div>
           </div>
           <div class="mb-3 grid grid-cols-2 gap-2">
@@ -1749,6 +1755,11 @@ onMounted(() => {
                 <div class="mb-2 flex items-center justify-between">
                   <h4 class="text-xs font-medium text-slate-500">外部官方定价 (¥/百万token)</h4>
                   <button type="button" class="rounded bg-slate-100 px-2 py-1 text-xs text-slate-700 transition-colors hover:bg-slate-200" @click="handleFetchOfficialPricing">从注册表拉取官方价</button>
+                </div>
+                <div class="mb-3">
+                  <label class="mb-1 block text-xs text-slate-500">注册表查询名（默认取厂商模型名，可选/搜索 provider 全名）</label>
+                  <ModelRegistryPicker v-model="deployPricingLookupName" placeholder="如 moonshot/kimi-k2.6" />
+                  <p class="mt-1 text-xs text-slate-400">同模型不同 provider 定价不同，请从候选选实际部署的 provider</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>

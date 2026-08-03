@@ -51,6 +51,12 @@ export function registryLookup(name: string): Promise<RegistryEntry | null> {
   })
 }
 
+export function registrySearch(keyword: string, limit: number = 20): Promise<string[]> {
+  return request<string[]>('/api/v1/models/registry-search', {
+    params: { keyword, limit },
+  })
+}
+
 export function createDeployment(modelId: number, params: CreateDeploymentParams): Promise<Deployment> {
   return request<Deployment>(`/api/v1/models/${modelId}/deployments`, { method: 'POST', body: params })
 }
