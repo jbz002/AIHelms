@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from exceptions import ConflictError, NotFoundError
+from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import (
     Model,
     ModelAccessGroup,
@@ -66,6 +66,7 @@ async def get_all_active_models(session: AsyncSession) -> list[dict]:
             "name": m.name,
             "model_id": m.model_id,
             "category": m.category,
+            "mode": m.mode,
             "capabilities": m.capabilities,
             "description": m.description,
             "logo_provider_type": m.logo_provider_type,
@@ -105,6 +106,7 @@ async def create_model(
     supports_parallel_function_calling: bool | None = None,
     supports_tool_choice: bool | None = None,
     litellm_provider: str | None = None,
+    mode: str | None = None,
 ) -> dict:
     effective_model_id = model_id.strip() or None
     if effective_model_id:
@@ -112,10 +114,12 @@ async def create_model(
         if existing:
             raise ConflictError(f"模型 ID '{effective_model_id}' 已存在")
 
+    effective_mode = _validate_mode_category(mode, category)
     model = Model(
         name=name,
         model_id=effective_model_id,
         category=category,
+        mode=effective_mode,
         capabilities=capabilities or [],
         description=description,
         logo_provider_type=logo_provider_type or "",
@@ -154,6 +158,7 @@ async def update_model(
     supports_parallel_function_calling: bool | None = None,
     supports_tool_choice: bool | None = None,
     litellm_provider: str | None = None,
+    mode: str | None = None,
 ) -> dict:
     model = await model_repo.find_by_id(session, model_id)
     if not model:
@@ -173,6 +178,8 @@ async def update_model(
         model.name = name
     if category is not None:
         model.category = category
+    if mode is not None:
+        model.mode = _validate_mode_category(mode, model.category)
     if capabilities is not None:
         model.capabilities = capabilities
     if description is not None:
@@ -349,6 +356,7 @@ def _merge_external_cost_to_model_info(model_info: dict, litellm_params: dict) -
         "output_cost_per_token": "output_cost",
         "cache_read_input_token_cost": "cache_read_cost",
         "cache_creation_input_token_cost": "cache_creation_cost",
+        "output_cost_per_image": "output_cost_per_image",
     }
     for param_key, info_key in cost_fields.items():
         if param_key in litellm_params:
@@ -500,8 +508,10 @@ async def update_deployment(
         deployment.litellm_params = sync_params
         sync_params = _convert_cost_for_litellm(sync_params)
         routable = _deployment_routable(deployment, credential)
-        sync_model_info = dict(deployment.model_info or {})
-        sync_model_info["active"] = routable
+        sync_params = _convert_modal_cost_for_litellm(
+            sync_params, _resolve_litellm_mode(model), deployment.cost_per_call
+        )
+        sync_model_info = _build_sync_model_info(deployment, model, active=routable)
         litellm_model_name = _get_litellm_model_name(
             model, credential, routable=routable
         )
@@ -905,11 +915,14 @@ async def _sync_deployment_to_litellm(
     )
 
     sync_litellm_params = _convert_cost_for_litellm(litellm_params)
+    sync_litellm_params = _convert_modal_cost_for_litellm(
+        sync_litellm_params, _resolve_litellm_mode(model), deployment.cost_per_call
+    )
     litellm_model_name = _get_litellm_model_name(model, credential)
     result = await litellm_client.add_model(
         model_name=litellm_model_name,
         litellm_params=sync_litellm_params,
-        model_info=deployment.model_info or {},
+        model_info=_build_sync_model_info(deployment, model, active=True),
     )
     litellm_id = result.get("model_info", {}).get("id")
     if litellm_id:
@@ -924,6 +937,7 @@ def _serialize_model(model: Model) -> dict:
         "name": model.name,
         "model_id": model.model_id,
         "category": model.category,
+        "mode": model.mode,
         "capabilities": model.capabilities,
         "description": model.description,
         "logo_provider_type": model.logo_provider_type,
@@ -998,6 +1012,70 @@ def _serialize_router_settings(settings: RouterSettings) -> dict:
         "config": settings.config,
         "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
     }
+
+
+# category → LiteLLM mode 兜底映射（model.mode 缺省时用）
+_CATEGORY_MODE_FALLBACK = {
+    "chat": "chat",
+    "embedding": "embedding",
+    "rerank": "rerank",
+    "completion": "completion",
+    "image": "image_generation",
+    "audio": "audio_speech",
+    "video": "video_generation",
+}
+
+
+def _validate_mode_category(mode: str | None, category: str) -> str | None:
+    """校验 mode 与 category 一致性，返回应入库的 mode（空则按 category 兜底）。
+
+    - audio 分类必须显式指定 audio_speech / audio_transcription（无合理默认值）
+    - image/video 的 mode 固定，缺省时兜底
+    - 其它分类缺省时兜底为同名 mode
+    """
+    if mode:
+        mode = mode.strip() or None
+    if category == "audio":
+        if mode not in ("audio_speech", "audio_transcription"):
+            raise ValidationError(
+                "语音模型必须指定 mode：audio_speech（语音合成）或 audio_transcription（语音识别）"
+            )
+        return mode
+    return mode or _CATEGORY_MODE_FALLBACK.get(category)
+
+
+def _resolve_litellm_mode(model: Model) -> str | None:
+    """决定推给 LiteLLM 的 model_info.mode：优先 model.mode，否则按 category 兜底。"""
+    if model.mode:
+        return model.mode
+    return _CATEGORY_MODE_FALLBACK.get(model.category)
+
+
+def _convert_modal_cost_for_litellm(
+    litellm_params: dict, mode: str | None, cost_per_call: float | None
+) -> dict:
+    """多模态按次计费：image_generation 时把平台 cost_per_call（¥/张）折算为 LiteLLM
+    output_cost_per_image（USD/张）。其余模态（audio/video）细粒度键与平台 per_call
+    粒度不一致，保持平台侧结算，不自动伪造 LiteLLM 键。
+    """
+    result = dict(litellm_params)
+    if mode == "image_generation" and cost_per_call:
+        result["output_cost_per_image"] = (
+            float(cost_per_call) / settings.usd_to_cny_rate
+        )
+    return result
+
+
+def _build_sync_model_info(
+    deployment: ModelDeployment, model: Model, active: bool
+) -> dict:
+    """构造推给 LiteLLM 的 model_info：合并部署扩展信息 + active + mode。"""
+    info = dict(deployment.model_info or {})
+    info["active"] = active
+    mode = _resolve_litellm_mode(model)
+    if mode:
+        info["mode"] = mode
+    return info
 
 
 async def _build_litellm_params_for_sync(

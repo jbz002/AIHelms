@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { getMyKeys } from '@aihelms/shared'
+import { getMyKeys, CAPABILITY_LABELS } from '@aihelms/shared'
 import { request } from '@aihelms/shared/src/api/request'
 import { createResourceApplication } from '@aihelms/shared/src/api/resource-application'
 import type { AiKey } from '@aihelms/shared/src/types/ai-key'
@@ -47,6 +47,11 @@ const capabilities = computed(() => {
   const set = new Set(models.value.flatMap(m => m.capabilities || []))
   return Array.from(set).sort()
 })
+
+// 能力枚举值 → 中文展示（capabilities 入库为英文 snake_case，UI 显示中文）
+function capabilityLabel(cap: string): string {
+  return CAPABILITY_LABELS[cap as keyof typeof CAPABILITY_LABELS] || cap
+}
 
 const filtered = computed(() => {
   return models.value.filter(m => {
@@ -140,7 +145,7 @@ onMounted(async () => {
         <button v-for="cap in capabilities" :key="cap" @click="capabilityFilter = cap"
           class="rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors"
           :class="capabilityFilter === cap ? 'bg-blue-100 text-blue-700' : 'bg-slate-50 text-slate-500 hover:bg-slate-100'">
-          {{ cap }}
+          {{ capabilityLabel(cap) }}
         </button>
       </div>
     </div>
@@ -174,7 +179,7 @@ onMounted(async () => {
         <div class="mt-3 flex flex-wrap gap-1.5">
           <span class="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">{{ model.category }}</span>
           <span v-for="cap in model.capabilities?.slice(0, 3)" :key="cap"
-            class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{{ cap }}</span>
+            class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{{ capabilityLabel(cap) }}</span>
         </div>
 
         <!-- 描述 -->

@@ -38,6 +38,10 @@ class CreateModelInput(BaseModel):
     supports_parallel_function_calling: bool | None = None
     supports_tool_choice: bool | None = None
     litellm_provider: str | None = None
+    mode: str | None = Field(
+        default=None,
+        description="LiteLLM mode，如 image_generation/audio_speech/audio_transcription/video_generation",
+    )
 
 
 class UpdateModelInput(BaseModel):
@@ -61,6 +65,10 @@ class UpdateModelInput(BaseModel):
     supports_parallel_function_calling: bool | None = None
     supports_tool_choice: bool | None = None
     litellm_provider: str | None = None
+    mode: str | None = Field(
+        default=None,
+        description="LiteLLM mode，如 image_generation/audio_speech/audio_transcription/video_generation",
+    )
 
 
 class PublishModelInput(BaseModel):
@@ -145,6 +153,7 @@ async def admin_create_model(params: CreateModelInput) -> str:
                 supports_parallel_function_calling=params.supports_parallel_function_calling,
                 supports_tool_choice=params.supports_tool_choice,
                 litellm_provider=params.litellm_provider,
+                mode=params.mode,
             )
         except (NotFoundError, ConflictError, ValidationError) as e:
             return error_text(e)
@@ -184,6 +193,7 @@ async def admin_update_model(params: UpdateModelInput) -> str:
                 supports_parallel_function_calling=params.supports_parallel_function_calling,
                 supports_tool_choice=params.supports_tool_choice,
                 litellm_provider=params.litellm_provider,
+                mode=params.mode,
             )
         except (NotFoundError, ConflictError, ValidationError) as e:
             return error_text(e)

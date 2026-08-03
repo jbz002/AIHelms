@@ -31,6 +31,9 @@ import {
   type UpdateRouterSettingsParams,
   type ModelVisibility,
   type RegistryEntry,
+  CAPABILITY_LABELS,
+  CATEGORY_CAPABILITIES,
+  type ModelCapability,
 } from '@aihelms/shared'
 import { usePermission } from '@aihelms/shared'
 import { getDepartmentTree, type DeptTreeNode } from '@aihelms/shared'
@@ -106,6 +109,7 @@ const newFallbackTo = ref('')
 const formName = ref('')
 const formModelId = ref('')
 const formCategory = ref('chat')
+const formMode = ref('')
 const formTags = ref<string[]>([])
 const formDescription = ref('')
 const formLogoProviderType = ref('')
@@ -168,44 +172,63 @@ const categories = [
   { value: 'chat', label: '对话', enabled: true },
   { value: 'embedding', label: '向量', enabled: true },
   { value: 'rerank', label: '重排', enabled: true },
-  { value: 'image', label: '文生图', enabled: false },
-  { value: 'video', label: '文生视频', enabled: false },
-  { value: 'audio', label: '语音识别', enabled: false },
-  { value: 'tts', label: '语音合成', enabled: false },
-  { value: 'completion', label: '补全', enabled: false },
+  { value: 'completion', label: '补全', enabled: true },
+  { value: 'image', label: '文生图', enabled: true },
+  { value: 'audio', label: '语音', enabled: true },
+  { value: 'video', label: '文生视频', enabled: true },
 ]
 
-// 能力标签按分类联动
-const categoryTags: Record<string, { value: string; label: string }[]> = {
-  chat: [
-    { value: '图像', label: '图像' },
-    { value: '推理', label: '推理' },
-    { value: '工具调用', label: '工具调用' },
-  ],
-  embedding: [
-    { value: '多语言', label: '多语言' },
-    { value: '多模态', label: '多模态' },
-    { value: '代码', label: '代码' },
-    { value: '长文本', label: '长文本' },
-  ],
-  rerank: [
-    { value: '多语言', label: '多语言' },
-    { value: '多模态', label: '多模态' },
-  ],
-}
-
-const modelTags = computed(() => {
-  return categoryTags[formCategory.value] || []
+// 能力标签按分类联动（候选来自 shared 统一枚举）
+const categoryTags = computed(() => {
+  const caps = CATEGORY_CAPABILITIES[formCategory.value] || []
+  return caps.map(c => ({ value: c, label: CAPABILITY_LABELS[c] }))
 })
 
-const capabilityBits: { key: keyof typeof formSupports.value; label: string }[] = [
-  { key: 'vision', label: '视觉' },
-  { key: 'function_calling', label: '工具调用' },
-  { key: 'reasoning', label: '推理' },
-  { key: 'response_schema', label: '结构化输出' },
-  { key: 'parallel_function_calling', label: '并行工具' },
-  { key: 'tool_choice', label: '工具选择' },
+const modelTags = computed(() => categoryTags.value)
+
+// audio 分类下需二选一的 mode
+const audioModeOptions = [
+  { value: 'audio_speech', label: '语音合成（TTS）' },
+  { value: 'audio_transcription', label: '语音识别（STT）' },
 ]
+
+// image/video 的 mode 固定
+const fixedModeForCategory = (category: string): string | null => {
+  if (category === 'image') return 'image_generation'
+  if (category === 'video') return 'video_generation'
+  return null
+}
+
+// 分类切换时联动重置 mode
+function handleCategoryChange(): void {
+  formTags.value = []
+  const fixed = fixedModeForCategory(formCategory.value)
+  if (fixed) {
+    formMode.value = fixed
+  } else if (formCategory.value === 'audio') {
+    formMode.value = ''
+  } else {
+    formMode.value = ''
+  }
+}
+
+// 提交时确定的 mode（image/video 固定；audio 必选；其它留空走后端兜底）
+const resolvedMode = computed(() => {
+  const fixed = fixedModeForCategory(formCategory.value)
+  if (fixed) return fixed
+  if (formCategory.value === 'audio') return formMode.value
+  return formMode.value || undefined
+})
+
+// 把注册表 supports_* 映射为 capabilities 枚举（用于回填）
+const SUPPORTS_TO_CAPABILITY: Record<string, ModelCapability> = {
+  vision: 'vision',
+  function_calling: 'tools',
+  reasoning: 'reasoning',
+  response_schema: 'response_schema',
+  parallel_function_calling: 'parallel_tool_calling',
+  tool_choice: 'tool_choice',
+}
 
 const formFilteredCredentials = computed(() => {
   if (!formProviderId.value) return []
@@ -366,7 +389,7 @@ const categoryLabels: Record<string, string> = {
   rerank: '重排',
   image: '文生图',
   video: '文生视频',
-  audio: '语音识别',
+  audio: '语音',
   tts: '语音合成',
   completion: '补全',
 }
@@ -434,6 +457,7 @@ function handleCreateModel(): void {
   formName.value = ''
   formModelId.value = ''
   formCategory.value = 'chat'
+  formMode.value = ''
   formTags.value = []
   formDescription.value = ''
   formLogoProviderType.value = ''
@@ -465,7 +489,8 @@ function handleEditModel(): void {
   formName.value = selectedModel.value.name
   formModelId.value = selectedModel.value.model_id
   formCategory.value = selectedModel.value.category
-  formTags.value = [...selectedModel.value.capabilities]
+  formMode.value = selectedModel.value.mode || ''
+  formTags.value = [...(selectedModel.value.capabilities || [])]
   formDescription.value = selectedModel.value.description
   formLogoProviderType.value = selectedModel.value.logo_provider_type || ''
   formRegistryName.value = selectedModel.value.model_id || ''
@@ -517,6 +542,19 @@ async function handleRegistryFill(): Promise<void> {
     if (entry.litellm_provider) {
       formLitellmProvider.value = entry.litellm_provider
     }
+    // 据 registry mode 联动分类与表单 mode
+    if (entry.mode) {
+      const modeCategoryMap: Record<string, string> = {
+        image_generation: 'image',
+        audio_speech: 'audio',
+        audio_transcription: 'audio',
+        video_generation: 'video',
+      }
+      if (modeCategoryMap[entry.mode]) {
+        formCategory.value = modeCategoryMap[entry.mode]
+      }
+      formMode.value = entry.mode
+    }
     formSupports.value = {
       vision: !!entry.supports_vision,
       function_calling: !!entry.supports_function_calling,
@@ -524,6 +562,24 @@ async function handleRegistryFill(): Promise<void> {
       response_schema: !!entry.supports_response_schema,
       parallel_function_calling: !!entry.supports_parallel_function_calling,
       tool_choice: !!entry.supports_tool_choice,
+    }
+    // 注册表能力位映射进能力标签（去重保序）
+    const entryFlags: Record<string, boolean | undefined> = {
+      vision: entry.supports_vision,
+      function_calling: entry.supports_function_calling,
+      reasoning: entry.supports_reasoning,
+      response_schema: entry.supports_response_schema,
+      parallel_function_calling: entry.supports_parallel_function_calling,
+      tool_choice: entry.supports_tool_choice,
+    }
+    const mapped: ModelCapability[] = []
+    for (const [k, cap] of Object.entries(SUPPORTS_TO_CAPABILITY)) {
+      if (entryFlags[k] && !formTags.value.includes(cap)) {
+        mapped.push(cap)
+      }
+    }
+    if (mapped.length) {
+      formTags.value = [...formTags.value, ...mapped]
     }
   } catch (e) {
     errorMessage.value = e instanceof Error ? e.message : '查询失败'
@@ -538,12 +594,18 @@ async function handleSubmitModel(): Promise<void> {
     errorMessage.value = '请填写模型名称'
     return
   }
+  if (formCategory.value === 'audio' && !formMode.value) {
+    errorMessage.value = '语音模型必须选择 mode：语音合成或语音识别'
+    return
+  }
+  const modePayload = resolvedMode.value
   try {
     if (isEditingModel.value && selectedModel.value) {
       await updateModel(selectedModel.value.id, {
         name: formName.value,
         model_id: formModelId.value || undefined,
         category: formCategory.value,
+        mode: modePayload,
         capabilities: formTags.value,
         description: formDescription.value,
         logo_provider_type: formLogoProviderType.value,
@@ -563,6 +625,7 @@ async function handleSubmitModel(): Promise<void> {
         name: formName.value,
         model_id: '',
         category: formCategory.value,
+        mode: modePayload,
         capabilities: formTags.value,
         description: formDescription.value,
         logo_provider_type: formLogoProviderType.value,
@@ -1370,9 +1433,19 @@ onMounted(() => {
           </div>
           <div class="mb-3">
             <label class="mb-1.5 block text-sm font-medium text-slate-700">分类</label>
-            <select v-model="formCategory" class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" @change="formTags = []">
-              <option v-for="c in categories" :key="c.value" :value="c.value" :disabled="!c.enabled">{{ c.label }}{{ !c.enabled ? '（即将上线）' : '' }}</option>
+            <select v-model="formCategory" class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" @change="handleCategoryChange">
+              <option v-for="c in categories" :key="c.value" :value="c.value">{{ c.label }}</option>
             </select>
+          </div>
+          <div v-if="formCategory === 'audio'" class="mb-3">
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">语音模式</label>
+            <select v-model="formMode" class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20">
+              <option value="" disabled>请选择语音合成或语音识别</option>
+              <option v-for="opt in audioModeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+          </div>
+          <div v-else-if="fixedModeForCategory(formCategory)" class="mb-3">
+            <p class="text-xs text-slate-500">LiteLLM mode：<span class="font-medium text-slate-700">{{ resolvedMode }}</span></p>
           </div>
           <div class="mb-3">
             <label class="mb-1.5 block text-sm font-medium text-slate-700">Logo</label>
@@ -1428,24 +1501,6 @@ onMounted(() => {
             <div>
               <label class="mb-1.5 block text-sm font-medium text-slate-700">最大输出(tokens)</label>
               <input v-model="formMaxOutputTokens" type="number" placeholder="可选" class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
-            </div>
-          </div>
-          <div class="mb-3">
-            <label class="mb-1.5 block text-sm font-medium text-slate-700">能力位</label>
-            <div class="flex flex-wrap gap-2">
-              <label
-                v-for="bit in capabilityBits"
-                :key="bit.key"
-                class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition-colors"
-                :class="formSupports[bit.key] ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'"
-              >
-                <input
-                  type="checkbox"
-                  v-model="formSupports[bit.key]"
-                  class="h-3.5 w-3.5 rounded border-slate-300 text-purple-600 focus:ring-purple-500/20"
-                />
-                {{ bit.label }}
-              </label>
             </div>
           </div>
           <div class="mb-3">
@@ -1634,6 +1689,8 @@ onMounted(() => {
                 <div>
                   <label class="mb-1 block text-xs text-slate-500">单次费用 (¥)</label>
                   <input v-model="deployCostPerCall" type="number" step="0.000001" placeholder="每次调用费用" class="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
+                  <p v-if="selectedModel?.category === 'image'" class="mt-1 text-xs text-slate-400">文生图按 ¥/张 计，每次调用 = 1 张图，平台自动同步为 LiteLLM output_cost_per_image</p>
+                  <p v-else-if="selectedModel?.category === 'audio' || selectedModel?.category === 'video'" class="mt-1 text-xs text-slate-400">平台按次结算；如需 LiteLLM 细粒度成本（按秒/按字符）请在下方高级配置手填</p>
                 </div>
               </div>
 

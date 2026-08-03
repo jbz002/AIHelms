@@ -423,13 +423,15 @@ async def reconcile_stale_tasks(session: AsyncSession) -> None:
 
     阈值：crawling 3min、pending 5min、ingesting 10min（大于单批 180s 超时，避免误杀在跑入库）。
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from sqlalchemy import select
 
     from tasks.doc_tasks import ingest_crawl_task
 
-    now = datetime.now(timezone.utc)
+    # started_at/created_at 列为 TIMESTAMP WITHOUT TIME ZONE(naive),
+    # cutoff 必须用 naive datetime,否则 asyncpg 编码报 offset 不匹配
+    now = datetime.utcnow()
     crawling_cutoff = now - timedelta(minutes=3)
     pending_cutoff = now - timedelta(minutes=5)
     ingesting_cutoff = now - timedelta(minutes=10)

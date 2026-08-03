@@ -25,6 +25,7 @@ class CreateModelRequest(BaseModel):
     supports_parallel_function_calling: bool | None = None
     supports_tool_choice: bool | None = None
     litellm_provider: str | None = Field(None, max_length=64)
+    mode: str | None = Field(None, max_length=32)
 
 
 class UpdateModelRequest(BaseModel):
@@ -44,6 +45,7 @@ class UpdateModelRequest(BaseModel):
     supports_parallel_function_calling: bool | None = None
     supports_tool_choice: bool | None = None
     litellm_provider: str | None = Field(None, max_length=64)
+    mode: str | None = Field(None, max_length=32)
 
 
 class CreateDeploymentRequest(BaseModel):
@@ -158,6 +160,7 @@ async def create_model(
             supports_parallel_function_calling=req.supports_parallel_function_calling,
             supports_tool_choice=req.supports_tool_choice,
             litellm_provider=req.litellm_provider,
+            mode=req.mode,
         )
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -204,6 +207,7 @@ async def update_model(
             supports_parallel_function_calling=req.supports_parallel_function_calling,
             supports_tool_choice=req.supports_tool_choice,
             litellm_provider=req.litellm_provider,
+            mode=req.mode,
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="模型不存在")

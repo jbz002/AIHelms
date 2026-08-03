@@ -3,6 +3,7 @@ export interface ModelInfo {
   name: string
   model_id: string
   category: string
+  mode?: string | null
   capabilities: string[]
   description: string
   logo_provider_type: string
@@ -46,6 +47,7 @@ export interface CreateModelParams {
   name: string
   model_id?: string
   category?: string
+  mode?: string | null
   capabilities?: string[]
   description?: string
   logo_provider_type?: string
@@ -64,6 +66,7 @@ export interface UpdateModelParams {
   name?: string
   model_id?: string
   category?: string
+  mode?: string | null
   capabilities?: string[]
   description?: string
   logo_provider_type?: string
@@ -113,6 +116,7 @@ export interface ActiveModel {
   name: string
   model_id: string
   category?: string
+  mode?: string | null
   capabilities?: string[]
   description?: string
   logo_provider_type: string
