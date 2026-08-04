@@ -193,7 +193,9 @@ async def test_web_mcp_status_endpoint(client: httpx.AsyncClient) -> None:
     user_id = await _pick_user_id(admin=False)
     raw, key_id = await _mint_key(user_id)
     try:
-        r = await client.get("/api/v1/web-mcp", headers={"Authorization": f"Bearer {raw}"})
+        r = await client.get(
+            "/api/v1/web-mcp", headers={"Authorization": f"Bearer {raw}"}
+        )
         assert r.status_code == 200
         data = r.json()["data"]
         assert data["endpoint_url"].endswith("/web-mcp/mcp")

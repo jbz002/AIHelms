@@ -23,7 +23,9 @@ def test_validate_mode_audio_requires_explicit_mode() -> None:
 
 
 def test_validate_mode_audio_accepts_speech_and_transcription() -> None:
-    assert model_service._validate_mode_category("audio_speech", "audio") == "audio_speech"
+    assert (
+        model_service._validate_mode_category("audio_speech", "audio") == "audio_speech"
+    )
     assert (
         model_service._validate_mode_category("audio_transcription", "audio")
         == "audio_transcription"
@@ -51,10 +53,22 @@ def test_resolve_mode_prefers_explicit_mode() -> None:
 
 
 def test_resolve_mode_falls_back_by_category() -> None:
-    assert model_service._resolve_litellm_mode(_model(mode=None, category="image")) == "image_generation"
-    assert model_service._resolve_litellm_mode(_model(mode=None, category="video")) == "video_generation"
-    assert model_service._resolve_litellm_mode(_model(mode=None, category="chat")) == "chat"
-    assert model_service._resolve_litellm_mode(_model(mode=None, category="unknown")) is None
+    assert (
+        model_service._resolve_litellm_mode(_model(mode=None, category="image"))
+        == "image_generation"
+    )
+    assert (
+        model_service._resolve_litellm_mode(_model(mode=None, category="video"))
+        == "video_generation"
+    )
+    assert (
+        model_service._resolve_litellm_mode(_model(mode=None, category="chat"))
+        == "chat"
+    )
+    assert (
+        model_service._resolve_litellm_mode(_model(mode=None, category="unknown"))
+        is None
+    )
 
 
 # --- _convert_modal_cost_for_litellm ---
@@ -65,7 +79,9 @@ def test_convert_modal_cost_image_yuan_to_usd_per_image() -> None:
     params = model_service._convert_modal_cost_for_litellm(
         {}, mode="image_generation", cost_per_call=7.0
     )
-    assert params["output_cost_per_image"] == pytest.approx(7.0 / settings.usd_to_cny_rate)
+    assert params["output_cost_per_image"] == pytest.approx(
+        7.0 / settings.usd_to_cny_rate
+    )
 
 
 def test_convert_modal_cost_skips_audio_and_video() -> None:

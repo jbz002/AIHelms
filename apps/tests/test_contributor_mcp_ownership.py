@@ -65,7 +65,9 @@ def _user(uid: int) -> dict:
     return {"id": uid, "is_admin": False, "permissions": ["mcp:contribute"]}
 
 
-async def _create_via_router(monkeypatch, owner_id: int, name: str | None = None) -> dict:
+async def _create_via_router(
+    monkeypatch, owner_id: int, name: str | None = None
+) -> dict:
     _stub_litellm(monkeypatch)
     name = name or f"cm{uuid.uuid4().hex[:10]}"
     req = CreateMcpRequest(
@@ -76,7 +78,9 @@ async def _create_via_router(monkeypatch, owner_id: int, name: str | None = None
     )
     session = _session()
     try:
-        data = await cm.create_my_mcp(req, session=session, current_user=_user(owner_id))
+        data = await cm.create_my_mcp(
+            req, session=session, current_user=_user(owner_id)
+        )
     finally:
         await session.close()
     return data["data"]
@@ -157,7 +161,9 @@ async def test_delete_blocks_published_mcp(monkeypatch):
 
         session = _session()
         with pytest.raises(HTTPException) as exc:
-            await cm.delete_my_mcp(server_id, session=session, current_user=_user(owner))
+            await cm.delete_my_mcp(
+                server_id, session=session, current_user=_user(owner)
+            )
         await session.close()
         assert exc.value.status_code == 409
     finally:

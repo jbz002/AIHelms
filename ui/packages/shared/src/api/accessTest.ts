@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { TestAccessParams, TestAccessResult, TestEmbeddingParams, TestEmbeddingResult, TestRerankParams, TestRerankResult } from '../types/accessTest'
+import type { TestAccessParams, TestAccessResult, TestAudioSpeechParams, TestAudioSpeechResult, TestAudioTranscriptionParams, TestAudioTranscriptionResult, TestEmbeddingParams, TestEmbeddingResult, TestImageGenParams, TestImageGenResult, TestRerankParams, TestRerankResult } from '../types/accessTest'
 
 function getToken(): string | null {
   return localStorage.getItem('aihelms_token')
@@ -38,6 +38,27 @@ export function testEmbedding(params: TestEmbeddingParams): Promise<TestEmbeddin
 
 export function testRerank(params: TestRerankParams): Promise<TestRerankResult> {
   return request<TestRerankResult>('/api/v1/access-test/test-rerank', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+export function testImageGeneration(params: TestImageGenParams): Promise<TestImageGenResult> {
+  return request<TestImageGenResult>('/api/v1/access-test/test-image-generation', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+export function testAudioSpeech(params: TestAudioSpeechParams): Promise<TestAudioSpeechResult> {
+  return request<TestAudioSpeechResult>('/api/v1/access-test/test-audio-speech', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+export function testAudioTranscription(params: TestAudioTranscriptionParams): Promise<TestAudioTranscriptionResult> {
+  return request<TestAudioTranscriptionResult>('/api/v1/access-test/test-audio-transcription', {
     method: 'POST',
     body: params,
   })

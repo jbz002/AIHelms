@@ -7,7 +7,7 @@ from core.deps import get_current_user, get_db
 from models.db import Model
 from repositories import model_repo
 from services import access_test_service
-from services.access_test_error_mapper import build_failure
+from services.access_test_error_mapper import build_error_detail, build_failure
 from services.access_test_precheck import precheck_access_test
 
 router = APIRouter(prefix="/access-test", tags=["access-test"])
@@ -59,6 +59,17 @@ async def test_access(
         model_obj = await model_repo.find_by_model_id(session, model_id.split("/")[-1])
     category = model_obj.category if model_obj else "chat"
     test_model = model_obj.model_id if model_obj and model_obj.model_id else model_id
+    if model_obj and model_obj.mode in {
+        "image_generation",
+        "audio_speech",
+        "audio_transcription",
+        "video_generation",
+    }:
+        return {
+            "code": 200,
+            "message": "模型测试完成",
+            "data": build_failure(build_error_detail("model_type_mismatch")),
+        }
     user_api_key, error_detail = await precheck_access_test(
         session,
         current_user["id"],
@@ -201,3 +212,106 @@ async def test_rerank(
         api_key=user_api_key,
     )
     return {"code": 200, "message": "Rerank 测试完成", "data": result}
+
+
+class TestImageGenRequest(BaseModel):
+    model: str = Field(..., min_length=1, description="文生图模型 ID")
+    prompt: str = Field(default="一只在月球上的猫", description="生成提示词")
+
+
+class TestAudioSpeechRequest(BaseModel):
+    model: str = Field(..., min_length=1, description="语音合成模型 ID")
+    text: str = Field(default="你好世界", description="合成文本")
+
+
+class TestAudioTranscriptionRequest(BaseModel):
+    model: str = Field(..., min_length=1, description="语音识别模型 ID")
+    audio_base64: str = Field(
+        ...,
+        min_length=1,
+        description="音频 data-URL(data:audio/...;base64,...)或裸 base64",
+    )
+
+
+@router.post("/test-image-generation", summary="文生图测试")
+async def test_image_generation(
+    req: TestImageGenRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    model_obj, test_model = await _resolve_model(session, req.model)
+    user_api_key, error_detail = await precheck_access_test(
+        session,
+        current_user["id"],
+        model_obj,
+        test_model,
+        is_admin=current_user["is_admin"],
+    )
+    if error_detail:
+        return {
+            "code": 200,
+            "message": "文生图测试完成",
+            "data": build_failure(error_detail),
+        }
+    result = await access_test_service.test_image_generation(
+        model=test_model,
+        prompt=req.prompt,
+        api_key=user_api_key,
+    )
+    return {"code": 200, "message": "文生图测试完成", "data": result}
+
+
+@router.post("/test-audio-speech", summary="语音合成测试")
+async def test_audio_speech(
+    req: TestAudioSpeechRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    model_obj, test_model = await _resolve_model(session, req.model)
+    user_api_key, error_detail = await precheck_access_test(
+        session,
+        current_user["id"],
+        model_obj,
+        test_model,
+        is_admin=current_user["is_admin"],
+    )
+    if error_detail:
+        return {
+            "code": 200,
+            "message": "语音合成测试完成",
+            "data": build_failure(error_detail),
+        }
+    result = await access_test_service.test_audio_speech(
+        model=test_model,
+        text=req.text,
+        api_key=user_api_key,
+    )
+    return {"code": 200, "message": "语音合成测试完成", "data": result}
+
+
+@router.post("/test-audio-transcription", summary="语音识别测试")
+async def test_audio_transcription(
+    req: TestAudioTranscriptionRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    model_obj, test_model = await _resolve_model(session, req.model)
+    user_api_key, error_detail = await precheck_access_test(
+        session,
+        current_user["id"],
+        model_obj,
+        test_model,
+        is_admin=current_user["is_admin"],
+    )
+    if error_detail:
+        return {
+            "code": 200,
+            "message": "语音识别测试完成",
+            "data": build_failure(error_detail),
+        }
+    result = await access_test_service.test_audio_transcription(
+        model=test_model,
+        audio_base64=req.audio_base64,
+        api_key=user_api_key,
+    )
+    return {"code": 200, "message": "语音识别测试完成", "data": result}

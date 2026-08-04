@@ -28,5 +28,12 @@
   "modelSquare.access.testEndpoint": "Test connection",
   "modelSquare.access.testing": "Testing...",
   "modelSquare.access.testResult": "Result",
-  "modelSquare.access.testPlaceholder": "Click the button to verify connectivity"
+  "modelSquare.access.testPlaceholder": "Click the button to verify connectivity",
+  "modelSquare.access.videoCurlPlaceholder": "LiteLLM has no standard video-generation endpoint",
+  "modelSquare.access.videoTestDisabledHint": "Video generation is not testable here — use the provider SDK",
+  "modelSquare.access.attachImage": "+ Attach image (vision test, ≤4MB)",
+  "modelSquare.access.imageTooLarge": "Image too large (max 4MB)",
+  "modelSquare.access.attachAudio": "+ Attach audio (STT test, ≤4MB)",
+  "modelSquare.access.audioTooLarge": "Audio too large (max 4MB)",
+  "modelSquare.access.attachAudioFirst": "Attach an audio file first"
 }

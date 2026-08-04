@@ -45,7 +45,9 @@ async def _create_via_router(owner_id: int, name: str | None = None) -> dict:
     req = CreateAgentRequest(name=name, platform="web")
     session = _session()
     try:
-        data = await ca.create_my_agent(req, session=session, current_user=_user(owner_id))
+        data = await ca.create_my_agent(
+            req, session=session, current_user=_user(owner_id)
+        )
     finally:
         await session.close()
     return data["data"]
@@ -123,7 +125,9 @@ async def test_delete_blocks_published_agent():
 
         session = _session()
         with pytest.raises(HTTPException) as exc:
-            await ca.delete_my_agent(agent_id, session=session, current_user=_user(owner))
+            await ca.delete_my_agent(
+                agent_id, session=session, current_user=_user(owner)
+            )
         await session.close()
         assert exc.value.status_code == 409
     finally:

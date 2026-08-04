@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_current_user, get_db, require_permission
-from exceptions import ConflictError, NotFoundError
+from exceptions import ConflictError, NotFoundError, ValidationError
 from services import model_registry, model_service
 
 router = APIRouter(prefix="/models", tags=["models"])
@@ -287,6 +287,8 @@ async def update_model_publish(
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="模型不存在")
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     return {"code": 200, "message": "发布设置更新成功", "data": result}
 
 

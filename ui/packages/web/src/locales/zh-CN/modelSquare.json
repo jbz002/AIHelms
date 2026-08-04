@@ -28,5 +28,12 @@
   "modelSquare.access.testEndpoint": "测试连通性",
   "modelSquare.access.testing": "测试中...",
   "modelSquare.access.testResult": "测试结果",
-  "modelSquare.access.testPlaceholder": "点击按钮验证接入是否可用"
+  "modelSquare.access.testPlaceholder": "点击按钮验证接入是否可用",
+  "modelSquare.access.videoCurlPlaceholder": "LiteLLM 暂无标准的视频生成端点",
+  "modelSquare.access.videoTestDisabledHint": "视频生成暂不支持在线测试，请使用供应商 SDK",
+  "modelSquare.access.attachImage": "+ 附加图片（测试图像理解，≤4MB）",
+  "modelSquare.access.imageTooLarge": "图片过大，请选择小于 4MB 的图片",
+  "modelSquare.access.attachAudio": "+ 附加音频（测试语音识别，≤4MB）",
+  "modelSquare.access.audioTooLarge": "音频过大，请选择小于 4MB 的音频",
+  "modelSquare.access.attachAudioFirst": "请先附加音频文件"
 }

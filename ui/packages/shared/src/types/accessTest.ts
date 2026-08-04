@@ -65,3 +65,43 @@ export interface TestRerankResult {
   error?: string
   error_detail?: AccessTestErrorDetail
 }
+
+export interface TestImageGenParams {
+  model: string
+  prompt?: string
+}
+
+export interface TestImageGenResult {
+  success: boolean
+  b64_json?: string
+  model?: string
+  error?: string
+  error_detail?: AccessTestErrorDetail
+}
+
+export interface TestAudioSpeechParams {
+  model: string
+  text?: string
+}
+
+export interface TestAudioSpeechResult {
+  success: boolean
+  b64_audio?: string
+  content_type?: string
+  model?: string
+  error?: string
+  error_detail?: AccessTestErrorDetail
+}
+
+export interface TestAudioTranscriptionParams {
+  model: string
+  audio_base64: string
+}
+
+export interface TestAudioTranscriptionResult {
+  success: boolean
+  text?: string
+  model?: string
+  error?: string
+  error_detail?: AccessTestErrorDetail
+}

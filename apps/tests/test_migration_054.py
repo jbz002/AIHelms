@@ -14,7 +14,9 @@ def _session():
     return get_worker_session_factory()()
 
 
-@pytest.mark.parametrize("code,resource", [("mcp:contribute", "mcp"), ("agent:contribute", "agent")])
+@pytest.mark.parametrize(
+    "code,resource", [("mcp:contribute", "mcp"), ("agent:contribute", "agent")]
+)
 @pytest.mark.asyncio
 async def test_contribute_permissions_seeded(code: str, resource: str):
     async with _session() as s:

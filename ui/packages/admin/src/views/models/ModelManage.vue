@@ -1131,6 +1131,8 @@ async function handleSavePublish(): Promise<void> {
     showPublishDialog.value = false
     await fetchModelDetail(selectedModel.value.id)
     await fetchModels()
+  } catch (e) {
+    errorMessage.value = e instanceof Error ? e.message : '发布设置更新失败'
   } finally {
     publishLoading.value = false
   }
@@ -1227,7 +1229,9 @@ onMounted(() => {
               <span v-if="model.deployment_count" class="shrink-0 text-[10px] text-slate-400">{{ model.deployment_count }}凭证</span>
               <button
                 v-if="hasPermission('user:update')"
-                class="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium transition-colors"
+                :disabled="!model.is_published && model.deployment_count === 0"
+                :title="!model.is_published && model.deployment_count === 0 ? '请先添加凭证创建部署后再发布' : ''"
+                class="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                 :class="model.is_published ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'"
                 @click="handleQuickPublish(model, $event)"
               >

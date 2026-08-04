@@ -19,7 +19,12 @@ ENTITY_MCP = "mcp_server"
 ENTITY_SKILL = "skill"
 ENTITY_CUSTOM = "custom_entity"
 ENTITY_AGENT = "agent"
-VALID_ENTITY_TYPES: tuple[str, ...] = (ENTITY_MCP, ENTITY_SKILL, ENTITY_CUSTOM, ENTITY_AGENT)
+VALID_ENTITY_TYPES: tuple[str, ...] = (
+    ENTITY_MCP,
+    ENTITY_SKILL,
+    ENTITY_CUSTOM,
+    ENTITY_AGENT,
+)
 
 
 async def submit_review(

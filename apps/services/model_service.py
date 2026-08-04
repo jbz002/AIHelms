@@ -770,6 +770,10 @@ async def update_model_publish(
         raise NotFoundError("model", model_id)
 
     if is_published is not None:
+        if is_published:
+            deployments = await model_repo.find_deployments_by_model(session, model_id)
+            if not deployments:
+                raise ValidationError("模型尚未配置部署，请先添加凭证创建部署后再发布")
         model.is_published = is_published
     if visibility_type is not None:
         model.visibility_type = visibility_type

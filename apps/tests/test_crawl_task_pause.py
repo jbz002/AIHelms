@@ -147,3 +147,36 @@ def test_update_status_prevents_regression_to_paused_from_ingested():
             assert t.status == "ingested"
 
     _run("ingested", assertions)
+
+
+def test_resume_failed_task_triggers_reentry(monkeypatch):
+    """failed 任务恢复:调 docs-mcp resume reentry,回写新 jobId,置 crawling,清错误。"""
+
+    async def assertions(factory, task_id):
+        from services import crawl_task_service
+        from services.docs_mcp_client import docs_mcp_client as client_instance
+
+        # 先标 failed + 错误信息(模拟爬取中断)
+        async with factory() as s:
+            await crawl_task_repo.update_status(
+                s, task_id, "failed", error_message="Too many redirects"
+            )
+            await s.commit()
+
+        captured: dict = {}
+
+        async def fake_resume_job(job_id, library, version):
+            captured["job_id"] = job_id
+            return {"live": False, "jobId": "new-reentry-id"}
+
+        monkeypatch.setattr(client_instance, "resume_job", fake_resume_job)
+
+        async with factory() as s:
+            result = await crawl_task_service.resume_crawl_task(s, task_id)
+
+        assert captured.get("job_id"), "resume_job 未被调用"
+        assert result["status"] == "crawling"
+        assert result["job_id"] == "new-reentry-id"
+        assert result["error_message"] is None
+
+    _run("crawling", assertions)

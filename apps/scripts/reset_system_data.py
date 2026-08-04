@@ -33,28 +33,55 @@ from services.litellm_client import LiteLLMError
 # TRUNCATE 清空的表(组内一次性,RESTART IDENTITY)。
 # 不含 users / ai_policies_audits —— 被 KEEP 表 FK 引用,改用 DELETE。
 RESET_TRUNCATE_TABLES = [
-    "user_roles", "user_departments", "user_projects",
-    "model_user_visibility", "model_department_visibility",
-    "ai_keys", "ai_key_model_limits", "key_scenarios",
-    "departments", "projects", "api_keys",
-    "usage_logs", "llm_call_logs", "mcp_call_logs",
-    "skill_usage_logs", "agent_usage_logs",
-    "cost_summary_daily", "efficiency_reports", "efficiency_suggestions",
-    "admin_audit_logs", "idempotency_records",
-    "storage_deletion_compensations", "export_tasks",
-    "resource_applications", "publish_reviews",
-    "agents", "agent_categories", "agent_platforms",
-    "custom_entity_types", "custom_entities",
+    "user_roles",
+    "user_departments",
+    "user_projects",
+    "model_user_visibility",
+    "model_department_visibility",
+    "ai_keys",
+    "ai_key_model_limits",
+    "key_scenarios",
+    "departments",
+    "projects",
+    "api_keys",
+    "usage_logs",
+    "llm_call_logs",
+    "mcp_call_logs",
+    "skill_usage_logs",
+    "agent_usage_logs",
+    "cost_summary_daily",
+    "efficiency_reports",
+    "efficiency_suggestions",
+    "admin_audit_logs",
+    "idempotency_records",
+    "storage_deletion_compensations",
+    "export_tasks",
+    "resource_applications",
+    "publish_reviews",
+    "agents",
+    "agent_categories",
+    "agent_platforms",
+    "custom_entity_types",
+    "custom_entities",
     "sync_state",
 ]
 
 # 验证用:RESET 前后行数应不变的 KEEP 表。
 KEEP_REPORT_TABLES = [
-    "providers", "models", "model_deployments", "credentials",
-    "mcp_servers", "mcp_tools", "mcp_server_versions",
-    "skills", "skill_versions",
-    "documents", "document_libraries",
-    "roles", "permissions", "role_permissions",
+    "providers",
+    "models",
+    "model_deployments",
+    "credentials",
+    "mcp_servers",
+    "mcp_tools",
+    "mcp_server_versions",
+    "skills",
+    "skill_versions",
+    "documents",
+    "document_libraries",
+    "roles",
+    "permissions",
+    "role_permissions",
     "business_scenarios",
 ]
 
@@ -94,7 +121,9 @@ async def collect_litellm_targets(session) -> tuple[list[str], list[str]]:
                     "WHERE litellm_key_id IS NOT NULL"
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     teams = list(
         (
@@ -104,7 +133,9 @@ async def collect_litellm_targets(session) -> tuple[list[str], list[str]]:
                     "WHERE litellm_team_id IS NOT NULL"
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
     return keys, teams
 
@@ -183,13 +214,19 @@ async def reset_db(admin_id: int) -> None:
     print("  平台 DB 已重置")
 
 
-def print_plan(admin_id: int, users_total: int, key_ids, team_ids, keep_before, no_litellm: bool) -> None:
-    print(f"保留管理员: user_id={admin_id}"
-          f"(当前 {users_total} 个用户,将删 {users_total - 1} 个)")
+def print_plan(
+    admin_id: int, users_total: int, key_ids, team_ids, keep_before, no_litellm: bool
+) -> None:
+    print(
+        f"保留管理员: user_id={admin_id}"
+        f"(当前 {users_total} 个用户,将删 {users_total - 1} 个)"
+    )
     litellm_note = "(将跳过)" if no_litellm else ""
     print(f"待删 LiteLLM: {len(key_ids)} key / {len(team_ids)} team {litellm_note}")
     print(f"将 DELETE: ai_policies_audits、非管理员 users")
-    print(f"将 UPDATE: 所有引用 users 的列(created_by/submitted_by 等)改指 admin,断开 NO ACTION FK")
+    print(
+        f"将 UPDATE: 所有引用 users 的列(created_by/submitted_by 等)改指 admin,断开 NO ACTION FK"
+    )
     print(f"将 TRUNCATE {len(RESET_TRUNCATE_TABLES)} 张表 RESTART IDENTITY")
     print(f"将 re-seed sync_state 游标,给 admin 绑 {ADMIN_ROLE_NAME} 角色")
     print("KEEP 表当前行数(重置后应不变):")
@@ -230,7 +267,8 @@ async def main() -> None:
             await session.execute(text("SELECT count(*) FROM aihelms.users"))
         ).scalar_one()
         reset_counts = await collect_counts(
-            session, ["ai_keys", "departments", "projects", "agents", "resource_applications"]
+            session,
+            ["ai_keys", "departments", "projects", "agents", "resource_applications"],
         )
 
     print("\n== 验证 ==")

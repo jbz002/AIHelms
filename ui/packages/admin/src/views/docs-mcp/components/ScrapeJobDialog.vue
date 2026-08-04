@@ -190,7 +190,7 @@ function handleSubmit(): void {
   }
   if (Object.keys(headers).length > 0) options.headers = headers
   if (!followRedirects.value) options.followRedirects = false
-  if (!ignoreErrors.value) options.ignoreErrors = false
+  options.ignoreErrors = ignoreErrors.value
   emit('submit', { url: url.value, library: library.value, version: version.value, options, ingestMode: ingestMode.value })
   submitting.value = false
 }

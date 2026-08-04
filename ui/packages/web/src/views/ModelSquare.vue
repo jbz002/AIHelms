@@ -13,6 +13,7 @@ interface ModelItem {
   name: string
   model_id: string
   category: string
+  mode?: string | null
   capabilities: string[]
   description: string
   logo_provider_type: string

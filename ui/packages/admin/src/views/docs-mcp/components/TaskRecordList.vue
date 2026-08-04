@@ -403,9 +403,9 @@ defineExpose({ loadTasks })
               <Pause v-else class="h-4 w-4" />
             </button>
             <button
-              v-if="task.source === 'external_crawl' && task.status === 'paused'"
+              v-if="task.source === 'external_crawl' && (task.status === 'paused' || task.status === 'failed')"
               class="rounded-md p-1 text-emerald-600 hover:bg-emerald-50"
-              title="恢复"
+              :title="task.status === 'failed' ? '续爬（跳过已爬页）' : '恢复'"
               :disabled="resumingKey === task.key"
               @click="handleResume(task)"
             >
