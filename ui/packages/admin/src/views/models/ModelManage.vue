@@ -1260,7 +1260,7 @@ onMounted(() => {
           <div class="flex items-center gap-3">
             <h3 class="text-sm font-semibold text-slate-900">{{ selectedModel.name }}</h3>
             <span class="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-600">{{ selectedModel.model_id }}</span>
-            <span class="text-xs text-slate-400">{{ selectedModel.category }}</span>
+            <span class="text-xs text-slate-400">{{ categoryLabels[selectedModel.category] || selectedModel.category }}</span>
           </div>
           <div class="flex gap-1.5">
             <button

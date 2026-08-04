@@ -31,14 +31,12 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>()
 const { t } = useI18n()
 
-const openAiClients = ['Workbuddy', 'Qcoder', 'Openclaw', 'Dify', 'FastGPT', 'LobeChat', 'Cherry Studio']
-const anthropicClients = ['Claude Code', 'Claude Desktop']
-
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024
 const MAX_AUDIO_BYTES = 4 * 1024 * 1024
 
 const copied = ref<string | null>(null)
 const showKeyFull = ref(false)
+const activeCurlTab = ref<'openai' | 'anthropic'>('openai')
 const isTesting = ref(false)
 const testOutput = ref('')
 const testError = ref('')
@@ -77,10 +75,10 @@ function resetAttachments(): void {
 }
 
 watch(() => props.visible, (v) => {
-  if (!v) { resetTestState(); resetAttachments() }
+  if (!v) { resetTestState(); resetAttachments(); activeCurlTab.value = 'openai' }
 })
 
-watch(() => props.model, () => { resetTestState(); resetAttachments() })
+watch(() => props.model, () => { resetTestState(); resetAttachments(); activeCurlTab.value = 'openai' })
 
 // 统一 mode 解析:mode 优先,缺失时按 category 兜底(chat/embedding/rerank)
 const resolvedMode = computed<string>(() => {
@@ -321,68 +319,35 @@ async function runChatStream(modelId: string, epoch: number): Promise<void> {
       </div>
 
       <div class="flex-1 space-y-4 overflow-y-auto px-6 py-5">
-        <div class="rounded-lg border border-slate-200/60 p-4">
-          <div class="mb-3 flex items-center gap-2">
-            <span class="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">{{ t('modelSquare.access.openaiProtocol') }}</span>
-            <span class="text-xs text-slate-400">{{ model.category }}</span>
-          </div>
-          <div class="mb-3 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5">
-            <div>
-              <code class="text-sm font-medium text-slate-800">{{ model.model_id }}</code>
-              <p v-if="isChatMode" class="mt-0.5 text-xs text-slate-400">
-                {{ t('modelSquare.access.openaiClientsPrefix') }}
-                <template v-for="(client, index) in openAiClients" :key="client">
-                  <span v-if="index > 0">, </span><strong class="font-bold text-slate-500">{{ client }}</strong>
-                </template>{{ t('modelSquare.access.openaiClientsSuffix') }}
-              </p>
+        <!-- 顶部:模型名称 / Base URL / API Key -->
+        <div class="space-y-2 rounded-lg border border-slate-200/60 p-4">
+          <div class="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+            <div class="flex min-w-0 items-baseline gap-2">
+              <span class="shrink-0 text-xs text-slate-400">{{ t('modelSquare.access.modelId') }}</span>
+              <code class="truncate text-sm font-medium text-slate-800">{{ model.model_id }}</code>
             </div>
             <button class="shrink-0 text-xs text-purple-600 hover:text-purple-700" @click="copyText(model.model_id, 'mid')">
               {{ copied === 'mid' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
             </button>
           </div>
-          <p class="mb-1 text-xs font-medium text-slate-500">{{ t('modelSquare.access.curlLabel') }}</p>
-          <div class="flex items-start justify-between gap-2 rounded-lg bg-slate-900 p-3">
-            <pre class="flex-1 overflow-x-auto whitespace-pre-wrap break-all text-xs leading-5 text-slate-100">{{ openaiCurl }}</pre>
-            <button class="shrink-0 text-xs text-purple-300 hover:text-purple-200" @click="copyText(openaiCurl, 'curl-openai')">
-              {{ copied === 'curl-openai' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
-            </button>
-          </div>
-          <p class="mt-1.5 text-xs text-slate-400">{{ t('modelSquare.access.curlHint') }}</p>
-        </div>
 
-        <div v-if="showAnthropic" class="rounded-lg border border-slate-200/60 p-4">
-          <div class="mb-3">
-            <span class="rounded-full bg-orange-50 px-2 py-0.5 text-xs font-semibold text-orange-700">{{ t('modelSquare.access.anthropicProtocol') }}</span>
-          </div>
-          <div class="mb-3 flex items-center justify-between rounded-lg bg-slate-50 px-3 py-2.5">
-            <div>
-              <code class="text-sm font-medium text-slate-800">{{ model.model_id }}(Anthropic)</code>
-              <p class="mt-0.5 text-xs text-slate-400">
-                {{ t('modelSquare.access.anthropicClientsPrefix') }}
-                <template v-for="(client, index) in anthropicClients" :key="client">
-                  <span v-if="index > 0">, </span><strong class="font-bold text-slate-500">{{ client }}</strong>
-                </template>{{ t('modelSquare.access.anthropicClientsSuffix') }}
-              </p>
+          <div class="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+            <div class="flex min-w-0 items-baseline gap-2">
+              <span class="shrink-0 text-xs text-slate-400">Base URL</span>
+              <code class="truncate text-sm text-slate-800">{{ litellmBaseUrl || t('modelSquare.fallback.notConfigured') }}</code>
             </div>
-            <button class="shrink-0 text-xs text-purple-600 hover:text-purple-700" @click="copyText(model.model_id + '(Anthropic)', 'mid-cc')">
-              {{ copied === 'mid-cc' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
+            <button class="shrink-0 text-xs text-purple-600 hover:text-purple-700" @click="copyText(litellmBaseUrl, 'url')">
+              {{ copied === 'url' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
             </button>
           </div>
-          <p class="mb-1 text-xs font-medium text-slate-500">{{ t('modelSquare.access.curlLabel') }}</p>
-          <div class="flex items-start justify-between gap-2 rounded-lg bg-slate-900 p-3">
-            <pre class="flex-1 overflow-x-auto whitespace-pre-wrap break-all text-xs leading-5 text-slate-100">{{ anthropicCurl }}</pre>
-            <button class="shrink-0 text-xs text-purple-300 hover:text-purple-200" @click="copyText(anthropicCurl, 'curl-anthropic')">
-              {{ copied === 'curl-anthropic' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
-            </button>
-          </div>
-          <p class="mt-1.5 text-xs text-slate-400">{{ t('modelSquare.access.curlHint') }}</p>
-        </div>
 
-        <div class="rounded-lg bg-slate-50 p-4">
-          <div class="mb-1 flex items-center justify-between">
-            <span class="text-xs font-medium text-slate-500">API Key</span>
-            <div class="flex items-center gap-2">
-              <button v-if="mainKeyValue" class="flex items-center justify-center rounded p-0.5 text-slate-400 hover:text-slate-600" @click="showKeyFull = !showKeyFull">
+          <div class="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+            <div class="flex min-w-0 flex-1 items-baseline gap-2">
+              <span class="shrink-0 text-xs text-slate-400">API Key</span>
+              <code class="break-all text-sm text-slate-800">{{ maskedKey }}</code>
+            </div>
+            <div class="flex shrink-0 items-center gap-2">
+              <button v-if="mainKeyValue" class="rounded p-0.5 text-slate-400 hover:text-slate-600" @click="showKeyFull = !showKeyFull">
                 <EyeOff v-if="showKeyFull" class="h-3.5 w-3.5" /><Eye v-else class="h-3.5 w-3.5" />
               </button>
               <button class="text-xs text-purple-600 hover:text-purple-700" @click="copyText(mainKeyValue, 'key')">
@@ -390,17 +355,32 @@ async function runChatStream(modelId: string, epoch: number): Promise<void> {
               </button>
             </div>
           </div>
-          <code class="block break-all text-sm text-slate-800">{{ maskedKey }}</code>
         </div>
 
-        <div class="rounded-lg bg-slate-50 p-4">
-          <div class="mb-1 flex items-center justify-between">
-            <span class="text-xs font-medium text-slate-500">Base URL</span>
-            <button class="text-xs text-purple-600 hover:text-purple-700" @click="copyText(litellmBaseUrl, 'url')">
-              {{ copied === 'url' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
+        <!-- curl 示例(OpenAI / Anthropic tab 切换) -->
+        <div class="rounded-lg border border-slate-200/60 p-4">
+          <div v-if="showAnthropic" class="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1">
+            <button class="flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+              :class="activeCurlTab === 'openai' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+              @click="activeCurlTab = 'openai'">{{ t('modelSquare.access.openaiProtocol') }}</button>
+            <button class="flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
+              :class="activeCurlTab === 'anthropic' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+              @click="activeCurlTab = 'anthropic'">{{ t('modelSquare.access.anthropicProtocol') }}</button>
+          </div>
+          <p class="mb-1 text-xs font-medium text-slate-500">{{ t('modelSquare.access.curlLabel') }}</p>
+          <div v-show="activeCurlTab === 'openai'" class="flex items-start justify-between gap-2 rounded-lg bg-slate-900 p-3">
+            <pre class="flex-1 overflow-x-auto whitespace-pre-wrap break-all text-xs leading-5 text-slate-100">{{ openaiCurl }}</pre>
+            <button class="shrink-0 text-xs text-purple-300 hover:text-purple-200" @click="copyText(openaiCurl, 'curl-openai')">
+              {{ copied === 'curl-openai' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
             </button>
           </div>
-          <code class="text-sm text-slate-800">{{ litellmBaseUrl || t('modelSquare.fallback.notConfigured') }}</code>
+          <div v-if="showAnthropic" v-show="activeCurlTab === 'anthropic'" class="flex items-start justify-between gap-2 rounded-lg bg-slate-900 p-3">
+            <pre class="flex-1 overflow-x-auto whitespace-pre-wrap break-all text-xs leading-5 text-slate-100">{{ anthropicCurl }}</pre>
+            <button class="shrink-0 text-xs text-purple-300 hover:text-purple-200" @click="copyText(anthropicCurl, 'curl-anthropic')">
+              {{ copied === 'curl-anthropic' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
+            </button>
+          </div>
+          <p class="mt-1.5 text-xs text-slate-400">{{ t('modelSquare.access.curlHint') }}</p>
         </div>
 
         <div class="rounded-lg border border-slate-200/60 p-4">

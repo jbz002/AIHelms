@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { getMyKeys, CAPABILITY_LABELS } from '@aihelms/shared'
+import { getMyKeys, CAPABILITY_LABELS, MODEL_CATEGORIES } from '@aihelms/shared'
 import { request } from '@aihelms/shared/src/api/request'
 import { createResourceApplication } from '@aihelms/shared/src/api/resource-application'
 import type { AiKey } from '@aihelms/shared/src/types/ai-key'
@@ -52,6 +52,12 @@ const capabilities = computed(() => {
 // 能力枚举值 → 中文展示（capabilities 入库为英文 snake_case，UI 显示中文）
 function capabilityLabel(cap: string): string {
   return CAPABILITY_LABELS[cap as keyof typeof CAPABILITY_LABELS] || cap
+}
+
+// 模型分类枚举值 → 中文展示（category 入库为英文 chat/embedding…，UI 显示中文）
+function categoryLabel(cat: string): string {
+  const found = MODEL_CATEGORIES.find(c => c.value === cat)
+  return found ? found.label : cat
 }
 
 const filtered = computed(() => {
@@ -133,7 +139,7 @@ onMounted(async () => {
         <button v-for="cat in categories" :key="cat" @click="categoryFilter = cat"
           class="rounded-full px-3 py-1 text-xs font-medium transition-colors"
           :class="categoryFilter === cat ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
-          {{ cat }}
+          {{ categoryLabel(cat) }}
         </button>
       </div>
       <div v-if="capabilities.length" class="flex flex-wrap gap-2">
@@ -178,7 +184,7 @@ onMounted(async () => {
 
         <!-- 标签 -->
         <div class="mt-3 flex flex-wrap gap-1.5">
-          <span class="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">{{ model.category }}</span>
+          <span class="rounded-full bg-purple-50 px-2 py-0.5 text-xs font-medium text-purple-700">{{ categoryLabel(model.category) }}</span>
           <span v-for="cap in model.capabilities?.slice(0, 3)" :key="cap"
             class="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">{{ capabilityLabel(cap) }}</span>
         </div>
