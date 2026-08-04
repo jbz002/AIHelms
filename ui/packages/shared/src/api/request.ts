@@ -7,6 +7,7 @@ export interface ApiResponse<T = unknown> {
   code: number
   message: string
   data: T
+  detail?: string
 }
 
 interface RequestOptions {
@@ -96,16 +97,16 @@ export async function request<T>(url: string, options: RequestOptions = {}): Pro
       localStorage.removeItem('aihelms_token')
       window.location.href = getLoginUrl()
     }
-    const message = json.message || getLocalErrorMessage('error.unauthorized')
+    const message = json.message || json.detail || getLocalErrorMessage('error.unauthorized')
     throw new Error(message)
   }
 
   if (response.status === 409) {
-    throw new Error(json.message || getLocalErrorMessage('error.requestFailed', { status: response.status }))
+    throw new Error(json.message || json.detail || getLocalErrorMessage('error.requestFailed', { status: response.status }))
   }
 
   if (!response.ok) {
-    throw new Error(json.message || getLocalErrorMessage('error.requestFailed', { status: response.status }))
+    throw new Error(json.message || json.detail || getLocalErrorMessage('error.requestFailed', { status: response.status }))
   }
 
   return json.data
