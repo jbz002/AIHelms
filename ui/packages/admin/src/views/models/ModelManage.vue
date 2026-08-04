@@ -1238,7 +1238,7 @@ onMounted(() => {
                 v-for="cap in model.capabilities.slice(0, 2)"
                 :key="cap"
                 class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500"
-              >{{ cap }}</span>
+              >{{ CAPABILITY_LABELS[cap as ModelCapability] || cap }}</span>
               <span v-if="model.capabilities.length > 2" class="text-[10px] text-slate-400">+{{ model.capabilities.length - 2 }}</span>
             </div>
           </div>
@@ -1303,7 +1303,7 @@ onMounted(() => {
               :key="cap"
               class="rounded bg-purple-50 px-2 py-0.5 text-xs text-purple-600"
             >
-              {{ cap }}
+              {{ CAPABILITY_LABELS[cap as ModelCapability] || cap }}
             </span>
           </div>
 

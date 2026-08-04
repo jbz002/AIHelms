@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { IconPicker, toast, createMcpContribution, updateMcpContribution, createMcpContributionVersion } from '@aihelms/shared'
-import type { McpServer } from '@aihelms/shared'
+import { IconPicker, toast, createMcpContribution, updateMcpContribution, createMcpContributionVersion, getMcpCategories } from '@aihelms/shared'
+import type { McpServer, McpCategory } from '@aihelms/shared'
 import { X } from 'lucide-vue-next'
 
 type FormMode = 'create' | 'edit' | 'version'
@@ -24,6 +24,7 @@ const transport = ref('sse')
 const description = ref('')
 const instructions = ref('')
 const category = ref('general')
+const categoryList = ref<McpCategory[]>([])
 const tagsText = ref('')
 const author = ref('')
 const iconUrl = ref('')
@@ -67,8 +68,27 @@ watch(
     } else {
       resetCreate()
     }
+    void loadCategories()
   },
 )
+
+async function loadCategories(): Promise<void> {
+  try {
+    categoryList.value = await getMcpCategories()
+  } catch {
+    categoryList.value = []
+  }
+  const names = categoryList.value.map((c) => c.name)
+  if (names.length && category.value === 'general' && props.mode === 'create') {
+    category.value = names[0]
+  }
+}
+
+const categoryOptions = computed(() => {
+  const names = categoryList.value.map((c) => c.name)
+  if (!category.value || names.includes(category.value)) return names
+  return [category.value, ...names]
+})
 
 function resetCreate(): void {
   name.value = ''
@@ -223,7 +243,10 @@ async function handleSubmit(): Promise<void> {
             <div class="grid grid-cols-2 gap-3">
               <div>
                 <label class="mb-1 block text-sm font-medium text-slate-700">{{ t('contributor.mcp.field.category') }}</label>
-                <input v-model="category" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none" />
+                <select v-if="categoryList.length" v-model="category" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none">
+                  <option v-for="c in categoryOptions" :key="c" :value="c">{{ c }}</option>
+                </select>
+                <input v-else v-model="category" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none" />
               </div>
               <div>
                 <label class="mb-1 block text-sm font-medium text-slate-700">{{ t('contributor.mcp.field.author') }}</label>

@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { ref, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { IconPicker, toast, createContribution, updateContribution, createContributionVersion } from '@aihelms/shared'
-import type { Skill } from '@aihelms/shared'
+import { IconPicker, toast, createContribution, updateContribution, createContributionVersion, getSkillCategories } from '@aihelms/shared'
+import type { Skill, SkillCategory } from '@aihelms/shared'
 import { X } from 'lucide-vue-next'
 
 type FormMode = 'create' | 'edit' | 'version'
@@ -23,6 +23,7 @@ const iconUrl = ref('')
 const description = ref('')
 const author = ref('')
 const category = ref('general')
+const categoryList = ref<SkillCategory[]>([])
 const version = ref('1.0.0')
 const tagsText = ref('')
 const usage = ref('')
@@ -61,6 +62,7 @@ watch(
     } else {
       resetCreate()
     }
+    void loadCategories()
   },
 )
 
@@ -77,6 +79,24 @@ function resetCreate(): void {
   zipFile.value = null
   sourceUrl.value = ''
 }
+
+async function loadCategories(): Promise<void> {
+  try {
+    categoryList.value = await getSkillCategories()
+  } catch {
+    categoryList.value = []
+  }
+  const names = categoryList.value.map((c) => c.name)
+  if (names.length && category.value === 'general' && props.mode === 'create') {
+    category.value = names[0]
+  }
+}
+
+const categoryOptions = computed(() => {
+  const names = categoryList.value.map((c) => c.name)
+  if (!category.value || names.includes(category.value)) return names
+  return [category.value, ...names]
+})
 
 function bumpVersion(v: string): string {
   const parts = v.split('.').map((n) => Number.parseInt(n, 10))
@@ -177,7 +197,10 @@ async function handleSubmit(): Promise<void> {
             </div>
             <div>
               <label class="mb-1 block text-sm font-medium text-slate-700">{{ t('contributor.skill.field.category') }}</label>
-              <input v-model="category" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none" />
+              <select v-if="categoryList.length" v-model="category" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none">
+                <option v-for="c in categoryOptions" :key="c" :value="c">{{ c }}</option>
+              </select>
+              <input v-else v-model="category" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none" />
             </div>
           </div>
           <div>
