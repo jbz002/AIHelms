@@ -128,10 +128,6 @@ class Settings(BaseSettings):
     # docs-mcp-server（API文档管理）
     # REST API + SSE 事件流均在 worker 容器
     docs_mcp_server_url: str = "http://localhost:8080"
-    docs_mcp_server_web_url: str = "http://localhost:8080"
-    docs_mcp_worker_port: int = 8080
-    docs_mcp_server_port: int = 6280
-    docs_mcp_web_port: int = 6281
 
     # docling-serve（文档格式转换：PDF/DOCX/PPTX 等 → Markdown）
     docling_serve_url: str = "http://localhost:5001"
