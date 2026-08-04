@@ -1,6 +1,15 @@
+export type ChatContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
+
+export interface ChatMessage {
+  role: string
+  content: string | ChatContentBlock[]
+}
+
 export interface TestAccessParams {
   model: string
-  messages: { role: string; content: string }[]
+  messages: ChatMessage[]
   stream?: boolean
   max_tokens?: number
 }

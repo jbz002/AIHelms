@@ -65,6 +65,7 @@ const errorMessage = ref('')
 const showTestDialog = ref(false)
 const testDefaultModel = ref('')
 const testAvailableModels = ref<string[]>([])
+const testSupportsVision = ref(false)
 
 // Publish / Visibility
 const showPublishDialog = ref(false)
@@ -775,6 +776,7 @@ function handleTestDeployment(d: Deployment): void {
   const credFormat = cred?.credential_info?.format as string || 'openai'
   testDefaultModel.value = credFormat === 'anthropic' ? `${baseModelId}(Anthropic)` : baseModelId
   testAvailableModels.value = []
+  testSupportsVision.value = selectedModel.value?.capabilities?.includes('vision') ?? false
   showTestDialog.value = true
 }
 
@@ -1886,6 +1888,7 @@ onMounted(() => {
       :visible="showTestDialog"
       :default-model="testDefaultModel"
       :available-models="testAvailableModels"
+      :supports-vision="testSupportsVision"
       @close="showTestDialog = false"
     />
 

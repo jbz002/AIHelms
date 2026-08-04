@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { resyncAnthropicDeployments, testModelAccessStream, toast, usePermission } from '@aihelms/shared'
-import type { AccessTestErrorDetail } from '@aihelms/shared'
+import type { AccessTestErrorDetail, ChatContentBlock } from '@aihelms/shared'
 
 interface Props {
   visible: boolean
   defaultModel?: string
   defaultCredentialName?: string
   availableModels?: string[]
+  supportsVision?: boolean
 }
 
 const props = defineProps<Props>()
@@ -27,6 +28,11 @@ const errorDetail = ref<AccessTestErrorDetail | null>(null)
 const showTechnicalDetail = ref(false)
 const isResyncingAnthropic = ref(false)
 
+const attachedImage = ref<string | null>(null)
+const imageName = ref('')
+const fileInput = ref<HTMLInputElement | null>(null)
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024
+
 watch(() => props.visible, (val) => {
   if (val) {
     modelInput.value = props.defaultModel || ''
@@ -36,11 +42,16 @@ watch(() => props.visible, (val) => {
     showTechnicalDetail.value = false
     isStreaming.value = false
     isResyncingAnthropic.value = false
+    attachedImage.value = null
+    imageName.value = ''
+    if (fileInput.value) fileInput.value.value = ''
   }
 })
 
 const canSend = computed(() => {
-  return modelInput.value.trim() && messageInput.value.trim() && !isStreaming.value
+  const hasMessage = messageInput.value.trim().length > 0
+  const hasImage = attachedImage.value !== null
+  return modelInput.value.trim() && (hasMessage || hasImage) && !isStreaming.value
 })
 
 const canResyncAnthropicAccess = computed(() => {
@@ -57,9 +68,19 @@ async function handleSend(): Promise<void> {
   isStreaming.value = true
 
   try {
+    const text = messageInput.value.trim()
+    let content: string | ChatContentBlock[]
+    if (attachedImage.value) {
+      content = [
+        { type: 'text', text: text || '请描述这张图片' },
+        { type: 'image_url', image_url: { url: attachedImage.value } },
+      ]
+    } else {
+      content = text
+    }
     const response = await testModelAccessStream({
       model: modelInput.value.trim(),
-      messages: [{ role: 'user', content: messageInput.value.trim() }],
+      messages: [{ role: 'user', content }],
       stream: streamEnabled.value,
       max_tokens: maxTokens.value,
     })
@@ -132,6 +153,29 @@ async function handleSend(): Promise<void> {
 
 function handleClose(): void {
   emit('close')
+}
+
+function handleFileChange(event: Event): void {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  if (file.size > MAX_IMAGE_BYTES) {
+    toast.error('图片过大，请选择小于 4MB 的图片')
+    input.value = ''
+    return
+  }
+  const reader = new FileReader()
+  reader.onload = () => {
+    attachedImage.value = reader.result as string
+    imageName.value = file.name
+  }
+  reader.readAsDataURL(file)
+}
+
+function removeImage(): void {
+  attachedImage.value = null
+  imageName.value = ''
+  if (fileInput.value) fileInput.value.value = ''
 }
 
 async function handleResyncAnthropicAccess(): Promise<void> {
@@ -211,9 +255,41 @@ function setAccessErrorFromStream(payload: string): void {
           <textarea
             v-model="messageInput"
             rows="3"
-            placeholder="输入测试消息..."
+            :placeholder="attachedImage ? '可选，留空则默认「请描述这张图片」' : '输入测试消息...'"
             class="w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
           />
+        </div>
+
+        <!-- Image attachment (vision test) -->
+        <div v-if="supportsVision" class="mb-4">
+          <input
+            ref="fileInput"
+            type="file"
+            accept="image/*"
+            class="hidden"
+            @change="handleFileChange"
+          />
+          <div v-if="attachedImage" class="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-2">
+            <img :src="attachedImage" alt="附件" class="h-16 w-16 rounded-md object-cover" />
+            <span class="flex-1 truncate text-xs text-slate-600">{{ imageName }}</span>
+            <button
+              type="button"
+              class="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600"
+              @click="removeImage"
+            >
+              <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <button
+            v-else
+            type="button"
+            class="rounded-lg border border-dashed border-slate-300 px-3 py-2 text-xs text-slate-500 transition-colors hover:border-blue-400 hover:text-blue-500"
+            @click="fileInput?.click()"
+          >
+            + 附加图片（测试图像理解，≤4MB）
+          </button>
         </div>
 
         <!-- Parameters -->
