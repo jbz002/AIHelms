@@ -17,6 +17,9 @@ DOCS_MCP_TIMEOUT = 30.0
 # ingest-raw 服务端做分块 + embedding 向量化，远慢于普通 REST；
 # 30s 默认超时下大语料/大文档必然 ReadTimeout，单独放大。
 INGEST_TIMEOUT = 180.0
+# fetch-url 走 Playwright 抓 JS 重 SPA（如钉钉文档）：冷启动浏览器 + 页面渲染 +
+# 平台适配器滚动，单次可达 30s+，撞默认 30s 超时线导致不稳定 ReadTimeout，单独放大。
+FETCH_URL_TIMEOUT = 90.0
 
 
 class DocsMcpError(Exception):
@@ -158,6 +161,19 @@ class DocsMcpClient:
     async def cancel_job(self, job_id: str) -> dict:
         return await self._call("POST", f"/api/jobs/{job_id}/cancel")
 
+    async def pause_job(self, job_id: str) -> dict:
+        """请求协作暂停。返回 {success, live};live=False 表示无 live job(进程可能已重启)。"""
+        return await self._call("POST", f"/api/jobs/{job_id}/pause")
+
+    async def resume_job(self, job_id: str, library: str, version: str) -> dict:
+        """恢复暂停 job。live job 解 gate;否则按 library/version 重入恢复,
+        返回 {success, live, jobId?},jobId 为重入产生的新 id(需回写)。"""
+        return await self._call(
+            "POST",
+            f"/api/jobs/{job_id}/resume",
+            json_data={"library": library, "version": version},
+        )
+
     async def clear_completed_jobs(self) -> dict:
         return await self._call("POST", "/api/jobs/clear-completed")
 
@@ -240,6 +256,7 @@ class DocsMcpClient:
         follow_redirects: bool = True,
         scrape_mode: str | None = None,
         headers: dict[str, str] | None = None,
+        timeout: float | None = None,
     ) -> dict:
         """抓取单个 URL 并转换为 Markdown。
 
@@ -248,13 +265,20 @@ class DocsMcpClient:
             follow_redirects: 是否跟随重定向，默认 True。
             scrape_mode: HTML 处理策略 (fetch / playwright / auto)。
             headers: 自定义 HTTP 请求头。
+            timeout: 单请求超时（秒），缺省用 FETCH_URL_TIMEOUT。Playwright 抓
+                JS 重 SPA 远慢于普通 REST，默认放大到 90s。
         """
         body: dict = {"url": url, "followRedirects": follow_redirects}
         if scrape_mode is not None:
             body["scrapeMode"] = scrape_mode
         if headers is not None:
             body["headers"] = headers
-        return await self._call("POST", "/api/fetch-url", json_data=body)
+        return await self._call(
+            "POST",
+            "/api/fetch-url",
+            json_data=body,
+            timeout=FETCH_URL_TIMEOUT if timeout is None else timeout,
+        )
 
     async def ingest_raw(
         self,

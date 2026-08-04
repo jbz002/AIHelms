@@ -9,12 +9,14 @@ from models.db import CrawlTask
 
 # 状态优先级:单向状态机 guard 用(pending→crawling→crawled→ingesting→ingested)。
 # update_status 只允许前进或转 failed,禁止回退(防 SSE/beat 竞态把 ingesting 写回 crawled)。
+# paused=-1:任何运行态恢复都满足前进条件;进入 paused 走专门分支(见 update_status)。
 _STATUS_PRIORITY: dict[str, int] = {
     "pending": 0,
     "crawling": 1,
     "crawled": 2,
     "ingesting": 3,
     "ingested": 4,
+    "paused": -1,
 }
 
 
@@ -74,22 +76,31 @@ async def update_status(
         values["current_url"] = kwargs["current_url"]
     if "pages_ingested" in kwargs:
         values["pages_ingested"] = kwargs["pages_ingested"]
+    if "paused_from" in kwargs:
+        values["paused_from"] = kwargs["paused_from"]
     if status in ("crawling", "ingesting"):
         values["started_at"] = datetime.now()
     if status in ("crawled", "ingested", "failed"):
         values["finished_at"] = datetime.now()
+    # 清除暂停相位标记:一旦离开 paused,paused_from 失效(用 None 覆盖)。
+    if status != "paused" and "paused_from" not in kwargs:
+        values["paused_from"] = None
 
     # 状态机单向 guard:status 只能前进或转 failed,禁止回退。
     # 防 sync_task_status 与 SSE 竞态(读后网络往返期间状态已前进)把 ingesting 写回 crawled。
     # failed↔任意 自由(支持失败重试)。0 行 update 时 started_at/finished_at 也不动。
+    # paused 单独分支:仅允许从 crawling/ingesting/failed 暂停。
     where_clauses: list[object] = [CrawlTask.id == task_id]
-    if status != "failed":
+    if status == "paused":
+        where_clauses.append(CrawlTask.status.in_(("crawling", "ingesting", "failed")))
+    elif status != "failed":
         cur_priority = case(
             (CrawlTask.status == "pending", 0),
             (CrawlTask.status == "crawling", 1),
             (CrawlTask.status == "crawled", 2),
             (CrawlTask.status == "ingesting", 3),
             (CrawlTask.status == "ingested", 4),
+            (CrawlTask.status == "paused", -1),
             else_=0,
         )
         where_clauses.append(
@@ -99,6 +110,19 @@ async def update_status(
             )
         )
     await session.execute(update(CrawlTask).where(*where_clauses).values(**values))
+    await session.flush()
+
+
+async def set_paused(session: AsyncSession, task_id: int, paused_from: str) -> None:
+    """标记任务为暂停,并记录暂停相位(crawling|ingesting),供恢复决定后续动作。"""
+    await update_status(session, task_id, "paused", paused_from=paused_from)
+
+
+async def update_job_id(session: AsyncSession, task_id: int, job_id: str) -> None:
+    """回写 docs-mcp 重启恢复后产生的新 jobId。"""
+    await session.execute(
+        update(CrawlTask).where(CrawlTask.id == task_id).values(job_id=job_id)
+    )
     await session.flush()
 
 

@@ -141,7 +141,8 @@ export interface CrawlTask {
   library: string
   version: string
   source_url: string
-  status: 'pending' | 'crawling' | 'crawled' | 'ingesting' | 'ingested' | 'failed'
+  status: 'pending' | 'crawling' | 'crawled' | 'ingesting' | 'ingested' | 'failed' | 'paused'
+  paused_from: string | null
   pages_total: number
   pages_crawled: number
   pages_ingested: number
@@ -189,6 +190,7 @@ export type DocTaskStatus =
   | 'ingested'
   | 'failed'
   | 'duplicate'
+  | 'paused'
 
 export interface DocTask {
   key: string
@@ -200,6 +202,7 @@ export interface DocTask {
   subtitle: string
   status_raw: string
   status: DocTaskStatus
+  paused_from: string | null
   progress_text: string
   current_url: string
   extracted_content_preview: string

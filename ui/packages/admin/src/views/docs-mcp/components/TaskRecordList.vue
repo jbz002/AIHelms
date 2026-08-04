@@ -7,7 +7,8 @@ import {
   ingestCrawlTask,
   ingestUploadRecord,
   getUploadRecordContent,
-  syncCrawlTaskStatus,
+  pauseCrawlTask,
+  resumeCrawlTask,
   deleteCrawlTask,
   deleteUploadRecord,
   toast,
@@ -23,7 +24,8 @@ import {
   ArrowDownToLine,
   AlertCircle,
   RefreshCw,
-  RotateCcw,
+  Pause,
+  Play,
   Copy,
   Check,
   Trash2,
@@ -44,7 +46,8 @@ const expandedKey = ref<string | null>(null)
 const expandedPages = ref<CrawledPage[]>([])
 const expandedPagesTotal = ref(0)
 const ingestingKey = ref<string | null>(null)
-const syncingKey = ref<string | null>(null)
+const pausingKey = ref<string | null>(null)
+const resumingKey = ref<string | null>(null)
 const deletingKey = ref<string | null>(null)
 const contentExpandedKey = ref<string | null>(null)
 const contentLoadingKey = ref<string | null>(null)
@@ -77,6 +80,7 @@ const statusConfig: Record<DocTaskStatus, { label: string; cls: string; spin: bo
   ingested: { label: '已入库', cls: 'bg-purple-100 text-purple-700', spin: false },
   failed: { label: '失败', cls: 'bg-red-100 text-red-700', spin: false },
   duplicate: { label: '重复跳过', cls: 'bg-gray-100 text-gray-500', spin: false },
+  paused: { label: '已暂停', cls: 'bg-amber-100 text-amber-700', spin: false },
 }
 
 const sourceConfig: Record<DocTaskSource, { label: string; icon: typeof Globe; cls: string }> = {
@@ -99,6 +103,7 @@ const statusOptions: { value: '' | DocTaskStatus; label: string }[] = [
   { value: 'ingested', label: '已入库' },
   { value: 'failed', label: '失败' },
   { value: 'duplicate', label: '重复跳过' },
+  { value: 'paused', label: '已暂停' },
 ]
 
 const dateOptions: { value: string; label: string }[] = [
@@ -213,19 +218,34 @@ async function handleIngest(task: DocTask): Promise<void> {
   }
 }
 
-async function handleSyncStatus(task: DocTask) {
-  if (!task.key.startsWith('crawl-')) return
-  const rawId = task.raw_id
-  syncingKey.value = task.key
+async function handlePause(task: DocTask) {
+  if (!task.key.startsWith('crawl-') || pausingKey.value) return
+  pausingKey.value = task.key
   try {
-    await syncCrawlTaskStatus(rawId)
-    toast({ type: 'success', message: '状态已同步' })
-  } catch {
-    toast({ type: 'error', message: '同步失败' })
+    await pauseCrawlTask(task.raw_id)
+    toast.success('任务已暂停')
+  } catch (e) {
+    toast.error((e as Error).message || '暂停失败')
   } finally {
-    syncingKey.value = null
+    pausingKey.value = null
   }
   await loadTasks()
+  emit('refresh')
+}
+
+async function handleResume(task: DocTask) {
+  if (!task.key.startsWith('crawl-') || resumingKey.value) return
+  resumingKey.value = task.key
+  try {
+    await resumeCrawlTask(task.raw_id)
+    toast.success('任务已恢复')
+  } catch (e) {
+    toast.error((e as Error).message || '恢复失败')
+  } finally {
+    resumingKey.value = null
+  }
+  await loadTasks()
+  emit('refresh')
 }
 
 async function handleDelete(task: DocTask): Promise<void> {
@@ -373,14 +393,24 @@ defineExpose({ loadTasks })
           </span>
           <div class="flex shrink-0 items-center">
             <button
-              v-if="task.source === 'external_crawl' && (task.status === 'processing' || task.status === 'failed')"
-              class="rounded-md p-1 text-gray-400 hover:bg-blue-50 hover:text-blue-500"
-              title="同步状态"
-              :disabled="syncingKey === task.key"
-              @click="handleSyncStatus(task)"
+              v-if="task.source === 'external_crawl' && (task.status === 'processing' || task.status === 'ingesting')"
+              class="rounded-md p-1 text-gray-400 hover:bg-amber-50 hover:text-amber-500"
+              title="暂停"
+              :disabled="pausingKey === task.key"
+              @click="handlePause(task)"
             >
-              <Loader2 v-if="syncingKey === task.key" class="h-4 w-4 animate-spin" />
-              <RotateCcw v-else class="h-4 w-4" />
+              <Loader2 v-if="pausingKey === task.key" class="h-4 w-4 animate-spin" />
+              <Pause v-else class="h-4 w-4" />
+            </button>
+            <button
+              v-if="task.source === 'external_crawl' && task.status === 'paused'"
+              class="rounded-md p-1 text-emerald-600 hover:bg-emerald-50"
+              title="恢复"
+              :disabled="resumingKey === task.key"
+              @click="handleResume(task)"
+            >
+              <Loader2 v-if="resumingKey === task.key" class="h-4 w-4 animate-spin" />
+              <Play v-else class="h-4 w-4" />
             </button>
             <button v-if="task.can_ingest" class="rounded-md p-1 text-emerald-600 hover:bg-emerald-50" title="入库" :disabled="ingestingKey === task.key" @click="handleIngest(task)">
               <Loader2 v-if="ingestingKey === task.key" class="h-4 w-4 animate-spin" />

@@ -321,8 +321,14 @@ export function deleteCrawlTask(taskId: number) {
   })
 }
 
-export function syncCrawlTaskStatus(taskId: number) {
-  return request<CrawlTask>('/api/v1/docs-mcp/crawl-tasks/{taskId}/sync-status'.replace('{taskId}', String(taskId)), {
+export function pauseCrawlTask(taskId: number) {
+  return request<CrawlTask>('/api/v1/docs-mcp/crawl-tasks/{taskId}/pause'.replace('{taskId}', String(taskId)), {
+    method: 'POST',
+  })
+}
+
+export function resumeCrawlTask(taskId: number) {
+  return request<CrawlTask>('/api/v1/docs-mcp/crawl-tasks/{taskId}/resume'.replace('{taskId}', String(taskId)), {
     method: 'POST',
   })
 }

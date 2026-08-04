@@ -58,6 +58,7 @@ def _serialize_task(task: CrawlTask) -> dict:
         "version": task.version,
         "source_url": task.source_url,
         "status": task.status,
+        "paused_from": task.paused_from,
         "pages_total": task.pages_total,
         "pages_crawled": task.pages_crawled,
         "pages_ingested": task.pages_ingested,
@@ -113,7 +114,7 @@ async def create_crawl_task(
         .where(
             func.lower(CrawlTask.library) == library.lower(),
             CrawlTask.version == (version or ""),
-            CrawlTask.status.in_(["pending", "crawling", "ingesting"]),
+            CrawlTask.status.in_(["pending", "crawling", "ingesting", "paused"]),
         )
     )
     if active.scalar_one() > 0:
@@ -274,6 +275,10 @@ async def handle_job_completed(
     if task is None:
         return None
 
+    # 任务被操作员暂停:不响应 stray SSE(completed/failed/cancelled),保持 paused。
+    if task.status == "paused":
+        return task
+
     if status == "completed":
         await crawl_task_repo.update_status(session, task.id, "crawled")
     elif status == "failed":
@@ -304,6 +309,9 @@ async def sync_task_status(
     """
     task = await crawl_task_repo.find_by_id(session, task_id)
     if task is None:
+        return None
+    # 暂停是操作员意图,不主动同步覆盖。
+    if task.status == "paused":
         return None
     if not task.job_id or task.status not in ("crawling", "pending", "failed"):
         return None
@@ -422,6 +430,8 @@ async def reconcile_stale_tasks(session: AsyncSession) -> None:
       advisory lock 防双跑）。
 
     阈值：crawling 3min、pending 5min、ingesting 10min（大于单批 180s 超时，避免误杀在跑入库）。
+
+    paused 不纳入:暂停是操作员意图,不自动自愈/标废,resume 显式触发恢复。
     """
     from datetime import datetime, timedelta
 
@@ -602,6 +612,11 @@ async def ingest_crawl_task(
         await session.commit()
         await session.refresh(task)
 
+        # 回补期间可能被操作员暂停:干净退出,resume 时重投 celery,已入库页自动跳过
+        if task.status == "paused":
+            logger.info("ingest_crawl_task: task %s paused after backfill", task_id)
+            return _serialize_task(task)
+
         pages = await crawled_page_repo.get_for_ingest(session, task_id)
         if not pages:
             await crawl_task_repo.update_status(session, task_id, "ingested")
@@ -610,6 +625,11 @@ async def ingest_crawl_task(
             return _serialize_task(task)
 
         for batch in _chunk_by_bytes(pages, INGEST_BYTE_BUDGET, MAX_BATCH_DOCS):
+            # 每批前重读状态:被操作员暂停则干净退出(resume 重投,已入库页跳过)
+            await session.refresh(task)
+            if task.status == "paused":
+                logger.info("ingest_crawl_task: task %s paused mid-ingest", task_id)
+                return _serialize_task(task)
             # 页级分类：空内容 / 重复 / 待入库
             to_ingest: list[CrawledPage] = []
             dup_page_ids: list[int] = []
@@ -784,9 +804,10 @@ async def list_crawl_pages(
 
 async def delete_crawl_task(session: AsyncSession, task_id: int) -> None:
     task = await crawl_task_repo.find_by_id(session, task_id)
-    # 删除 crawling/pending 中的任务前,best-effort 取消 docs-mcp 端 job,避免孤儿 job
+    # 删除 crawling/pending/paused 中的任务前,best-effort 取消 docs-mcp 端 job,避免孤儿 job
     # 持续抓取、SSE 推送被丢弃、资源泄漏。ingesting 阶段 docs-mcp job 已结束,无需 cancel。
-    if task and task.job_id and task.status in ("pending", "crawling"):
+    # paused(从 crawling 暂停)的 live job 仍占并发槽,删除时一并取消释放。
+    if task and task.job_id and task.status in ("pending", "crawling", "paused"):
         try:
             await docs_mcp_client.cancel_job(task.job_id)
         except DocsMcpError:
@@ -798,3 +819,77 @@ async def delete_crawl_task(session: AsyncSession, task_id: int) -> None:
     await crawled_page_repo.delete_by_task_id(session, task_id)
     await session.execute(delete(CrawlTask).where(CrawlTask.id == task_id))
     await session.flush()
+
+
+async def pause_crawl_task(session: AsyncSession, task_id: int) -> dict:
+    """暂停运行中的爬取任务。
+
+    - crawling:通知 docs-mcp 协作暂停(worker 在 loop head await resume gate)。
+    - ingesting:仅置 paused,celery 入库循环每批前自检并干净退出。
+    - 其他态(含 crawled 待入库)未在运行,拒绝。
+    """
+    task = await crawl_task_repo.find_by_id(session, task_id)
+    if task is None:
+        raise ValueError(f"crawl task {task_id} not found")
+
+    if task.status == "crawling":
+        try:
+            await docs_mcp_client.pause_job(task.job_id)
+        except DocsMcpError as e:
+            # 404 = docs-mcp 已无此 job(服务重启)。有已爬页仍标 paused,
+            # resume 时走 salvage/重入兜底;无页则让用户重试。
+            if e.status_code != 404:
+                raise
+            logger.warning(
+                "pause_crawl_task: docs-mcp job %s gone (404), pause locally",
+                task.job_id,
+            )
+        await crawl_task_repo.set_paused(session, task.id, "crawling")
+        await session.commit()
+        await session.refresh(task)
+        return _serialize_task(task)
+
+    if task.status == "ingesting":
+        await crawl_task_repo.set_paused(session, task.id, "ingesting")
+        await session.commit()
+        await session.refresh(task)
+        return _serialize_task(task)
+
+    raise ValueError("任务当前未运行，无法暂停")
+
+
+async def resume_crawl_task(session: AsyncSession, task_id: int) -> dict:
+    """恢复暂停的爬取任务。
+
+    - paused_from=crawling:调 docs-mcp resume。live job 解 gate 继续;否则(进程重启)
+      docs-mcp 按 library/version 重入恢复并返回新 jobId,回写 crawl_tasks.job_id。
+    - paused_from=ingesting:重投 celery ingest,已入库页(get_for_ingest 仅取 pending)跳过。
+    """
+    task = await crawl_task_repo.find_by_id(session, task_id)
+    if task is None:
+        raise ValueError(f"crawl task {task_id} not found")
+    if task.status != "paused":
+        raise ValueError("任务未处于暂停状态")
+
+    paused_from = task.paused_from or "crawling"
+
+    if paused_from == "ingesting":
+        await crawl_task_repo.update_status(session, task.id, "ingesting")
+        await session.commit()
+        from tasks.doc_tasks import ingest_crawl_task
+
+        ingest_crawl_task.delay(task.id)
+        await session.refresh(task)
+        return _serialize_task(task)
+
+    # crawling 相位恢复
+    resp = await docs_mcp_client.resume_job(
+        task.job_id, task.library, task.version or ""
+    )
+    # docs-mcp 重启重入返回新 jobId,回写
+    if isinstance(resp, dict) and not resp.get("live") and resp.get("jobId"):
+        await crawl_task_repo.update_job_id(session, task.id, resp["jobId"])
+    await crawl_task_repo.update_status(session, task.id, "crawling")
+    await session.commit()
+    await session.refresh(task)
+    return _serialize_task(task)

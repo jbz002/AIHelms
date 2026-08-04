@@ -747,21 +747,40 @@ async def ingest_crawl_task(
     return {"code": 200, "message": "入库任务已提交", "data": task}
 
 
-@router.post("/crawl-tasks/{task_id}/sync-status", summary="同步爬取任务状态")
-async def sync_crawl_task_status(
+@router.post("/crawl-tasks/{task_id}/pause", summary="暂停爬取任务")
+async def pause_crawl_task(
     task_id: int,
     _: dict = Depends(get_current_user),
 ):
-    """从 docs-mcp REST API 拉取任务实际状态并同步到本地。"""
+    """暂停运行中的爬取任务(crawling 通知 docs-mcp 协作暂停;ingesting 标记后 celery 自检退出)。"""
     from services import crawl_task_service
 
     async with async_session() as session:
-        result = await crawl_task_service.sync_task_status(session, task_id)
-        if result is None:
-            await session.commit()
-            return {"code": 200, "message": "状态无变化", "data": None}
+        try:
+            result = await crawl_task_service.pause_crawl_task(session, task_id)
+        except ValueError as e:
+            return {"code": 400, "message": str(e), "data": None}
         await session.commit()
-    return {"code": 200, "message": "任务状态已同步", "data": result}
+    return {"code": 200, "message": "任务已暂停", "data": result}
+
+
+@router.post("/crawl-tasks/{task_id}/resume", summary="恢复爬取任务")
+async def resume_crawl_task(
+    task_id: int,
+    _: dict = Depends(get_current_user),
+):
+    """恢复暂停的爬取任务(crawling 调 docs-mcp resume;ingesting 重投 celery)。"""
+    from services import crawl_task_service
+
+    async with async_session() as session:
+        try:
+            result = await crawl_task_service.resume_crawl_task(session, task_id)
+        except ValueError as e:
+            return {"code": 400, "message": str(e), "data": None}
+        except DocsMcpError as e:
+            return {"code": 502, "message": f"docs-mcp 恢复失败: {e}", "data": None}
+        await session.commit()
+    return {"code": 200, "message": "任务已恢复", "data": result}
 
 
 @router.delete("/crawl-tasks/{task_id}", summary="删除爬取任务")

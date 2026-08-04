@@ -1457,6 +1457,9 @@ class CrawlTask(Base):
     version: Mapped[str] = mapped_column(String(200), default="")
     source_url: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="pending")
+    paused_from: Mapped[str | None] = mapped_column(
+        String(20), nullable=True, default=None
+    )
     pages_total: Mapped[int] = mapped_column(Integer, default=0)
     pages_crawled: Mapped[int] = mapped_column(Integer, default=0)
     current_url: Mapped[str] = mapped_column(Text, default="")

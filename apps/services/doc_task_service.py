@@ -17,6 +17,7 @@ _CRAWL_STATUS_MAP: dict[str, str] = {
     "ingesting": "ingesting",
     "ingested": "ingested",
     "failed": "failed",
+    "paused": "paused",
 }
 
 # upload 原态 → 统一状态
@@ -60,7 +61,14 @@ def _format_file_size(size: int) -> str:
 
 
 def _from_crawl(task: object) -> dict:
-    if task.status == "ingesting" and task.pages_ingested > 0:
+    if task.status == "paused":
+        if task.paused_from == "ingesting":
+            progress_text = (
+                f"暂停(已入库 {task.pages_ingested}/{task.pages_crawled} 页)"
+            )
+        else:
+            progress_text = f"暂停(已爬 {task.pages_crawled} 页)"
+    elif task.status == "ingesting" and task.pages_ingested > 0:
         progress_text = f"入库 {task.pages_ingested}/{task.pages_crawled} 页"
     elif task.status == "ingested":
         progress_text = f"已入库 {task.pages_ingested} 页"
@@ -83,6 +91,7 @@ def _from_crawl(task: object) -> dict:
         "subtitle": task.source_url,
         "status_raw": task.status,
         "status": _CRAWL_STATUS_MAP.get(task.status, task.status),
+        "paused_from": task.paused_from,
         "progress_text": progress_text,
         "current_url": task.current_url or "",
         "extracted_content_preview": "",

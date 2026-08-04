@@ -1408,6 +1408,7 @@ CREATE TABLE IF NOT EXISTS aihelms.crawl_tasks (
     version VARCHAR(200) DEFAULT '',
     source_url TEXT NOT NULL,
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    paused_from VARCHAR(20),
     pages_total INT DEFAULT 0,
     pages_crawled INT DEFAULT 0,
     current_url TEXT NOT NULL DEFAULT '',
