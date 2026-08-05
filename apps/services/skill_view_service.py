@@ -38,14 +38,33 @@ async def get_skill_card(session: AsyncSession, skill_id: int) -> dict:
     }
 
 
-async def get_skill_summary(session: AsyncSession, skill_id: int) -> dict:
-    """Summary view: summary_text + frontmatter from active version."""
+async def _resolve_version(
+    session: AsyncSession, skill_id: int, version_id: int | None
+):
+    """选定版本解析：version_id 给定则按 id 取（校验归属），否则取 active。
+
+    返回 (version_or_none, used_version_id)。version_id 给定但无效时抛 NotFoundError。
+    """
+    if version_id is not None:
+        version = await skill_version_repo.find_owned_by_skill(
+            session, version_id, skill_id
+        )
+        if not version:
+            raise NotFoundError("skill_version", version_id)
+        return version
+    return await skill_version_repo.find_active_for_skill(session, skill_id)
+
+
+async def get_skill_summary(
+    session: AsyncSession, skill_id: int, version_id: int | None = None
+) -> dict:
+    """Summary view: summary_text + frontmatter from selected (or active) version."""
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
         raise NotFoundError("skill", skill_id)
-    active = await skill_version_repo.find_active_for_skill(session, skill_id)
-    summary = active.summary_text if active else skill.summary_text
-    fm = active.frontmatter if active else skill.frontmatter
+    version = await _resolve_version(session, skill_id, version_id)
+    summary = version.summary_text if version else skill.summary_text
+    fm = version.frontmatter if version else skill.frontmatter
     return {
         "id": skill.id,
         "name": skill.name,
@@ -54,13 +73,15 @@ async def get_skill_summary(session: AsyncSession, skill_id: int) -> dict:
     }
 
 
-async def get_skill_full(session: AsyncSession, skill_id: int) -> dict:
-    """Full view: complete content + file hashes from active version."""
+async def get_skill_full(
+    session: AsyncSession, skill_id: int, version_id: int | None = None
+) -> dict:
+    """Full view: complete content + file hashes from selected (or active) version."""
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
         raise NotFoundError("skill", skill_id)
-    active = await skill_version_repo.find_active_for_skill(session, skill_id)
-    if not active:
+    version = await _resolve_version(session, skill_id, version_id)
+    if not version:
         return {
             "id": skill.id,
             "name": skill.name,
@@ -73,21 +94,23 @@ async def get_skill_full(session: AsyncSession, skill_id: int) -> dict:
     return {
         "id": skill.id,
         "name": skill.name,
-        "frontmatter": active.frontmatter,
-        "summary_text": active.summary_text,
-        "full_content": active.full_content,
-        "file_hashes": active.file_hashes,
-        "composite_hash": active.composite_hash,
+        "frontmatter": version.frontmatter,
+        "summary_text": version.summary_text,
+        "full_content": version.full_content,
+        "file_hashes": version.file_hashes,
+        "composite_hash": version.composite_hash,
     }
 
 
-async def get_skill_integrity(session: AsyncSession, skill_id: int) -> dict:
+async def get_skill_integrity(
+    session: AsyncSession, skill_id: int, version_id: int | None = None
+) -> dict:
     """Integrity view: hashes + drift status. Admin only."""
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
         raise NotFoundError("skill", skill_id)
-    active = await skill_version_repo.find_active_for_skill(session, skill_id)
-    if not active:
+    version = await _resolve_version(session, skill_id, version_id)
+    if not version:
         return {
             "skill_id": skill.id,
             "version": "",
@@ -105,20 +128,20 @@ async def get_skill_integrity(session: AsyncSession, skill_id: int) -> dict:
         }
     return {
         "skill_id": skill.id,
-        "version_id": active.id,
-        "version": active.version,
-        "source_type": active.source_type,
-        "composite_hash": active.composite_hash,
-        "content_sha256": active.content_sha256,
-        "file_hashes": active.file_hashes,
-        "drift_detected": active.drift_detected,
-        "drifted_files": active.drifted_files,
+        "version_id": version.id,
+        "version": version.version,
+        "source_type": version.source_type,
+        "composite_hash": version.composite_hash,
+        "content_sha256": version.content_sha256,
+        "file_hashes": version.file_hashes,
+        "drift_detected": version.drift_detected,
+        "drifted_files": version.drifted_files,
         "last_drift_check_at": (
-            active.last_drift_check_at.isoformat()
-            if active.last_drift_check_at
+            version.last_drift_check_at.isoformat()
+            if version.last_drift_check_at
             else None
         ),
-        "drift_check_error": active.drift_check_error or "",
-        "protocol_valid": active.protocol_valid,
-        "protocol_errors": active.protocol_errors,
+        "drift_check_error": version.drift_check_error or "",
+        "protocol_valid": version.protocol_valid,
+        "protocol_errors": version.protocol_errors,
     }

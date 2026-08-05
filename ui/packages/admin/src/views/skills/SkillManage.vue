@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   createSkillCategory,
   deleteSkill,
@@ -10,6 +10,7 @@ import {
   toast,
   type Skill,
   type SkillCategory,
+  type SkillVersion,
   type ProtocolIssue,
   usePermission,
 } from '@aihelms/shared'
@@ -18,7 +19,7 @@ import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import HostedIcon from '@aihelms/shared/src/components/HostedIcon.vue'
 import SkillForm from './SkillForm.vue'
 import SkillGovernancePanel from './SkillGovernancePanel.vue'
-import SkillVersionPanel from './SkillVersionPanel.vue'
+import SkillVersionSwitcher from './SkillVersionSwitcher.vue'
 import SkillContentPanel from './SkillContentPanel.vue'
 import UsageStatsPanel from '../../components/UsageStatsPanel.vue'
 
@@ -28,6 +29,18 @@ const skills = ref<Skill[]>([])
 const categories = ref<SkillCategory[]>([])
 const loading = ref(false)
 const selectedSkill = ref<Skill | null>(null)
+const selectedSkillVersion = ref<SkillVersion | null>(null)
+
+// 切换 Skill 时立即清空选中版本：SkillContentPanel 按选中 versionId 读内容，
+// 旧 versionId 属于上一个 skill，后端归属校验会 404 → "加载摘要失败"。
+// 清空后走 active 分支，待 SkillVersionSwitcher emit 正确 versionId 再带。
+watch(
+  () => selectedSkill.value?.id,
+  () => {
+    selectedSkillVersion.value = null
+  },
+)
+const switcherRef = ref<InstanceType<typeof SkillVersionSwitcher> | null>(null)
 const showForm = ref(false)
 const editingSkill = ref<Skill | null>(null)
 const deleteTarget = ref<Skill | null>(null)
@@ -64,7 +77,7 @@ const protocolBanner = computed<{
   title: string
   issues: ProtocolIssue[]
 } | null>(() => {
-  const v = selectedSkill.value?.active_version
+  const v = selectedSkillVersion.value
   if (!v) return null
   const errs = (v.protocol_errors ?? []).filter((i) => i.severity === 'error')
   const warns = (v.protocol_errors ?? []).filter((i) => i.severity === 'warning')
@@ -84,6 +97,13 @@ const protocolBanner = computed<{
   }
   return null
 })
+
+function selectSkill(skill: Skill): void {
+  // 必须同步清选中版本：selectedSkill 与 selectedSkillVersion 同一 tick 更新，
+  // 否则 SkillContentPanel 的 prop-watch 会先用旧 versionId 查新 skill → 后端归属校验 404。
+  selectedSkill.value = skill
+  selectedSkillVersion.value = null
+}
 
 async function loadData(): Promise<void> {
   loading.value = true
@@ -140,15 +160,17 @@ async function confirmDelete(): Promise<void> {
 }
 
 function downloadZip(): void {
-  if (!selectedSkill.value?.has_zip) return
-  const url = getSkillDownloadUrl(selectedSkill.value.id)
+  const skill = selectedSkill.value
+  const version = selectedSkillVersion.value
+  if (!skill || !version?.zip_filename) return
+  const url = getSkillDownloadUrl(skill.id, version.id)
   const token = localStorage.getItem('aihelms_token')
   fetch(url, { headers: { Authorization: `Bearer ${token}` } })
     .then((res) => res.blob())
     .then((blob) => {
       const link = document.createElement('a')
       link.href = URL.createObjectURL(blob)
-      link.download = selectedSkill.value!.zip_filename || `${selectedSkill.value!.name}.zip`
+      link.download = version.zip_filename || `${skill.name}.zip`
       link.click()
       URL.revokeObjectURL(link.href)
     })
@@ -189,6 +211,59 @@ async function confirmDeleteCategory(): Promise<void> {
 }
 
 onMounted(loadData)
+
+// 安全审查异步跑在 celery，提交后 status=queued/running，扫描完成才落 DB。
+// 轮询版本状态直到终态，避免用户手动刷新页面才看到结果。
+let auditPollTimer: ReturnType<typeof setInterval> | null = null
+let auditPollCount = 0
+const AUDIT_POLL_INTERVAL = 4000
+const AUDIT_POLL_MAX = 75 // 75 * 4s = 5min 兜底
+
+function stopAuditPolling(): void {
+  if (auditPollTimer) {
+    clearInterval(auditPollTimer)
+    auditPollTimer = null
+  }
+  auditPollCount = 0
+}
+
+watch(
+  () => selectedSkillVersion.value?.security_status,
+  (status, prev) => {
+    // 终态到达：给一次完成/失败提示
+    if (prev && (prev === 'queued' || prev === 'running')) {
+      if (status === 'completed') {
+        const decision = selectedSkillVersion.value?.security_decision
+        const label =
+          decision === 'passed'
+            ? '审查通过'
+            : decision === 'attention_required'
+              ? '建议修改'
+              : decision === 'high_risk'
+                ? '高风险'
+                : '已完成'
+        toast.success(`安全审查完成：${label}`)
+      } else if (status === 'failed') {
+        toast.error('安全审查失败，请查看报告或重试')
+      }
+    }
+    // 进入审查中 → 启动轮询；否则停止
+    stopAuditPolling()
+    if (status === 'queued' || status === 'running') {
+      auditPollCount = 0
+      auditPollTimer = setInterval(async () => {
+        auditPollCount++
+        if (auditPollCount > AUDIT_POLL_MAX) {
+          stopAuditPolling()
+          return
+        }
+        await switcherRef.value?.reload()
+      }, AUDIT_POLL_INTERVAL)
+    }
+  },
+)
+
+onUnmounted(stopAuditPolling)
 </script>
 
 <template>
@@ -264,7 +339,7 @@ onMounted(loadData)
             :key="skill.id"
             class="mb-1 flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 transition-colors"
             :class="selectedSkill?.id === skill.id ? 'bg-purple-50 ring-1 ring-purple-200' : 'hover:bg-slate-50'"
-            @click="selectedSkill = skill"
+            @click="selectSkill(skill)"
           >
             <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100">
               <HostedIcon :src="skill.icon_url" :size="18" :alt="skill.name" />
@@ -292,9 +367,6 @@ onMounted(loadData)
           <div class="flex h-12 items-center justify-between border-b border-slate-200/60 px-4">
             <div class="flex items-center gap-2">
               <h3 class="text-sm font-semibold text-slate-900">{{ selectedSkill.name }}</h3>
-              <span class="rounded bg-purple-50 px-1.5 py-0.5 font-mono text-xs text-purple-600">v{{ selectedSkill.version }}</span>
-              <span v-if="selectedSkill.is_published" class="rounded bg-green-50 px-1.5 py-0.5 text-xs text-green-600">已发布</span>
-              <span v-if="selectedSkill.requires_approval" class="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-600">需审批</span>
               <span v-if="selectedSkill.hidden" class="rounded bg-red-50 px-1.5 py-0.5 text-xs text-red-600">已下架</span>
             </div>
             <div class="flex gap-1.5">
@@ -315,6 +387,14 @@ onMounted(loadData)
             </div>
           </div>
 
+          <SkillVersionSwitcher
+            ref="switcherRef"
+            :skill-id="selectedSkill.id"
+            :active-version="selectedSkill.active_version ?? null"
+            @select="selectedSkillVersion = $event"
+            @activated="handleVersionActivated"
+          />
+
           <div class="overflow-y-auto p-4" style="max-height: calc(100vh - 10rem)">
             <!-- 协议校验提示 -->
             <div
@@ -328,66 +408,80 @@ onMounted(loadData)
               </ul>
             </div>
 
-            <!-- 基本信息（只读） -->
-            <div class="mb-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-              <div>
-                <span class="text-slate-500">作者：</span>
-                <span class="text-slate-700">{{ selectedSkill.author || '-' }}</span>
-              </div>
-              <div>
-                <span class="text-slate-500">分类：</span>
-                <span class="text-slate-700">{{ selectedSkill.category }}</span>
-              </div>
-              <div>
-                <span class="text-slate-500">分类关键词：</span>
-                <span class="text-slate-700">{{ selectedSkill.tags?.length ? selectedSkill.tags.join(', ') : '-' }}</span>
-              </div>
-              <div>
-                <span class="text-slate-500">可见性：</span>
-                <span class="text-slate-700">{{ visibilityLabels[selectedSkill.visibility_type || 'all'] }}</span>
-              </div>
-              <div>
-                <span class="text-slate-500">发布：</span>
-                <span class="text-slate-700">{{ selectedSkill.is_published ? '已发布' : '未发布' }}</span>
-              </div>
-              <div>
-                <span class="text-slate-500">领用方式：</span>
-                <span class="text-slate-700">{{ selectedSkill.requires_approval ? '需审批' : '直接领用' }}</span>
-              </div>
-              <div class="col-span-2">
-                <span class="text-slate-500">当前文件：</span>
-                <span v-if="selectedSkill.zip_filename" class="text-slate-700">
-                  {{ selectedSkill.zip_filename }} ({{ Math.round((selectedSkill.zip_size || 0) / 1024) }} KB)
-                  · 已下载 {{ selectedSkill.install_count }} 次
-                </span>
-                <span v-else class="text-slate-400">暂无文件</span>
-                <button
-                  v-if="selectedSkill.has_zip"
-                  class="ml-2 inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
-                  @click="downloadZip"
-                >
-                  <Download class="h-3 w-3" />
-                  下载当前
-                </button>
-              </div>
-              <div v-if="selectedSkill.description" class="col-span-2">
-                <span class="text-slate-500">描述：</span>
-                <span class="text-slate-700">{{ selectedSkill.description }}</span>
-              </div>
-              <div v-if="selectedSkill.usage_instructions" class="col-span-2">
-                <span class="text-slate-500">使用说明：</span>
-                <span class="whitespace-pre-wrap text-slate-700">{{ selectedSkill.usage_instructions }}</span>
+            <!-- 基本信息（本体 + 当前版本） -->
+            <div class="mb-4 rounded-xl border border-slate-200/60 p-3">
+              <h4 class="mb-3 text-sm font-semibold text-slate-900">基本信息</h4>
+              <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                <div>
+                  <span class="text-slate-500">作者：</span>
+                  <span class="text-slate-700">{{ selectedSkill.author || '-' }}</span>
+                </div>
+                <div>
+                  <span class="text-slate-500">分类：</span>
+                  <span class="text-slate-700">{{ selectedSkill.category }}</span>
+                </div>
+                <div>
+                  <span class="text-slate-500">分类关键词：</span>
+                  <span class="text-slate-700">{{ selectedSkill.tags?.length ? selectedSkill.tags.join(', ') : '-' }}</span>
+                </div>
+                <div>
+                  <span class="text-slate-500">可见性：</span>
+                  <span class="text-slate-700">{{ visibilityLabels[selectedSkill.visibility_type || 'all'] }}</span>
+                </div>
+                <div>
+                  <span class="text-slate-500">发布：</span>
+                  <span class="text-slate-700">{{ selectedSkill.is_published ? '已发布' : '未发布' }}</span>
+                </div>
+                <div>
+                  <span class="text-slate-500">领用方式：</span>
+                  <span class="text-slate-700">{{ selectedSkill.requires_approval ? '需审批' : '直接领用' }}</span>
+                </div>
+                <template v-if="selectedSkillVersion">
+                  <div>
+                    <span class="text-slate-500">来源：</span>
+                    <span class="text-slate-700">{{ selectedSkillVersion.source_type === 'url' ? 'URL 同步' : '手动上传' }}</span>
+                  </div>
+                  <div>
+                    <span class="text-slate-500">协议：</span>
+                    <span class="text-slate-700">{{ selectedSkillVersion.protocol_valid ? '合规' : '不合规' }}</span>
+                  </div>
+                  <div class="col-span-2">
+                    <span class="text-slate-500">文件：</span>
+                    <span v-if="selectedSkillVersion.zip_filename" class="text-slate-700">
+                      {{ selectedSkillVersion.zip_filename }} ({{ Math.round((selectedSkillVersion.zip_size || 0) / 1024) }} KB)
+                    </span>
+                    <span v-else class="text-slate-400">无独立 zip</span>
+                    <button
+                      v-if="selectedSkillVersion.zip_filename"
+                      class="ml-2 inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-200"
+                      @click="downloadZip"
+                    >
+                      <Download class="h-3 w-3" />
+                      下载
+                    </button>
+                  </div>
+                </template>
+
+                <div v-if="selectedSkill.description" class="col-span-2">
+                  <span class="text-slate-500">描述：</span>
+                  <span class="text-slate-700">{{ selectedSkill.description }}</span>
+                </div>
+                <div v-if="selectedSkill.usage_instructions" class="col-span-2">
+                  <span class="text-slate-500">使用说明：</span>
+                  <span class="whitespace-pre-wrap text-slate-700">{{ selectedSkill.usage_instructions }}</span>
+                </div>
+                <div v-if="selectedSkillVersion?.change_log" class="col-span-2">
+                  <span class="text-slate-500">变更说明：</span>
+                  <span class="whitespace-pre-wrap text-slate-700">{{ selectedSkillVersion.change_log }}</span>
+                </div>
               </div>
             </div>
 
-            <!-- 内容：概览/摘要 + 完整指令/内容完整性 抽屉 -->
-            <SkillContentPanel :skill-id="selectedSkill.id" />
-
-            <!-- 版本管理 -->
-            <SkillVersionPanel
+            <!-- 内容：概览/摘要 + 完整指令/内容完整性/安全审查 抽屉 -->
+            <SkillContentPanel
               :skill-id="selectedSkill.id"
-              :active-version="selectedSkill.active_version ?? null"
-              @activated="handleVersionActivated"
+              :version="selectedSkillVersion"
+              @audited="switcherRef?.reload()"
             />
 
             <!-- 治理 -->

@@ -10,15 +10,16 @@ import {
   type McpServer,
   type McpServerVersion,
 } from '@aihelms/shared'
-import { Plus, GitBranch, CheckCircle2, AlertTriangle, Archive } from 'lucide-vue-next'
+import { Plus, ChevronDown } from 'lucide-vue-next'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 
 interface Props {
   serverId: number
-  activeVersion?: McpServerVersion | null
+  activeVersion: McpServerVersion | null
 }
 const props = defineProps<Props>()
 const emit = defineEmits<{
+  select: [version: McpServerVersion | null]
   activated: [server: McpServer]
 }>()
 
@@ -26,8 +27,10 @@ const { hasPermission } = usePermission()
 const canManage = hasPermission('mcp:update') || hasPermission('mcp:create')
 
 const versions = ref<McpServerVersion[]>([])
+const selectedVersion = ref<McpServerVersion | null>(null)
 const loading = ref(false)
 const actingId = ref<number | null>(null)
+
 const showCreate = ref(false)
 const deprecateTarget = ref<McpServerVersion | null>(null)
 
@@ -52,6 +55,7 @@ async function loadVersions(): Promise<void> {
   loading.value = true
   try {
     versions.value = await getMcpServerVersions(props.serverId, true)
+    syncSelectedFromActive()
   } catch (e) {
     toast.error((e as { message?: string }).message || '加载版本失败')
   } finally {
@@ -59,7 +63,34 @@ async function loadVersions(): Promise<void> {
   }
 }
 
+function syncSelectedFromActive(): void {
+  if (versions.value.length === 0) {
+    selectedVersion.value = null
+    emit('select', null)
+    return
+  }
+  const activeId = props.activeVersion?.id
+  const found = activeId ? versions.value.find((v) => v.id === activeId) : null
+  const next = found || versions.value[0]
+  selectedVersion.value = next
+  emit('select', next)
+}
+
 watch(() => props.serverId, loadVersions, { immediate: true })
+watch(() => props.activeVersion?.id, syncSelectedFromActive)
+
+function onSelectChange(e: Event): void {
+  const id = Number((e.target as HTMLSelectElement).value)
+  const v = versions.value.find((x) => x.id === id) || null
+  selectedVersion.value = v
+  emit('select', v)
+}
+
+function lifecycleBadge(s: string): { cls: string; label: string } {
+  if (s === 'active') return { cls: 'bg-green-50 text-green-600', label: '生效中' }
+  if (s === 'deprecated') return { cls: 'bg-slate-100 text-slate-400 line-through', label: '已弃用' }
+  return { cls: 'bg-amber-50 text-amber-600', label: '灰度' }
+}
 
 async function handleActivate(v: McpServerVersion): Promise<void> {
   actingId.value = v.id
@@ -124,20 +155,50 @@ async function handleCreate(): Promise<void> {
     toast.error((e as { message?: string }).message || '创建失败')
   }
 }
-
-function lifecycleBadge(s: string): { cls: string; label: string; icon: typeof CheckCircle2 } {
-  if (s === 'active') return { cls: 'bg-green-50 text-green-600', label: '生效中', icon: CheckCircle2 }
-  if (s === 'deprecated') return { cls: 'bg-slate-100 text-slate-400 line-through', label: '已弃用', icon: Archive }
-  return { cls: 'bg-amber-50 text-amber-600', label: '灰度', icon: AlertTriangle }
-}
 </script>
 
 <template>
-  <div class="rounded-xl border border-slate-200/60 p-3">
-    <div class="mb-2 flex items-center justify-between">
-      <h4 class="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-        <GitBranch class="h-4 w-4 text-purple-500" /> 版本管理
-      </h4>
+  <div class="flex flex-wrap items-center gap-1.5 border-b border-slate-200/60 bg-slate-50/40 px-4 py-2">
+    <!-- 版本下拉 -->
+    <div class="relative">
+      <select
+        class="appearance-none rounded-md border border-slate-200 bg-white py-1 pl-2.5 pr-7 text-xs font-medium text-slate-800 focus:border-purple-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+        :value="selectedVersion?.id"
+        :disabled="loading || versions.length === 0"
+        @change="onSelectChange"
+      >
+        <option v-for="v in versions" :key="v.id" :value="v.id">
+          v{{ v.version }}{{ v.is_active ? ' · 当前' : '' }} · {{ lifecycleBadge(v.lifecycle_status).label }}
+        </option>
+      </select>
+      <ChevronDown class="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+    </div>
+
+    <!-- 状态徽标 -->
+    <template v-if="selectedVersion">
+      <span class="rounded px-1.5 py-0.5 text-xs font-medium" :class="lifecycleBadge(selectedVersion.lifecycle_status).cls">{{ lifecycleBadge(selectedVersion.lifecycle_status).label }}</span>
+      <span v-if="selectedVersion.version_label" class="truncate text-xs text-slate-400">{{ selectedVersion.version_label }}</span>
+    </template>
+    <span v-else-if="!loading" class="text-xs text-slate-400">暂无版本</span>
+
+    <!-- 操作 -->
+    <div class="ml-auto flex items-center gap-1">
+      <template v-if="selectedVersion && canManage">
+        <button
+          v-if="!selectedVersion.is_active"
+          class="rounded bg-green-50 px-1.5 py-0.5 text-xs font-medium text-green-600 hover:bg-green-100 disabled:opacity-50"
+          :disabled="actingId === selectedVersion.id"
+          @click="handleActivate(selectedVersion)"
+        >
+          {{ actingId === selectedVersion.id ? '...' : selectedVersion.lifecycle_status === 'deprecated' ? '回滚' : '激活' }}
+        </button>
+        <button
+          v-if="!selectedVersion.is_active && selectedVersion.lifecycle_status !== 'deprecated'"
+          class="rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500 hover:bg-slate-200"
+          @click="deprecateTarget = selectedVersion"
+        >弃用</button>
+      </template>
+
       <button
         v-if="canManage"
         class="flex items-center gap-1 rounded-md bg-purple-50 px-2 py-1 text-xs font-medium text-purple-600 transition-colors hover:bg-purple-100"
@@ -145,47 +206,6 @@ function lifecycleBadge(s: string): { cls: string; label: string; icon: typeof C
       >
         <Plus class="h-3 w-3" /> 新版本
       </button>
-    </div>
-
-    <div v-if="loading" class="py-4 text-center text-xs text-slate-400">加载中...</div>
-    <div v-else-if="versions.length === 0" class="py-4 text-center text-xs text-slate-400">暂无版本</div>
-    <div v-else class="space-y-1.5">
-      <div
-        v-for="v in versions"
-        :key="v.id"
-        class="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-xs"
-      >
-        <component :is="lifecycleBadge(v.lifecycle_status).icon" class="h-3.5 w-3.5 shrink-0 text-slate-400" />
-        <div class="min-w-0 flex-1">
-          <div class="flex items-center gap-1.5">
-            <span class="font-mono font-medium text-slate-800">v{{ v.version }}</span>
-            <span v-if="v.version_label" class="truncate text-slate-400">{{ v.version_label }}</span>
-          </div>
-          <div class="mt-0.5 truncate text-slate-400">
-            {{ transportLabels[v.transport] || v.transport }} · {{ v.url }}
-          </div>
-        </div>
-        <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px]" :class="lifecycleBadge(v.lifecycle_status).cls">
-          {{ lifecycleBadge(v.lifecycle_status).label }}
-        </span>
-        <div v-if="canManage" class="flex shrink-0 gap-1">
-          <button
-            v-if="!v.is_active"
-            class="rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-600 hover:bg-green-100 disabled:opacity-50"
-            :disabled="actingId === v.id"
-            @click="handleActivate(v)"
-          >
-            {{ actingId === v.id ? '...' : v.lifecycle_status === 'deprecated' ? '回滚' : '激活' }}
-          </button>
-          <button
-            v-if="!v.is_active && v.lifecycle_status !== 'deprecated'"
-            class="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-500 hover:bg-slate-200"
-            @click="deprecateTarget = v"
-          >
-            弃用
-          </button>
-        </div>
-      </div>
     </div>
 
     <ConfirmDialog
@@ -196,10 +216,8 @@ function lifecycleBadge(s: string): { cls: string; label: string; icon: typeof C
       @cancel="deprecateTarget = null"
     />
 
-    <div
-      v-if="showCreate"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/20"
-    >
+    <!-- 新版本 -->
+    <div v-if="showCreate" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
       <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">创建新版本</h3>
         <div class="mb-3 grid grid-cols-2 gap-3">

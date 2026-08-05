@@ -182,11 +182,12 @@ async def get_skill_card(
 @router.get("/{skill_id}/summary")
 async def get_skill_summary(
     skill_id: int,
+    version_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_user),
 ):
     try:
-        data = await skill_view_service.get_skill_summary(session, skill_id)
+        data = await skill_view_service.get_skill_summary(session, skill_id, version_id)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")
     return {"code": 200, "message": "ok", "data": data}
@@ -195,11 +196,12 @@ async def get_skill_summary(
 @router.get("/{skill_id}/full")
 async def get_skill_full(
     skill_id: int,
+    version_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db),
     _: dict = Depends(get_current_user),
 ):
     try:
-        data = await skill_view_service.get_skill_full(session, skill_id)
+        data = await skill_view_service.get_skill_full(session, skill_id, version_id)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")
     return {"code": 200, "message": "ok", "data": data}
@@ -208,11 +210,14 @@ async def get_skill_full(
 @router.get("/{skill_id}/integrity", summary="Skill 内容完整性信息")
 async def get_skill_integrity(
     skill_id: int,
+    version_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db),
     _: dict = Depends(require_permission("skill:read")),
 ):
     try:
-        data = await skill_view_service.get_skill_integrity(session, skill_id)
+        data = await skill_view_service.get_skill_integrity(
+            session, skill_id, version_id
+        )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")
     return {"code": 200, "message": "ok", "data": data}
@@ -575,12 +580,13 @@ async def delete_skill(
 @router.get("/{skill_id}/download")
 async def download_skill(
     skill_id: int,
+    version_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("skill:read")),
 ):
     try:
         zip_path, download_name, _ = await skill_service.get_skill_zip(
-            session, skill_id
+            session, skill_id, version_id=version_id
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 或 zip 文件不存在")

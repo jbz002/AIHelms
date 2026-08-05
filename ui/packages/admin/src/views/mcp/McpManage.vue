@@ -8,6 +8,7 @@ import {
   createMcpCategory,
   deleteMcpCategory,
   type McpServer,
+  type McpServerVersion,
   type McpCategory,
 } from '@aihelms/shared'
 import { toast, usePermission } from '@aihelms/shared'
@@ -16,7 +17,7 @@ import HostedIcon from '@aihelms/shared/src/components/HostedIcon.vue'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import McpServerForm from './McpServerForm.vue'
 import McpToolPanel from './McpToolPanel.vue'
-import McpVersionPanel from './McpVersionPanel.vue'
+import McpVersionSwitcher from './McpVersionSwitcher.vue'
 import UsageStatsPanel from '../../components/UsageStatsPanel.vue'
 
 const { hasPermission } = usePermission()
@@ -25,6 +26,8 @@ const servers = ref<McpServer[]>([])
 const categories = ref<McpCategory[]>([])
 const loading = ref(false)
 const selectedServer = ref<McpServer | null>(null)
+const selectedServerVersion = ref<McpServerVersion | null>(null)
+const switcherRef = ref<InstanceType<typeof McpVersionSwitcher> | null>(null)
 const showForm = ref(false)
 const editingServer = ref<McpServer | null>(null)
 const deleteTarget = ref<McpServer | null>(null)
@@ -350,70 +353,82 @@ onMounted(loadData)
               </button>
             </div>
           </div>
+
+          <McpVersionSwitcher
+            ref="switcherRef"
+            :server-id="selectedServer.id"
+            :active-version="selectedServer.active_version"
+            @select="selectedServerVersion = $event"
+            @activated="handleVersionActivated"
+          />
+
           <div class="overflow-y-auto p-4" style="max-height: calc(100vh - 10rem)">
-            <!-- 基本信息 -->
-            <div class="mb-4 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-              <div class="col-span-2">
-                <span class="text-slate-500">URL：</span>
-                <span class="font-mono text-slate-700">{{ selectedServer.url }}</span>
-              </div>
-              <div>
-                <span class="text-slate-500">传输方式：</span>
-                <span class="text-slate-700">{{ transportLabels[selectedServer.transport] || selectedServer.transport }}</span>
-              </div>
-              <div>
-                <span class="text-slate-500">认证方式：</span>
-                <span class="text-slate-700">{{ selectedServer.auth_type === 'none' ? '无' : selectedServer.auth_type }}</span>
-              </div>
-              <div v-if="selectedServer.auth_type !== 'none'" class="col-span-2">
-                <span class="text-slate-500">认证值：</span>
-                <span class="font-mono text-slate-700">
-                  {{ showAuthValue ? (selectedServer.credentials?.auth_value || '-') : '••••••••' }}
-                </span>
-                <button class="ml-1 text-slate-400 hover:text-slate-600" @click="showAuthValue = !showAuthValue">
-                  <EyeOffIcon v-if="showAuthValue" class="inline h-3.5 w-3.5" />
-                  <EyeIcon v-else class="inline h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div>
-                <span class="text-slate-500">分类：</span>
-                <span class="text-slate-700">{{ selectedServer.category }}</span>
-              </div>
-              <div>
-                <span class="text-slate-500">计费方式：</span>
-                <span class="text-slate-700">
-                  {{ selectedServer.billing_type === 'free' ? '免费' : '按次计费' }}
-                </span>
-              </div>
-              <div v-if="selectedServer.billing_type !== 'free'">
-                <span class="text-slate-500">单价（内/外）：</span>
-                <span class="text-slate-700">
-                  ¥{{ selectedServer.internal_cost_per_call }} /
-                  ¥{{ selectedServer.external_cost_per_call }}
-                </span>
-              </div>
-              <div>
-                <span class="text-slate-500">发布：</span>
-                <span class="text-slate-700">{{ selectedServer.is_published ? '已发布' : '未发布' }}</span>
-              </div>
-              <div>
-                <span class="text-slate-500">领用方式：</span>
-                <span class="text-slate-700">
-                  {{ selectedServer.requires_approval ? '需审批' : '直接领用' }}
-                </span>
-              </div>
-              <div v-if="selectedServer.description" class="col-span-2">
-                <span class="text-slate-500">描述：</span>
-                <span class="text-slate-700">{{ selectedServer.description }}</span>
+            <!-- 基本信息（本体 + 当前版本） -->
+            <div class="mb-4 rounded-xl border border-slate-200/60 p-3">
+              <h4 class="mb-3 text-sm font-semibold text-slate-900">基本信息</h4>
+              <div class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                <div>
+                  <span class="text-slate-500">分类：</span>
+                  <span class="text-slate-700">{{ selectedServer.category }}</span>
+                </div>
+                <div>
+                  <span class="text-slate-500">计费方式：</span>
+                  <span class="text-slate-700">{{ selectedServer.billing_type === 'free' ? '免费' : '按次计费' }}</span>
+                </div>
+                <div v-if="selectedServer.billing_type !== 'free'">
+                  <span class="text-slate-500">单价（内/外）：</span>
+                  <span class="text-slate-700">
+                    ¥{{ selectedServer.internal_cost_per_call }} /
+                    ¥{{ selectedServer.external_cost_per_call }}
+                  </span>
+                </div>
+                <div>
+                  <span class="text-slate-500">发布：</span>
+                  <span class="text-slate-700">{{ selectedServer.is_published ? '已发布' : '未发布' }}</span>
+                </div>
+                <div>
+                  <span class="text-slate-500">领用方式：</span>
+                  <span class="text-slate-700">{{ selectedServer.requires_approval ? '需审批' : '直接领用' }}</span>
+                </div>
+                <div v-if="selectedServer.auth_type !== 'none'" class="col-span-2">
+                  <span class="text-slate-500">激活版本认证值：</span>
+                  <span class="font-mono text-slate-700">
+                    {{ showAuthValue ? (selectedServer.credentials?.auth_value || '-') : '••••••••' }}
+                  </span>
+                  <button class="ml-1 text-slate-400 hover:text-slate-600" @click="showAuthValue = !showAuthValue">
+                    <EyeOffIcon v-if="showAuthValue" class="inline h-3.5 w-3.5" />
+                    <EyeIcon v-else class="inline h-3.5 w-3.5" />
+                  </button>
+                </div>
+
+                <template v-if="selectedServerVersion">
+                  <div class="col-span-2">
+                    <span class="text-slate-500">URL：</span>
+                    <span class="font-mono text-slate-700">{{ selectedServerVersion.url }}</span>
+                  </div>
+                  <div>
+                    <span class="text-slate-500">传输方式：</span>
+                    <span class="text-slate-700">{{ transportLabels[selectedServerVersion.transport] || selectedServerVersion.transport }}</span>
+                  </div>
+                  <div>
+                    <span class="text-slate-500">认证方式：</span>
+                    <span class="text-slate-700">{{ selectedServerVersion.auth_type === 'none' ? '无' : selectedServerVersion.auth_type }}</span>
+                  </div>
+                  <div v-if="!selectedServerVersion.is_active" class="col-span-2 rounded bg-amber-50 px-2 py-1 text-xs text-amber-600">
+                    仅预览，实际调用走激活版本
+                  </div>
+                </template>
+
+                <div v-if="selectedServer.description" class="col-span-2">
+                  <span class="text-slate-500">描述：</span>
+                  <span class="text-slate-700">{{ selectedServer.description }}</span>
+                </div>
+                <div v-if="selectedServerVersion?.change_log" class="col-span-2">
+                  <span class="text-slate-500">变更说明：</span>
+                  <span class="whitespace-pre-wrap text-slate-700">{{ selectedServerVersion.change_log }}</span>
+                </div>
               </div>
             </div>
-
-            <!-- 版本管理 -->
-            <McpVersionPanel
-              :server-id="selectedServer.id"
-              :active-version="selectedServer.active_version"
-              @activated="handleVersionActivated"
-            />
 
             <!-- 工具列表 -->
             <McpToolPanel

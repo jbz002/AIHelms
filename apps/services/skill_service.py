@@ -478,14 +478,33 @@ async def _purge_files_after_commit(
 
 
 async def get_skill_zip(
-    session: AsyncSession, skill_id: int, require_published: bool = False
+    session: AsyncSession,
+    skill_id: int,
+    require_published: bool = False,
+    version_id: int | None = None,
 ) -> tuple[str, str, int]:
-    """返回 (zip_path, zip_filename, zip_size)。同时增加下载计数。"""
+    """返回 (zip_path, zip_filename, zip_size)。同时增加下载计数。
+
+    指定 version_id 时返回该版本的 zip（含非激活版本），否则返回 Skill 本体激活 zip。
+    """
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
         raise NotFoundError("skill", skill_id)
     if require_published and not skill.is_published:
         raise NotFoundError("skill", skill_id)
+
+    if version_id is not None:
+        version = await skill_version_repo.find_owned_by_skill(
+            session, version_id, skill_id
+        )
+        if not version:
+            raise NotFoundError("skill_version", version_id)
+        zip_path = version.zip_path
+        if not zip_path or not os.path.exists(zip_path):
+            raise NotFoundError("skill_zip", skill_id)
+        download_name = version.zip_filename or f"{skill.name}.zip"
+        return zip_path, download_name, version.zip_size
+
     if not skill.zip_path or not os.path.exists(skill.zip_path):
         raise NotFoundError("skill_zip", skill_id)
 

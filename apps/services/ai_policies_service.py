@@ -10,6 +10,7 @@ from uuid import uuid4
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.config import settings
 from core.database import get_worker_session_factory
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import AiPoliciesAudit
@@ -75,7 +76,22 @@ def _sha256_file(path: str) -> str:
 
 
 def _scanner_target(zip_path: str) -> str:
-    return f"skills/{Path(zip_path).name}"
+    """skillspector 的 target = 相对 skills_storage_dir 的路径。
+
+    version 级 zip 存在 {storage}/{skill_uuid}/{v.id}.zip 子目录，
+    仅取文件名会丢掉子目录前缀导致扫描器找不到文件，必须保留相对子路径。
+    """
+    name = Path(zip_path).name
+    try:
+        rel = os.path.relpath(zip_path, settings.skills_storage_dir)
+    except ValueError:
+        # Windows 跨盘符触发 ValueError，回退扁平名
+        return f"skills/{name}"
+    if rel == "." or rel.startswith("..") or os.path.isabs(rel):
+        # 不在 storage 目录下（或越界），回退扁平名保持旧行为
+        return f"skills/{name}"
+    # scanner 跑在 linux 容器，target 必须用正斜杠；Windows 下 relpath 产出反斜杠会导致 404
+    return f"skills/{rel.replace(os.sep, '/')}"
 
 
 def _decision(risk_score: int, severity: str, findings: list[dict]) -> str:

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed, onMounted } from 'vue'
+import { ref, watch, computed } from 'vue'
 import {
   getSkillSummary,
   getSkillFull,
@@ -9,17 +9,22 @@ import {
   type SkillSummaryView,
   type SkillFullView,
   type SkillIntegrityView,
+  type SkillVersion,
   type ManifestFile,
 } from '@aihelms/shared'
 import MarkdownRenderer from '@aihelms/shared/src/components/MarkdownRenderer.vue'
+import SkillSecurityPanel from './SkillSecurityPanel.vue'
+import VersionChip from './VersionChip.vue'
 import { ShieldCheck, CheckCircle2, AlertTriangle, XCircle, FileText, X } from 'lucide-vue-next'
 import { toast } from '@aihelms/shared'
 
 interface Props {
   skillId: number
+  version: SkillVersion | null
 }
 
 const props = defineProps<Props>()
+const emit = defineEmits<{ audited: [] }>()
 const { hasPermission } = usePermission()
 
 type DisclosureLayer = 'overview' | 'summary'
@@ -33,13 +38,25 @@ const checkingDrift = ref(false)
 const showFullDrawer = ref(false)
 const showIntegrityDrawer = ref(false)
 
+function resetState(): void {
+  activeLayer.value = 'overview'
+  summaryData.value = null
+  fullData.value = null
+  integrityData.value = null
+  showFullDrawer.value = false
+  showIntegrityDrawer.value = false
+}
+
 async function loadSummary(): Promise<void> {
   if (summaryData.value) return
   summaryLoading.value = true
   try {
-    summaryData.value = await getSkillSummary(props.skillId)
-  } catch {
-    toast.error('加载摘要失败')
+    summaryData.value = await getSkillSummary(
+      props.skillId,
+      props.version?.id ?? undefined,
+    )
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '加载摘要失败')
   } finally {
     summaryLoading.value = false
   }
@@ -49,7 +66,10 @@ async function loadFull(): Promise<void> {
   if (fullData.value) return
   fullLoading.value = true
   try {
-    fullData.value = await getSkillFull(props.skillId)
+    fullData.value = await getSkillFull(
+      props.skillId,
+      props.version?.id ?? undefined,
+    )
   } catch {
     toast.error('加载完整内容失败')
   } finally {
@@ -57,10 +77,13 @@ async function loadFull(): Promise<void> {
   }
 }
 
-async function loadIntegrity(force = false): Promise<void> {
-  if (!force && integrityData.value) return
+async function loadIntegrity(): Promise<void> {
+  if (integrityData.value) return
   try {
-    integrityData.value = await getSkillIntegrity(props.skillId)
+    integrityData.value = await getSkillIntegrity(
+      props.skillId,
+      props.version?.id ?? undefined,
+    )
   } catch {
     toast.error('加载完整性信息失败')
   }
@@ -72,7 +95,7 @@ async function handleCheckDrift(): Promise<void> {
   try {
     await checkSkillVersionDrift(props.skillId, integrityData.value.version_id)
     integrityData.value = null
-    await loadIntegrity(true)
+    await loadIntegrity()
     toast.success('漂移检测完成')
   } catch (e) {
     toast.error((e as { message?: string }).message || '漂移检测失败')
@@ -95,10 +118,6 @@ function openIntegrityDrawer(): void {
   showIntegrityDrawer.value = true
   loadIntegrity()
 }
-
-onMounted(() => {
-  if (props.skillId) loadSummary()
-})
 
 function formatFrontmatterValue(value: unknown): string {
   if (typeof value === 'string') return value
@@ -165,16 +184,14 @@ const tabs: { key: DisclosureLayer; label: string }[] = [
 ]
 
 watch(
-  () => props.skillId,
+  [() => props.skillId, () => props.version?.id],
   () => {
-    activeLayer.value = 'overview'
-    summaryData.value = null
-    fullData.value = null
-    integrityData.value = null
-    showFullDrawer.value = false
-    showIntegrityDrawer.value = false
-    loadSummary()
+    resetState()
+    // versionId 未定（切 skill 中，等 SkillVersionSwitcher emit activeVersion）→ 不加载，
+    // 避免 undefined→activeId 双请求（后端两者同数据）。
+    if (props.skillId && props.version?.id) loadSummary()
   },
+  { immediate: true },
 )
 </script>
 
@@ -183,6 +200,7 @@ watch(
     <div class="mb-2 flex items-center justify-between">
       <h4 class="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
         <FileText class="h-4 w-4 text-purple-500" /> 内容
+        <VersionChip :version="version" />
       </h4>
       <div class="flex items-center gap-2">
         <button
@@ -198,6 +216,11 @@ watch(
         >
           <ShieldCheck class="h-3.5 w-3.5" /> 内容完整性
         </button>
+        <SkillSecurityPanel
+          :skill-id="skillId"
+          :version="version"
+          @audited="emit('audited')"
+        />
       </div>
     </div>
 
@@ -257,6 +280,7 @@ watch(
           <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-3">
             <span class="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
               <FileText class="h-4 w-4 text-purple-500" /> 完整指令
+              <VersionChip :version="version" />
             </span>
             <button
               class="flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-100"
@@ -287,6 +311,7 @@ watch(
           <div class="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-3">
             <span class="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
               <ShieldCheck class="h-4 w-4 text-purple-500" /> 内容完整性
+              <VersionChip :version="version" />
             </span>
             <button
               class="flex h-8 w-8 items-center justify-center rounded text-slate-500 hover:bg-slate-100"

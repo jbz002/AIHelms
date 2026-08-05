@@ -185,8 +185,10 @@ export function setSkillHidden(skillId: number, hidden: boolean): Promise<Skill>
   )
 }
 
-export function getSkillDownloadUrl(id: number): string {
-  return `/api/v1/skills/${id}/download`
+export function getSkillDownloadUrl(id: number, versionId?: number): string {
+  return versionId
+    ? `/api/v1/skills/${id}/download?version_id=${versionId}`
+    : `/api/v1/skills/${id}/download`
 }
 
 export function getSkillCategories(): Promise<SkillCategory[]> {
@@ -201,16 +203,28 @@ export function deleteSkillCategory(id: number): Promise<null> {
   return request<null>(`/api/v1/skills/categories/${id}`, { method: 'DELETE' })
 }
 
-export function getSkillSummary(skillId: number): Promise<SkillSummaryView> {
-  return request<SkillSummaryView>(`/api/v1/skills/${skillId}/summary`)
+export function getSkillSummary(
+  skillId: number,
+  versionId?: number,
+): Promise<SkillSummaryView> {
+  const qs = versionId ? `?version_id=${versionId}` : ''
+  return request<SkillSummaryView>(`/api/v1/skills/${skillId}/summary${qs}`)
 }
 
-export function getSkillFull(skillId: number): Promise<SkillFullView> {
-  return request<SkillFullView>(`/api/v1/skills/${skillId}/full`)
+export function getSkillFull(
+  skillId: number,
+  versionId?: number,
+): Promise<SkillFullView> {
+  const qs = versionId ? `?version_id=${versionId}` : ''
+  return request<SkillFullView>(`/api/v1/skills/${skillId}/full${qs}`)
 }
 
-export function getSkillIntegrity(skillId: number): Promise<SkillIntegrityView> {
-  return request<SkillIntegrityView>(`/api/v1/skills/${skillId}/integrity`)
+export function getSkillIntegrity(
+  skillId: number,
+  versionId?: number,
+): Promise<SkillIntegrityView> {
+  const qs = versionId ? `?version_id=${versionId}` : ''
+  return request<SkillIntegrityView>(`/api/v1/skills/${skillId}/integrity${qs}`)
 }
 
 // ─── S4 · 版本别名 Tag ─────────────────────────────────────────────

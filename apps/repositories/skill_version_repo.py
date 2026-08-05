@@ -33,6 +33,19 @@ async def find_active_for_skill(
     return result.scalar_one_or_none()
 
 
+async def find_owned_by_skill(
+    session: AsyncSession, version_id: int, skill_id: int
+) -> SkillVersion | None:
+    """按 id 取版本并校验归属 skill（单查询，替代 find_by_id + service 层 != 校验）。"""
+    result = await session.execute(
+        select(SkillVersion).where(
+            SkillVersion.id == version_id,
+            SkillVersion.skill_id == skill_id,
+        )
+    )
+    return result.scalar_one_or_none()
+
+
 async def find_latest_published(
     session: AsyncSession, skill_id: int, exclude_version_id: int | None = None
 ) -> SkillVersion | None:
