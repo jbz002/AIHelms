@@ -489,9 +489,6 @@ onUnmounted(stopAuditPolling)
               @audited="switcherRef?.reload()"
             />
 
-            <!-- 治理 -->
-            <SkillGovernancePanel :skill="selectedSkill" @changed="loadData" />
-
             <!-- 使用统计 -->
             <div class="mb-4 rounded-xl border border-slate-200/60 p-3">
               <h4 class="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-900">
@@ -499,6 +496,9 @@ onUnmounted(stopAuditPolling)
               </h4>
               <UsageStatsPanel entity-type="skill" :entity-id="selectedSkill.id" />
             </div>
+
+            <!-- 治理 -->
+            <SkillGovernancePanel :skill="selectedSkill" @changed="loadData" />
           </div>
         </template>
         <template v-else>

@@ -261,7 +261,8 @@ async def create_skill(
     await session.refresh(skill)
     await skill_tag_service.refresh_latest_tag(session, skill.id)
 
-    # 新建 Skill 自动发起 balanced 安全审查（异步，失败不阻断创建）
+    # 新建 Skill 自动对 v1 发起 balanced 版本级安全审查
+    # 通过后版本 lifecycle: draft→scanning→pending_review（待激活），异步，失败不阻断创建
     if created_by:
         try:
             from services import ai_policies_service
@@ -270,6 +271,7 @@ async def create_skill(
                 session,
                 skill.id,
                 {"id": created_by},
+                version_id=v1.id,
                 policy="balanced",
             )
         except Exception:
