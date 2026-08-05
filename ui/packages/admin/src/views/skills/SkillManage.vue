@@ -99,6 +99,9 @@ const protocolBanner = computed<{
 })
 
 function selectSkill(skill: Skill): void {
+  // 同一条再次点击：no-op。版本由 SkillVersionSwitcher 仅 watch skillId 驱动，
+  // 同 id 不会 re-emit select，若此处再清 selectedSkillVersion 会永久卡 null → 版本依赖区空白。
+  if (selectedSkill.value?.id === skill.id) return
   // 必须同步清选中版本：selectedSkill 与 selectedSkillVersion 同一 tick 更新，
   // 否则 SkillContentPanel 的 prop-watch 会先用旧 versionId 查新 skill → 后端归属校验 404。
   selectedSkill.value = skill
@@ -135,8 +138,10 @@ function openEdit(): void {
   showForm.value = true
 }
 
-async function handleSaved(): Promise<void> {
+async function handleSaved(created?: Skill): Promise<void> {
   showForm.value = false
+  // 新建后默认选中：先占位选中新对象，loadData 会按 id 从列表刷新成最新版本
+  if (created) selectedSkill.value = created
   await loadData()
 }
 

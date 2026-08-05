@@ -260,6 +260,23 @@ async def create_skill(
     await session.commit()
     await session.refresh(skill)
     await skill_tag_service.refresh_latest_tag(session, skill.id)
+
+    # 新建 Skill 自动发起 balanced 安全审查（异步，失败不阻断创建）
+    if created_by:
+        try:
+            from services import ai_policies_service
+
+            await ai_policies_service.create_skill_audit(
+                session,
+                skill.id,
+                {"id": created_by},
+                policy="balanced",
+            )
+        except Exception:
+            logger.exception("auto skill audit failed: skill_id=%s", skill.id)
+
+    # 审查内部 commit 会过期 skill，序列化前重新加载，避免懒加载触发 MissingGreenlet
+    await session.refresh(skill)
     return _serialize(skill)
 
 

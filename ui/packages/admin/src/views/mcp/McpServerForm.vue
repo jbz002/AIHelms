@@ -20,7 +20,7 @@ interface Props {
 const props = defineProps<Props>()
 const emit = defineEmits<{
   close: []
-  saved: []
+  saved: [server?: McpServer]
 }>()
 
 const form = ref({
@@ -164,11 +164,12 @@ async function handleSubmit(): Promise<void> {
     if (props.editing) {
       await updateMcpServer(props.editing.id, payload)
       toast.success('MCP Server 更新成功')
+      emit('saved')
     } else {
-      await createMcpServer(payload)
+      const created = await createMcpServer(payload)
       toast.success('MCP Server 创建成功')
+      emit('saved', created)
     }
-    emit('saved')
   } catch (e) {
     const msg = (e as { message?: string }).message || '保存失败'
     error.value = msg

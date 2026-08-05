@@ -88,8 +88,10 @@ function openEdit(): void {
   showForm.value = true
 }
 
-async function handleSaved(): Promise<void> {
+async function handleSaved(created?: McpServer): Promise<void> {
   showForm.value = false
+  // 新建后默认选中：先占位选中新对象，loadData 会按 id 从列表刷新成最新版本
+  if (created) selectedServer.value = created
   await loadData()
 }
 

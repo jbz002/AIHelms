@@ -148,9 +148,9 @@ async function handleSubmit(): Promise<void> {
       toast.success('Skill 更新成功')
       emit('saved', updated)
     } else {
-      await createSkill(payload)
+      const created = await createSkill(payload)
       toast.success('Skill 创建成功')
-      emit('saved')
+      emit('saved', created)
     }
   } catch (e) {
     error.value = (e as { message?: string }).message || '保存失败'
