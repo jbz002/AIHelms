@@ -166,6 +166,22 @@ async def update_progress(
         await session.flush()
 
 
+async def find_active_by_library_version(
+    session: AsyncSession, library: str, version: str
+) -> list[CrawlTask]:
+    """按 library + version 查活跃任务（pending/crawling/paused）。
+
+    这三类持 live docs-mcp job，删版本前需先 cancel 以免留幽灵 job。
+    """
+    stmt = select(CrawlTask).where(
+        func.lower(CrawlTask.library) == library.lower(),
+        CrawlTask.version == version,
+        CrawlTask.status.in_(("pending", "crawling", "paused")),
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+
+
 async def delete_by_library_version(
     session: AsyncSession, library: str, version: str
 ) -> int:

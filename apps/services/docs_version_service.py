@@ -39,6 +39,7 @@ async def delete_version(
     if resolved is None:
         await _force_cleanup_library(session, library_name)
         return
+    await _cancel_active_jobs(session, library_name, resolved)
     await document_repo.delete_by_library_version(session, library_name, resolved)
     await crawled_page_repo.delete_by_library_version(session, library_name, resolved)
     await crawl_task_repo.delete_by_library_version(session, library_name, resolved)
@@ -113,6 +114,32 @@ async def _force_cleanup_library(session: AsyncSession, library_name: str) -> No
     await document_library_repo.delete_library(session, library.id)
     await session.commit()
     await document_library_service.remove_docs_mcp_library(library_name)
+
+
+async def _cancel_active_jobs(
+    session: AsyncSession, library_name: str, version: str
+) -> None:
+    """删版本前取消活跃爬取 job，避免 docs-mcp 内存留幽灵 job。
+
+    pending/crawling/paused 任务持 live docs-mcp job；不先 cancel 则删 version 行
+    后 job 失去 DB 依附成幽灵（仍占并发槽，重启才清）。ingesting 阶段 docs-mcp
+    job 已结束，无需 cancel。
+    """
+    tasks = await crawl_task_repo.find_active_by_library_version(
+        session, library_name, version
+    )
+    for task in tasks:
+        if not task.job_id:
+            continue
+        try:
+            await docs_mcp_client.cancel_job(task.job_id)
+        except DocsMcpError:
+            logger.warning(
+                "delete_version: cancel job %s failed, proceed to delete",
+                task.job_id,
+                extra={"library": library_name, "version": version},
+                exc_info=True,
+            )
 
 
 async def delete_version_documents(
