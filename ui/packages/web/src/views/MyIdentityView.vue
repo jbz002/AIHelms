@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useAuth, getMyKeys, type ActiveModel } from '@aihelms/shared'
+import { useAuth, getMyKeys, MonthPicker, type ActiveModel } from '@aihelms/shared'
 import { request } from '@aihelms/shared/src/api/request'
 import type { AiKey } from '@aihelms/shared/src/types/ai-key'
 import type { EfficiencyKpi, TrendItem } from '@aihelms/shared/src/types/efficiency'
 import type { ResourceApplication } from '@aihelms/shared/src/types/resource-application'
 import type { McpServer } from '@aihelms/shared/src/types/mcp'
 import type { Skill } from '@aihelms/shared/src/types/skill'
-import { Copy, Check, Cpu, Server, Sparkles, Clock, CheckCircle2, XCircle, Eye, EyeOff, Calendar, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-vue-next'
+import { Copy, Check, Cpu, Server, Sparkles, Clock, CheckCircle2, XCircle, Eye, EyeOff } from 'lucide-vue-next'
 import ProviderIcon from '../components/ProviderIcon.vue'
 
 import VChart from 'vue-echarts'
@@ -89,39 +89,6 @@ const monthMeta = computed(() => {
   const endDay = String(days).padStart(2, '0')
   return { days, start: `${selectedMonth.value}-01`, end: `${selectedMonth.value}-${endDay}` }
 })
-
-const showMonthPanel = ref(false)
-const panelYear = ref(Number(selectedMonth.value.split('-')[0]))
-const pickerRef = ref<HTMLElement | null>(null)
-
-const monthLabels = computed(() =>
-  Array.from({ length: 12 }, (_, i) =>
-    new Intl.DateTimeFormat(locale.value, { month: 'short' }).format(new Date(2000, i, 1))
-  )
-)
-const selectedMonthLabel = computed(() => {
-  const [y, m] = selectedMonth.value.split('-').map(Number)
-  return new Intl.DateTimeFormat(locale.value, { year: 'numeric', month: 'long' }).format(new Date(y, m - 1, 1))
-})
-
-function toggleMonthPanel(): void {
-  showMonthPanel.value = !showMonthPanel.value
-  if (showMonthPanel.value) panelYear.value = Number(selectedMonth.value.split('-')[0])
-}
-function isFutureMonth(m: number): boolean {
-  return `${panelYear.value}-${String(m).padStart(2, '0')}` > currentMonthStr.value
-}
-function isSelectedMonth(m: number): boolean {
-  const [y, mo] = selectedMonth.value.split('-').map(Number)
-  return panelYear.value === y && m === mo
-}
-function pickMonth(m: number): void {
-  selectedMonth.value = `${panelYear.value}-${String(m).padStart(2, '0')}`
-  showMonthPanel.value = false
-}
-function onDocClick(e: MouseEvent): void {
-  if (pickerRef.value && !pickerRef.value.contains(e.target as Node)) showMonthPanel.value = false
-}
 
 const dailyAvgCost = computed(() => {
   const cost = kpi.value?.total_cost ?? 0
@@ -247,11 +214,6 @@ onMounted(async () => {
     }
   } catch { /* */ }
   finally { isLoading.value = false }
-  document.addEventListener('click', onDocClick)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', onDocClick)
 })
 </script>
 
@@ -431,40 +393,10 @@ onUnmounted(() => {
                :class="{ 'opacity-50 pointer-events-none': isMonthLoading }">
         <div class="mb-4 flex items-center justify-between">
           <h2 class="text-sm font-medium text-slate-900">{{ isCurrentMonth ? t('identity.overview.title') : t('identity.overview.monthTitle', { month: selectedMonth }) }}</h2>
-          <div ref="pickerRef" class="relative">
-            <div class="flex items-center gap-2">
-              <button type="button" @click="toggleMonthPanel"
-                      class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50">
-                <Calendar class="h-3.5 w-3.5 text-slate-400" />
-                <span>{{ selectedMonthLabel }}</span>
-                <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="{ 'rotate-180': showMonthPanel }" />
-              </button>
-              <button v-if="!isCurrentMonth" type="button" @click="selectedMonth = currentMonthStr"
-                      class="rounded-lg bg-slate-100 px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-200">{{ t('identity.overview.thisMonth') }}</button>
-            </div>
-            <div v-if="showMonthPanel" class="absolute right-0 top-full z-20 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
-              <div class="mb-2 flex items-center justify-between">
-                <button type="button" @click="panelYear--"
-                        class="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100">
-                  <ChevronLeft class="h-4 w-4" />
-                </button>
-                <span class="text-sm font-medium text-slate-900">{{ panelYear }}</span>
-                <button type="button" @click="panelYear++"
-                        class="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100">
-                  <ChevronRight class="h-4 w-4" />
-                </button>
-              </div>
-              <div class="grid grid-cols-3 gap-1">
-                <button v-for="(label, i) in monthLabels" :key="i" type="button"
-                        :disabled="isFutureMonth(i + 1)" @click="pickMonth(i + 1)"
-                        class="rounded-md py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-30"
-                        :class="isSelectedMonth(i + 1)
-                          ? 'bg-purple-500 font-medium text-white'
-                          : 'text-slate-600 hover:bg-slate-100'">
-                  {{ label }}
-                </button>
-              </div>
-            </div>
+          <div class="flex items-center gap-2">
+            <MonthPicker v-model="selectedMonth" :locale="locale" :max="currentMonthStr" />
+            <button v-if="!isCurrentMonth" type="button" @click="selectedMonth = currentMonthStr"
+                    class="rounded-lg bg-slate-100 px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-200">{{ t('identity.overview.thisMonth') }}</button>
           </div>
         </div>
         <div class="grid grid-cols-2 gap-3" :class="isCurrentMonth ? 'sm:grid-cols-4' : 'sm:grid-cols-3'">

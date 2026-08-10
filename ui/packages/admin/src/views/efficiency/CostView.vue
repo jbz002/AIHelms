@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ChevronDown, RefreshCw } from 'lucide-vue-next'
-import { createExportTask, getEfficiencyCost, getEfficiencyCostDetail, getEfficiencyCostDetailScopeUsers, getEfficiencyTopUsers, toast } from '@aihelms/shared'
+import { createExportTask, DatePicker, getEfficiencyCost, getEfficiencyCostDetail, getEfficiencyCostDetailScopeUsers, getEfficiencyTopUsers, toast } from '@aihelms/shared'
 import ExportTaskNotice from '../../components/ExportTaskNotice.vue'
 import ScopePickerDialog from '../../components/ScopePickerDialog.vue'
 import GlassCard from './components/GlassCard.vue'
@@ -46,8 +46,8 @@ const {
   selectedScopeLabel,
 } = useScopeFilter(dimension, loadOverview)
 const activeDetailTab = ref<DetailTab>('department')
-const customStart = ref('')
-const customEnd = ref('')
+const customStart = ref(presetToRange(activePreset.value).start)
+const customEnd = ref(presetToRange(activePreset.value).end)
 const isLoading = ref(true)
 const isRefreshing = ref(false)
 const isDetailLoading = ref(false)
@@ -253,6 +253,11 @@ async function loadDetail() {
 
 function handlePresetChange(val: string) {
   activePreset.value = val
+  if (val !== 'custom') {
+    const r = presetToRange(val)
+    customStart.value = r.start
+    customEnd.value = r.end
+  }
   loadOverview()
 }
 
@@ -386,9 +391,9 @@ onMounted(() => {
         <span class="text-xs text-slate-500">时间</span>
         <PresetTabs :model-value="activePreset" :presets="TIME_PRESETS" @update:model-value="handlePresetChange" />
         <div class="flex items-center gap-1.5">
-          <input v-model="customStart" type="date" class="rounded-md border border-slate-200 px-2 py-1 text-xs" />
+          <DatePicker :model-value="customStart" :max="customEnd" locale="zh-CN" @update:model-value="customStart = $event" />
           <span class="text-xs text-slate-400">~</span>
-          <input v-model="customEnd" type="date" class="rounded-md border border-slate-200 px-2 py-1 text-xs" />
+          <DatePicker :model-value="customEnd" :min="customStart" locale="zh-CN" @update:model-value="customEnd = $event" />
           <button class="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50" @click="applyCustomRange">查询</button>
         </div>
         <span class="text-xs text-slate-500">资源类型</span>

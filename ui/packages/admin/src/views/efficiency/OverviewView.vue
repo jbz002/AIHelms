@@ -6,7 +6,7 @@ import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
-import { createExportTask, getEfficiencyOverview, getEfficiencyTopUsers, toast } from '@aihelms/shared'
+import { createExportTask, DatePicker, getEfficiencyOverview, getEfficiencyTopUsers, toast } from '@aihelms/shared'
 import TooltipIcon from '../../components/TooltipIcon.vue'
 import ExportTaskNotice from '../../components/ExportTaskNotice.vue'
 import ScopePickerDialog from '../../components/ScopePickerDialog.vue'
@@ -15,7 +15,7 @@ import KpiCard from './components/KpiCard.vue'
 import UserTop10Panel from './components/UserTop10Panel.vue'
 import PresetTabs from './components/PresetTabs.vue'
 import Pagination from '../../components/Pagination.vue'
-import { formatBigToken, submitEfficiencyRefresh, keepRefreshIndicator } from './utils'
+import { formatBigToken, presetToRange, submitEfficiencyRefresh, keepRefreshIndicator } from './utils'
 import { useScopeFilter } from './useScopeFilter'
 import type { UserTop10Row } from './costTypes'
 
@@ -124,8 +124,8 @@ const {
 const sortKey = ref<SortKey>('coverage_rate')
 const sortAsc = ref(false)
 const timePreset = ref('month')
-const customStart = ref('')
-const customEnd = ref('')
+const customStart = ref(presetToRange(timePreset.value).start)
+const customEnd = ref(presetToRange(timePreset.value).end)
 const page = ref(1)
 const pageSize = ref(20)
 const topMetric = ref<'cost' | 'tokens' | 'requests'>('cost')
@@ -178,6 +178,11 @@ function handleTopMetricChange(metric: 'cost' | 'tokens' | 'requests') {
 
 function changePreset(val: string) {
   timePreset.value = val
+  if (val !== 'custom') {
+    const r = presetToRange(val)
+    customStart.value = r.start
+    customEnd.value = r.end
+  }
   loadData()
 }
 
@@ -327,9 +332,9 @@ onMounted(() => {
         <span class="text-xs text-slate-500">时间</span>
         <PresetTabs :model-value="timePreset" :presets="TIME_PRESETS" @update:model-value="changePreset" />
         <div class="flex items-center gap-1.5 text-xs text-slate-500">
-          <input v-model="customStart" type="date" class="rounded-md border border-slate-200 bg-white px-2 py-1.5 focus:border-indigo-300 focus:outline-none" />
+          <DatePicker :model-value="customStart" :max="customEnd" locale="zh-CN" @update:model-value="customStart = $event" />
           <span>至</span>
-          <input v-model="customEnd" type="date" class="rounded-md border border-slate-200 bg-white px-2 py-1.5 focus:border-indigo-300 focus:outline-none" />
+          <DatePicker :model-value="customEnd" :min="customStart" locale="zh-CN" @update:model-value="customEnd = $event" />
           <button class="rounded-md border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50" @click="applyCustomRange">查询</button>
         </div>
         <span class="text-xs text-slate-500">视角</span>

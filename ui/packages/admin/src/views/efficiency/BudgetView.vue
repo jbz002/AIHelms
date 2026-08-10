@@ -6,7 +6,7 @@ import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
-import { createExportTask, getEfficiencyBudget, getEfficiencyBudgetAlerts, toast } from '@aihelms/shared'
+import { createExportTask, getEfficiencyBudget, getEfficiencyBudgetAlerts, MonthPicker, toast } from '@aihelms/shared'
 import TooltipIcon from '../../components/TooltipIcon.vue'
 import ExportTaskNotice from '../../components/ExportTaskNotice.vue'
 import ScopePickerDialog from '../../components/ScopePickerDialog.vue'
@@ -87,6 +87,11 @@ function getLastMonth(): string {
 
 function changeMonth(month: string) {
   selectedMonth.value = month
+  loadData()
+}
+
+function onMonthPick(val: string): void {
+  selectedMonth.value = val
   loadData()
 }
 
@@ -268,12 +273,7 @@ onMounted(() => {
       <div class="flex flex-wrap items-center gap-3">
         <span class="text-sm font-semibold text-slate-900">预算</span>
         <div class="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1">
-          <input
-            v-model="selectedMonth"
-            type="month"
-            class="rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-blue-500 focus:outline-none"
-            @change="loadData"
-          />
+          <MonthPicker :model-value="selectedMonth" :max="getCurrentMonth()" locale="zh-CN" @update:model-value="onMonthPick" />
           <button type="button" class="rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-white" @click="changeMonth(getCurrentMonth())">本月</button>
           <button type="button" class="rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-white" @click="changeMonth(getLastMonth())">上月</button>
         </div>

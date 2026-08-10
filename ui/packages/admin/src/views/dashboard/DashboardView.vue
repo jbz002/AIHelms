@@ -26,8 +26,8 @@ import {
   Users,
   Zap,
 } from 'lucide-vue-next'
-import { getDashboard, getEfficiencyTopUsers, refreshDashboard, toast } from '@aihelms/shared'
-import { keepRefreshIndicator } from '../efficiency/utils'
+import { DatePicker, getDashboard, getEfficiencyTopUsers, refreshDashboard, toast } from '@aihelms/shared'
+import { keepRefreshIndicator, presetToRange } from '../efficiency/utils'
 import TooltipIcon from '../../components/TooltipIcon.vue'
 import DashboardUserTop10 from './components/DashboardUserTop10.vue'
 import type { DashboardData, PendingItem, ResourceSummary, ServiceStatusItem } from '@aihelms/shared'
@@ -37,8 +37,8 @@ const isLoading = ref(true)
 const isRefreshing = ref(false)
 const data = ref<DashboardData | null>(null)
 const period = ref('month')
-const customStart = ref('')
-const customEnd = ref('')
+const customStart = ref(presetToRange(period.value).start)
+const customEnd = ref(presetToRange(period.value).end)
 const leaderboardMetric = ref<'cost' | 'tokens' | 'requests'>('cost')
 const leaderboardRows = ref<DashboardLeaderboardRow[]>([])
 const isLeaderboardLoading = ref(false)
@@ -173,6 +173,11 @@ async function handleRefresh() {
 
 function changePeriod(value: string) {
   period.value = value
+  if (value !== 'custom') {
+    const r = presetToRange(value)
+    customStart.value = r.start
+    customEnd.value = r.end
+  }
   loadData()
 }
 
@@ -264,9 +269,9 @@ onMounted(loadData)
             </button>
           </div>
           <div class="flex items-center gap-1.5 text-xs text-slate-500">
-            <input v-model="customStart" type="date" class="rounded-md border border-slate-200 bg-white px-2 py-1.5 focus:border-purple-500 focus:outline-none" />
+            <DatePicker :model-value="customStart" :max="customEnd" locale="zh-CN" @update:model-value="customStart = $event" />
             <span>至</span>
-            <input v-model="customEnd" type="date" class="rounded-md border border-slate-200 bg-white px-2 py-1.5 focus:border-purple-500 focus:outline-none" />
+            <DatePicker :model-value="customEnd" :min="customStart" locale="zh-CN" @update:model-value="customEnd = $event" />
             <button class="rounded-md border border-slate-200 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-100" @click="applyCustomRange">查询</button>
           </div>
         </div>
