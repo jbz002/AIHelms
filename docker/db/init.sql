@@ -1337,7 +1337,11 @@ INSERT INTO aihelms.permissions (code, name, resource, action, description) VALU
     ('document:read', '查看文档', 'document', 'read', '查看文档/库/接口列表与详情、调试代理'),
     ('document:batch_extract', '批量提取库接口', 'document', 'batch_extract', '批量提取库内文档接口'),
     ('document_library:read', '查看文档库', 'document_library', 'read', '查看文档库列表与详情'),
-    ('document_library:create', '创建文档库', 'document_library', 'create', '创建文档库')
+    ('document_library:create', '创建文档库', 'document_library', 'create', '创建文档库'),
+    ('document:update', '更新文档', 'document', 'update', '更新文档内容'),
+    ('document:delete', '删除文档', 'document', 'delete', '删除文档'),
+    ('document_library:update', '更新文档库', 'document_library', 'update', '重命名/修改描述'),
+    ('document_library:delete', '删除文档库', 'document_library', 'delete', '删除知识库及关联数据')
 ON CONFLICT (code) DO NOTHING;
 
 -- super_admin 拥有所有权限
@@ -1375,7 +1379,8 @@ INSERT INTO aihelms.role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM aihelms.roles r, aihelms.permissions p
 WHERE r.name = 'document_user'
   AND p.code IN ('document:read', 'document:extract', 'document:batch_extract',
-                 'document_library:read', 'document_library:create')
+                 'document_library:read', 'document_library:create',
+                 'document:delete', 'document_library:update', 'document_library:delete')
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 

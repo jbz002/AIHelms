@@ -18,6 +18,7 @@ import DocsTryItOut from './DocsTryItOut.vue'
 
 interface Props {
   libraryName: string
+  canManage: boolean
 }
 const props = defineProps<Props>()
 const { t } = useI18n()
@@ -176,7 +177,7 @@ onUnmounted(stopBatchPoll)
         {{ t('docs.interfaces.title') }} · {{ libraryName }}
       </h2>
       <span v-if="result" class="text-xs text-slate-500">{{ t('docs.interfaces.total', { n: result.total }) }}</span>
-      <div class="ml-auto">
+      <div v-if="canManage" class="ml-auto">
         <button
           class="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-60"
           :disabled="isBusy"

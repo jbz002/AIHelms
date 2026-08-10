@@ -2,12 +2,13 @@
 import { ref, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Document } from '@aihelms/shared'
-import { getDocuments, extractDocumentInterfaces, getDocumentExtractStatus, toast } from '@aihelms/shared'
-import { Loader2, Upload, Wand2, FileText } from 'lucide-vue-next'
+import { getDocuments, extractDocumentInterfaces, getDocumentExtractStatus, deleteDocument, toast } from '@aihelms/shared'
+import { Loader2, Upload, Wand2, FileText, Trash2 } from 'lucide-vue-next'
 import DocsUploadDialog from './DocsUploadDialog.vue'
 
 interface Props {
   libraryName: string
+  canManage: boolean
 }
 const props = defineProps<Props>()
 const { t } = useI18n()
@@ -90,6 +91,17 @@ function onUploaded(): void {
   load()
 }
 
+async function handleDelete(doc: Document): Promise<void> {
+  if (!window.confirm(t('docs.doc.confirmDelete'))) return
+  try {
+    await deleteDocument(doc.id)
+    toast.success(t('docs.doc.deleteSuccess'))
+    load()
+  } catch (e) {
+    toast.error((e as Error).message)
+  }
+}
+
 watch(
   () => props.libraryName,
   () => {
@@ -104,7 +116,7 @@ onMounted(load)
   <div class="space-y-3">
     <div class="flex items-center gap-2">
       <h2 class="text-base font-semibold text-slate-900">{{ t('docs.doc.title') }} · {{ libraryName }}</h2>
-      <div class="ml-auto">
+      <div v-if="canManage" class="ml-auto">
         <button
           class="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
           @click="uploadVisible = true"
@@ -149,15 +161,24 @@ onMounted(load)
               </span>
             </td>
             <td class="px-3 py-2 text-right">
-              <button
-                class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 disabled:opacity-50"
-                :disabled="extracting.has(doc.id) || doc.ingest_status !== 'ingested'"
-                @click="handleExtract(doc)"
-              >
-                <Loader2 v-if="extracting.has(doc.id)" class="h-3.5 w-3.5 animate-spin" />
-                <Wand2 v-else class="h-3.5 w-3.5" />
-                {{ extracting.has(doc.id) ? t('docs.doc.extracting') : t('docs.doc.extract') }}
-              </button>
+              <div v-if="canManage" class="flex items-center justify-end gap-1">
+                <button
+                  class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 disabled:opacity-50"
+                  :disabled="extracting.has(doc.id) || doc.ingest_status !== 'ingested'"
+                  @click="handleExtract(doc)"
+                >
+                  <Loader2 v-if="extracting.has(doc.id)" class="h-3.5 w-3.5 animate-spin" />
+                  <Wand2 v-else class="h-3.5 w-3.5" />
+                  {{ extracting.has(doc.id) ? t('docs.doc.extracting') : t('docs.doc.extract') }}
+                </button>
+                <button
+                  class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-red-600 hover:bg-red-50"
+                  @click="handleDelete(doc)"
+                >
+                  <Trash2 class="h-3.5 w-3.5" />
+                  {{ t('docs.doc.delete') }}
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>

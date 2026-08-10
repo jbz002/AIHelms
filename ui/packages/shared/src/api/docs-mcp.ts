@@ -492,3 +492,19 @@ export function createLibrary(name: string, description = '') {
     body: { name, description },
   })
 }
+
+export function updateLibrary(
+  libraryId: number,
+  params: { name?: string; description?: string },
+) {
+  return request<DocumentLibrary>(`/api/v1/document-libraries/${libraryId}`, {
+    method: 'PUT',
+    body: params,
+  })
+}
+
+export function deleteLibrary(libraryId: number) {
+  return request<void>(`/api/v1/document-libraries/${libraryId}`, {
+    method: 'DELETE',
+  })
+}

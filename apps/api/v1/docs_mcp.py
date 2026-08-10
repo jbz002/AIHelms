@@ -12,6 +12,7 @@ from core.config import settings
 from core.database import async_session
 from core.deps import get_current_user, get_db
 from exceptions import NotFoundError, ValidationError
+from repositories import document_library_repo
 from services import (
     doc_search_summary_service,
     doc_upload_service,
@@ -24,6 +25,18 @@ from services.docs_version import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+async def _check_library_writable(library_name: str, current_user: dict) -> dict | None:
+    """上传目标库归属校验：库不存在（首次自建）放行；admin 放行；他人库返 403。"""
+    if current_user.get("is_admin"):
+        return None
+    async with async_session() as session:
+        existing = await document_library_repo.find_by_name(session, library_name)
+    if existing is not None and existing.created_by != current_user.get("id"):
+        return {"code": 403, "message": "无权向他人的知识库上传文档", "data": None}
+    return None
+
 
 router = APIRouter(prefix="/docs-mcp", tags=["AI实验室"])
 
@@ -404,6 +417,9 @@ async def upload_document(
     if not library.strip():
         return {"code": 400, "message": "library 不能为空", "data": None}
     library_name = library.strip()
+    writable_err = await _check_library_writable(library_name, current_user)
+    if writable_err:
+        return writable_err
     version = normalize_docs_version(version)
     version = await docs_mcp_client.resolve_version(library_name, version)
     try:
@@ -469,6 +485,9 @@ async def upload_documents_batch(
     if not library.strip():
         return {"code": 400, "message": "library 不能为空", "data": None}
     library_name = library.strip()
+    writable_err = await _check_library_writable(library_name, current_user)
+    if writable_err:
+        return writable_err
     version = normalize_docs_version(version)
     version = await docs_mcp_client.resolve_version(library_name, version)
     try:

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_db, require_permission
 from exceptions import ConflictError, NotFoundError, ValidationError
+from repositories import document_library_repo
 from services import (
     document_api_batch_service,
     document_api_classify_service,
@@ -44,6 +45,45 @@ class ProxyRequestRequest(BaseModel):
     url: str = Field(..., max_length=2000, description="目标 URL")
     headers: dict[str, str] = Field(default_factory=dict, description="自定义请求头")
     body: str | None = Field(default=None, description="请求体原文")
+
+
+async def _assert_library_owned(
+    session: AsyncSession, library_id: int, current_user: dict
+) -> None:
+    """校验知识库归属：admin 放行；非 owner 返 403，不存在返 404。"""
+    if current_user.get("is_admin"):
+        return
+    try:
+        lib = await document_library_service.get_library_by_id(session, library_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="知识库不存在")
+    if lib["created_by"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="无权操作他人的知识库")
+
+
+async def _assert_library_name_owned(
+    session: AsyncSession, library_name: str, current_user: dict
+) -> None:
+    """按库名校验归属：库不存在放行（交下游报错）；admin 放行；非 owner 返 403。"""
+    if current_user.get("is_admin"):
+        return
+    existing = await document_library_repo.find_by_name(session, library_name)
+    if existing is not None and existing.created_by != current_user["id"]:
+        raise HTTPException(status_code=403, detail="无权操作他人的知识库")
+
+
+async def _assert_document_owned(
+    session: AsyncSession, document_id: int, current_user: dict
+) -> None:
+    """校验文档归属：admin 放行；非 owner 返 403，不存在返 404。"""
+    if current_user.get("is_admin"):
+        return
+    try:
+        doc = await document_service.get_document_by_id(session, document_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="文档不存在")
+    if doc["created_by"] != current_user["id"]:
+        raise HTTPException(status_code=403, detail="无权操作他人的文档")
 
 
 # ── 知识库 CRUD ──
@@ -114,8 +154,9 @@ async def update_library(
     library_id: int,
     req: UpdateLibraryRequest,
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permission("document_library:update")),
+    current_user: dict = Depends(require_permission("document_library:update")),
 ):
+    await _assert_library_owned(session, library_id, current_user)
     try:
         result = await document_library_service.update_library(
             session, library_id, name=req.name, description=req.description
@@ -131,8 +172,9 @@ async def update_library(
 async def delete_library(
     library_id: int,
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permission("document_library:delete")),
+    current_user: dict = Depends(require_permission("document_library:delete")),
 ):
+    await _assert_library_owned(session, library_id, current_user)
     try:
         await document_library_service.delete_library(session, library_id)
     except NotFoundError:
@@ -150,6 +192,7 @@ async def extract_library_interfaces(
     current_user: dict = Depends(require_permission("document:batch_extract")),
 ):
     """批量提取库内所有已入库文档的 API 接口，异步任务。"""
+    await _assert_library_name_owned(session, library_name, current_user)
     try:
         result = await document_api_batch_service.create_library_extraction(
             session, library_name, current_user
@@ -351,6 +394,7 @@ async def extract_interfaces(
     current_user: dict = Depends(require_permission("document:extract")),
 ):
     """AI 提取文档中的 API 接口，异步任务。"""
+    await _assert_document_owned(session, document_id, current_user)
     try:
         result = await document_api_service.create_extraction(
             session, document_id, current_user
@@ -369,8 +413,9 @@ async def update_document(
     document_id: int,
     req: UpdateDocumentRequest,
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permission("document:update")),
+    current_user: dict = Depends(require_permission("document:update")),
 ):
+    await _assert_document_owned(session, document_id, current_user)
     try:
         result = await document_service.update_document(
             session,
@@ -388,8 +433,9 @@ async def update_document(
 async def delete_document(
     document_id: int,
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permission("document:delete")),
+    current_user: dict = Depends(require_permission("document:delete")),
 ):
+    await _assert_document_owned(session, document_id, current_user)
     try:
         await document_service.delete_document(session, document_id)
     except NotFoundError:
