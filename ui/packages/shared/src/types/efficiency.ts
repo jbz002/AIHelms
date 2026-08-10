@@ -12,6 +12,7 @@ export interface TrendItem {
   cost_type: string
   cost: number
   requests: number
+  tokens: number
 }
 
 export interface CompositionItem {

@@ -77,7 +77,9 @@ async def get_summary_trend(
     sql = text(
         f"SELECT {trunc} AS d, cost_type,"
         " COALESCE(SUM(internal_cost), 0) AS cost,"
-        " COALESCE(SUM(total_requests), 0) AS requests"
+        " COALESCE(SUM(total_requests), 0) AS requests,"
+        " COALESCE(SUM(COALESCE(input_tokens,0) + COALESCE(output_tokens,0)"
+        " + COALESCE(cache_read_tokens,0) + COALESCE(cache_creation_tokens,0)), 0) AS tokens"
         " FROM aihelms.cost_summary_daily"
         f" WHERE {' AND '.join(filters)}"
         " GROUP BY 1, 2 ORDER BY 1, 2"
@@ -89,6 +91,7 @@ async def get_summary_trend(
             "cost_type": r[1] or "all",
             "cost": float(r[2]),
             "requests": int(r[3]),
+            "tokens": int(r[4]),
         }
         for r in result.fetchall()
     ]

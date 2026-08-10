@@ -86,8 +86,17 @@ const budgetUsedPercent = computed(() => {
   return Math.min((spent / budget) * 100, 100)
 })
 
+function formatTokens(v: number): string {
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`
+  if (v >= 1_000) return `${(v / 1_000).toFixed(1)}k`
+  return String(v)
+}
+
 const chartOption = computed(() => ({
-  tooltip: { trigger: 'axis' },
+  tooltip: {
+    trigger: 'axis',
+    valueFormatter: (v: number) => formatTokens(v),
+  },
   grid: { top: 20, right: 20, bottom: 30, left: 50 },
   xAxis: {
     type: 'category',
@@ -97,12 +106,12 @@ const chartOption = computed(() => ({
   },
   yAxis: {
     type: 'value',
-    axisLabel: { fontSize: 10, color: '#94a3b8', formatter: (v: number) => `¥${v}` },
+    axisLabel: { fontSize: 10, color: '#94a3b8', formatter: (v: number) => formatTokens(v) },
     splitLine: { lineStyle: { color: '#f1f5f9' } },
   },
   series: [{
     type: 'line',
-    data: trend.value.map(t => t.cost),
+    data: trend.value.map(t => t.tokens),
     smooth: true,
     symbol: 'circle',
     symbolSize: 4,
