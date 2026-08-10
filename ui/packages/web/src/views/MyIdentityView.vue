@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useAuth, getMyKeys, type ActiveModel } from '@aihelms/shared'
 import { request } from '@aihelms/shared/src/api/request'
 import type { AiKey } from '@aihelms/shared/src/types/ai-key'
@@ -7,7 +8,7 @@ import type { EfficiencyKpi, TrendItem } from '@aihelms/shared/src/types/efficie
 import type { ResourceApplication } from '@aihelms/shared/src/types/resource-application'
 import type { McpServer } from '@aihelms/shared/src/types/mcp'
 import type { Skill } from '@aihelms/shared/src/types/skill'
-import { Copy, Check, Cpu, Server, Sparkles, Clock, CheckCircle2, XCircle, Eye, EyeOff } from 'lucide-vue-next'
+import { Copy, Check, Cpu, Server, Sparkles, Clock, CheckCircle2, XCircle, Eye, EyeOff, Calendar, ChevronDown, ChevronLeft, ChevronRight } from 'lucide-vue-next'
 import ProviderIcon from '../components/ProviderIcon.vue'
 
 import VChart from 'vue-echarts'
@@ -18,6 +19,7 @@ import { GridComponent, TooltipComponent } from 'echarts/components'
 
 use([CanvasRenderer, LineChart, GridComponent, TooltipComponent])
 
+const { t, locale } = useI18n()
 const { currentUser } = useAuth()
 const mainKey = ref<AiKey | null>(null)
 const kpi = ref<EfficiencyKpi | null>(null)
@@ -73,10 +75,58 @@ const totalBudget = computed(() => {
   return null
 })
 
+function formatYM(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+
+const currentMonthStr = computed(() => formatYM(new Date()))
+const selectedMonth = ref(formatYM(new Date()))
+const isMonthLoading = ref(false)
+const isCurrentMonth = computed(() => selectedMonth.value === currentMonthStr.value)
+const monthMeta = computed(() => {
+  const [y, m] = selectedMonth.value.split('-').map(Number)
+  const days = new Date(y, m, 0).getDate()
+  const endDay = String(days).padStart(2, '0')
+  return { days, start: `${selectedMonth.value}-01`, end: `${selectedMonth.value}-${endDay}` }
+})
+
+const showMonthPanel = ref(false)
+const panelYear = ref(Number(selectedMonth.value.split('-')[0]))
+const pickerRef = ref<HTMLElement | null>(null)
+
+const monthLabels = computed(() =>
+  Array.from({ length: 12 }, (_, i) =>
+    new Intl.DateTimeFormat(locale.value, { month: 'short' }).format(new Date(2000, i, 1))
+  )
+)
+const selectedMonthLabel = computed(() => {
+  const [y, m] = selectedMonth.value.split('-').map(Number)
+  return new Intl.DateTimeFormat(locale.value, { year: 'numeric', month: 'long' }).format(new Date(y, m - 1, 1))
+})
+
+function toggleMonthPanel(): void {
+  showMonthPanel.value = !showMonthPanel.value
+  if (showMonthPanel.value) panelYear.value = Number(selectedMonth.value.split('-')[0])
+}
+function isFutureMonth(m: number): boolean {
+  return `${panelYear.value}-${String(m).padStart(2, '0')}` > currentMonthStr.value
+}
+function isSelectedMonth(m: number): boolean {
+  const [y, mo] = selectedMonth.value.split('-').map(Number)
+  return panelYear.value === y && m === mo
+}
+function pickMonth(m: number): void {
+  selectedMonth.value = `${panelYear.value}-${String(m).padStart(2, '0')}`
+  showMonthPanel.value = false
+}
+function onDocClick(e: MouseEvent): void {
+  if (pickerRef.value && !pickerRef.value.contains(e.target as Node)) showMonthPanel.value = false
+}
+
 const dailyAvgCost = computed(() => {
   const cost = kpi.value?.total_cost ?? 0
-  const day = new Date().getDate()
-  return day > 0 ? cost / day : 0
+  const divisor = isCurrentMonth.value ? new Date().getDate() : monthMeta.value.days
+  return divisor > 0 ? cost / divisor : 0
 })
 
 const budgetUsedPercent = computed(() => {
@@ -151,12 +201,29 @@ function getModelIconUrl(modelId: string): string {
   return modelIconUrls.value[modelId] || '/icons/v1/default.svg'
 }
 
+async function loadOverview(): Promise<void> {
+  isMonthLoading.value = true
+  try {
+    const { start, end } = monthMeta.value
+    const [kpiData, trendData] = await Promise.all([
+      request<EfficiencyKpi>('/api/v1/efficiency/overview', { params: { scope: 'self', start_date: start, end_date: end }, silent: true }).catch(() => null),
+      request<TrendItem[]>('/api/v1/efficiency/trend', { params: { scope: 'self', group_by: 'day', start_date: start, end_date: end }, silent: true }).catch(() => []),
+    ])
+    kpi.value = kpiData
+    trend.value = trendData
+  } finally {
+    isMonthLoading.value = false
+  }
+}
+
+watch(selectedMonth, () => { loadOverview() })
+
 onMounted(async () => {
   try {
     const [keysData, kpiData, trendData, appsData, mcpRes, skillRes, activeModelsData, configData] = await Promise.all([
       getMyKeys().catch(() => ({ personal: [] as AiKey[], department: [] as AiKey[], project: [] as AiKey[] })),
-      request<EfficiencyKpi>('/api/v1/efficiency/overview', { params: { scope: 'self' }, silent: true }).catch(() => null),
-      request<TrendItem[]>('/api/v1/efficiency/trend', { params: { scope: 'self', group_by: 'day' }, silent: true }).catch(() => []),
+      request<EfficiencyKpi>('/api/v1/efficiency/overview', { params: { scope: 'self', start_date: monthMeta.value.start, end_date: monthMeta.value.end }, silent: true }).catch(() => null),
+      request<TrendItem[]>('/api/v1/efficiency/trend', { params: { scope: 'self', group_by: 'day', start_date: monthMeta.value.start, end_date: monthMeta.value.end }, silent: true }).catch(() => []),
       request<{ items: ResourceApplication[] }>('/api/v1/resource-applications/my', { params: { page: 1, page_size: 10 }, silent: true }).catch(() => ({ items: [] as ResourceApplication[] })),
       request<{ items: McpServer[] }>('/api/v1/mcp/servers/published', { params: { page_size: 200 }, silent: true }).catch(() => ({ items: [] })),
       request<{ items: Skill[] }>('/api/v1/skills/published', { params: { page_size: 200 }, silent: true }).catch(() => ({ items: [] })),
@@ -180,6 +247,11 @@ onMounted(async () => {
     }
   } catch { /* */ }
   finally { isLoading.value = false }
+  document.addEventListener('click', onDocClick)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', onDocClick)
 })
 </script>
 
@@ -355,17 +427,55 @@ onMounted(async () => {
       </section>
 
       <!-- 用量概览 -->
-      <section v-if="kpi" class="mt-6 rounded-2xl border border-slate-200/60 bg-white p-5">
-        <h2 class="mb-4 text-sm font-medium text-slate-900">本月概览</h2>
-        <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <div class="rounded-xl bg-slate-50/80 px-4 py-3">
+      <section v-if="kpi" class="mt-6 rounded-2xl border border-slate-200/60 bg-white p-5 transition-opacity"
+               :class="{ 'opacity-50 pointer-events-none': isMonthLoading }">
+        <div class="mb-4 flex items-center justify-between">
+          <h2 class="text-sm font-medium text-slate-900">{{ isCurrentMonth ? t('identity.overview.title') : t('identity.overview.monthTitle', { month: selectedMonth }) }}</h2>
+          <div ref="pickerRef" class="relative">
+            <div class="flex items-center gap-2">
+              <button type="button" @click="toggleMonthPanel"
+                      class="flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50">
+                <Calendar class="h-3.5 w-3.5 text-slate-400" />
+                <span>{{ selectedMonthLabel }}</span>
+                <ChevronDown class="h-3.5 w-3.5 text-slate-400 transition-transform" :class="{ 'rotate-180': showMonthPanel }" />
+              </button>
+              <button v-if="!isCurrentMonth" type="button" @click="selectedMonth = currentMonthStr"
+                      class="rounded-lg bg-slate-100 px-2 py-1.5 text-xs text-slate-700 hover:bg-slate-200">{{ t('identity.overview.thisMonth') }}</button>
+            </div>
+            <div v-if="showMonthPanel" class="absolute right-0 top-full z-20 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+              <div class="mb-2 flex items-center justify-between">
+                <button type="button" @click="panelYear--"
+                        class="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100">
+                  <ChevronLeft class="h-4 w-4" />
+                </button>
+                <span class="text-sm font-medium text-slate-900">{{ panelYear }}</span>
+                <button type="button" @click="panelYear++"
+                        class="flex h-6 w-6 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100">
+                  <ChevronRight class="h-4 w-4" />
+                </button>
+              </div>
+              <div class="grid grid-cols-3 gap-1">
+                <button v-for="(label, i) in monthLabels" :key="i" type="button"
+                        :disabled="isFutureMonth(i + 1)" @click="pickMonth(i + 1)"
+                        class="rounded-md py-1.5 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-30"
+                        :class="isSelectedMonth(i + 1)
+                          ? 'bg-purple-500 font-medium text-white'
+                          : 'text-slate-600 hover:bg-slate-100'">
+                  {{ label }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3" :class="isCurrentMonth ? 'sm:grid-cols-4' : 'sm:grid-cols-3'">
+          <div v-if="isCurrentMonth" class="rounded-xl bg-slate-50/80 px-4 py-3">
             <div class="text-xs text-slate-400">本月预算</div>
             <div class="mt-1 text-lg font-semibold text-slate-900">{{ budgetDisplay }}</div>
           </div>
           <div class="rounded-xl bg-slate-50/80 px-4 py-3">
             <div class="text-xs text-slate-400">已花费</div>
             <div class="mt-1 text-lg font-semibold text-slate-900">¥{{ (kpi.total_cost ?? 0).toFixed(2) }}</div>
-            <div v-if="budgetUsedPercent !== null" class="mt-0.5 text-xs text-slate-400">{{ budgetUsedPercent.toFixed(1) }}%</div>
+            <div v-if="isCurrentMonth && budgetUsedPercent !== null" class="mt-0.5 text-xs text-slate-400">{{ budgetUsedPercent.toFixed(1) }}%</div>
           </div>
           <div class="rounded-xl bg-slate-50/80 px-4 py-3">
             <div class="text-xs text-slate-400">调用次数</div>
@@ -377,7 +487,7 @@ onMounted(async () => {
           </div>
         </div>
         <!-- 预算进度条 -->
-        <div v-if="budgetUsedPercent !== null" class="mt-4">
+        <div v-if="isCurrentMonth && budgetUsedPercent !== null" class="mt-4">
           <div class="flex items-center justify-between text-xs text-slate-400">
             <span>预算使用</span>
             <span>{{ budgetUsedPercent.toFixed(1) }}%</span>
