@@ -319,23 +319,65 @@ async def _sync_keys_after_model_rename(
     await session.flush()
 
 
+async def _remove_model_from_all_keys(session: AsyncSession, model_id: str) -> None:
+    """删除模型时，从所有引用该模型的 Key（含场景 Key）的 models 与 model_budgets 中移除并推 LiteLLM。"""
+    from sqlalchemy.orm.attributes import flag_modified
+
+    from services import ai_key_service
+
+    keys = await ai_key_repo.find_keys_referencing_model(session, model_id)
+    logger.info(
+        "delete_model cleanup: model_id=%s referenced by %d keys", model_id, len(keys)
+    )
+    for key in keys:
+        models_changed = False
+        if key.models and model_id in key.models:
+            logger.info(
+                "delete_model cleanup: key=%s models_before=%s", key.id, key.models
+            )
+            key.models = [m for m in key.models if m != model_id]
+            flag_modified(key, "models")
+            models_changed = True
+            logger.info(
+                "delete_model cleanup: key=%s models_after=%s", key.id, key.models
+            )
+
+        budgets_changed = False
+        if key.model_budgets and model_id in key.model_budgets:
+            budgets = dict(key.model_budgets)
+            budgets.pop(model_id, None)
+            key.model_budgets = budgets
+            flag_modified(key, "model_budgets")
+            budgets_changed = True
+
+        if models_changed or budgets_changed:
+            try:
+                await ai_key_service._sync_key_to_litellm(
+                    key,
+                    models_changed=models_changed,
+                    mcps_changed=False,
+                    budget_changed=False,
+                    model_budgets_changed=budgets_changed,
+                    rate_limits_changed=key.rate_limit_mode
+                    == ai_key_service.RATE_LIMIT_MODE_PER_MODEL,
+                    session=session,
+                )
+            except litellm_client.LiteLLMError:
+                logger.warning("remove model sync to litellm failed for key %s", key.id)
+    await session.flush()
+
+
 async def delete_model(session: AsyncSession, model_id: int) -> None:
     model = await model_repo.find_by_id(session, model_id)
     if not model:
         raise NotFoundError("model", model_id)
 
-    # 在级联删除前，先在 LiteLLM 侧禁用所有部署
+    # 在级联删除前，先在 LiteLLM 侧物理删除所有部署
     deployments = await model_repo.find_deployments_by_model(session, model_id)
     for d in deployments:
         if d.litellm_model_id:
-            litellm_model_name = _get_litellm_model_name(model, d.credential)
             try:
-                await litellm_client.update_model(
-                    litellm_model_id=d.litellm_model_id,
-                    model_name=litellm_model_name,
-                    litellm_params=_convert_cost_for_litellm(d.litellm_params),
-                    model_info={**(d.model_info or {}), "active": False},
-                )
+                await litellm_client.delete_model(d.litellm_model_id)
             except litellm_client.LiteLLMError as e:
                 if "404" in str(e):
                     logger.warning(
@@ -345,25 +387,38 @@ async def delete_model(session: AsyncSession, model_id: int) -> None:
                     )
                 else:
                     logger.error(
-                        "litellm disable model failed for deployment %s: %s", d.id, e
+                        "litellm delete model failed for deployment %s: %s", d.id, e
                     )
-                    raise ConflictError("LiteLLM 侧禁用失败，请稍后重试")
+                    raise ConflictError("LiteLLM 侧删除失败，请稍后重试")
 
-    # 从所有主 Key 中移除该模型
+    # 从所有 Key（含场景 Key）中移除该模型
     if model.model_id:
-        from services import ai_key_service
-
-        await ai_key_service.remove_public_resource_from_all_keys(
-            session, "models", model.model_id
-        )
+        await _remove_model_from_all_keys(session, model.model_id)
 
     # 硬删除 — 用 Core-level DELETE 绕过 ORM 关系处理，
     # 避免 selectin 加载的 deployments 被 SQLAlchemy 尝试 SET NULL FK
     from sqlalchemy import delete as sa_delete
 
+    mid = model.model_id
     session.expunge(model)
     await session.execute(sa_delete(Model).where(Model.id == model_id))
     await session.commit()
+
+    # 观测:commit 后重查 DB 真值,捕获"UPDATE 写旧值"偶发现场
+    if mid:
+        leaked = await ai_key_repo.find_keys_referencing_model(session, mid)
+        if leaked:
+            logger.warning(
+                "delete_model cleanup LEAK: model_id=%s still in %d keys after commit: %s",
+                mid,
+                len(leaked),
+                [(k.id, k.models) for k in leaked],
+            )
+        else:
+            logger.info(
+                "delete_model cleanup verified: model_id=%s removed from all keys",
+                mid,
+            )
 
 
 # --- Deployment helpers ---
@@ -566,20 +621,8 @@ async def delete_deployment(session: AsyncSession, deployment_id: int) -> None:
         raise NotFoundError("deployment", deployment_id)
 
     if deployment.litellm_model_id:
-        model = await model_repo.find_by_id(session, deployment.model_id)
-        credential = None
-        if deployment.credential_id:
-            credential = await credential_repo.find_by_id(
-                session, deployment.credential_id
-            )
-        litellm_model_name = _get_litellm_model_name(model, credential) if model else ""
         try:
-            await litellm_client.update_model(
-                litellm_model_id=deployment.litellm_model_id,
-                model_name=litellm_model_name,
-                litellm_params=_convert_cost_for_litellm(deployment.litellm_params),
-                model_info={**(deployment.model_info or {}), "active": False},
-            )
+            await litellm_client.delete_model(deployment.litellm_model_id)
         except litellm_client.LiteLLMError as e:
             if "404" in str(e):
                 logger.warning(
@@ -589,11 +632,11 @@ async def delete_deployment(session: AsyncSession, deployment_id: int) -> None:
                 )
             else:
                 logger.error(
-                    "litellm disable model failed for deployment %s: %s",
+                    "litellm delete model failed for deployment %s: %s",
                     deployment_id,
                     e,
                 )
-                raise ConflictError("LiteLLM 侧禁用失败，请稍后重试")
+                raise ConflictError("LiteLLM 侧删除失败，请稍后重试")
 
     await session.delete(deployment)
     await session.commit()

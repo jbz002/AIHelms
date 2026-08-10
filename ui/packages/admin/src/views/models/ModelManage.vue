@@ -60,6 +60,8 @@ const editingDeployId = ref<number | null>(null)
 const deleteModelTarget = ref<ModelInfo | null>(null)
 const deleteDeployTarget = ref<Deployment | null>(null)
 const errorMessage = ref('')
+const registryFillError = ref('')
+const pricingFetchError = ref('')
 
 // Access Test
 const showTestDialog = ref(false)
@@ -503,6 +505,7 @@ function handleCreateModel(): void {
   }
   showModelAdvanced.value = false
   errorMessage.value = ''
+  registryFillError.value = ''
   showModelForm.value = true
 }
 
@@ -542,21 +545,22 @@ function handleEditModel(): void {
   logoSearch.value = ''
   showModelAdvanced.value = false
   errorMessage.value = ''
+  registryFillError.value = ''
   showModelForm.value = true
 }
 
 async function handleRegistryFill(): Promise<void> {
   const name = formRegistryName.value.trim()
   if (!name) {
-    errorMessage.value = '请填写 LiteLLM 模型名'
+    registryFillError.value = '请填写 LiteLLM 模型名'
     return
   }
-  errorMessage.value = ''
+  registryFillError.value = ''
   registryLoading.value = true
   try {
     const entry: RegistryEntry | null = await registryLookup(name)
     if (!entry) {
-      errorMessage.value = `注册表无「${name}」,请手动填写下方属性`
+      registryFillError.value = `注册表无「${name}」,请手动填写下方属性`
       return
     }
     const maxIn = entry.max_input_tokens ?? entry.max_tokens
@@ -619,7 +623,7 @@ async function handleRegistryFill(): Promise<void> {
       formTags.value = [...formTags.value, ...mapped]
     }
   } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : '查询失败'
+    registryFillError.value = e instanceof Error ? e.message : '查询失败'
   } finally {
     registryLoading.value = false
   }
@@ -628,14 +632,14 @@ async function handleRegistryFill(): Promise<void> {
 async function handleFetchOfficialPricing(): Promise<void> {
   const name = deployPricingLookupName.value.trim()
   if (!name) {
-    errorMessage.value = '请填写注册表查询名（厂商模型名或 provider 全名）'
+    pricingFetchError.value = '请填写注册表查询名（厂商模型名或 provider 全名）'
     return
   }
-  errorMessage.value = ''
+  pricingFetchError.value = ''
   try {
     const entry = await registryLookup(name)
     if (!entry) {
-      errorMessage.value = `注册表无「${name}」官方定价`
+      pricingFetchError.value = `注册表无「${name}」官方定价`
       return
     }
     if (entry.input_cost_per_million_tokens_cny != null) {
@@ -654,7 +658,7 @@ async function handleFetchOfficialPricing(): Promise<void> {
       deployReasoningCostPerToken.value = String(entry.output_cost_per_reasoning_token_per_million_tokens_cny)
     }
   } catch (e) {
-    errorMessage.value = e instanceof Error ? e.message : '查询失败'
+    pricingFetchError.value = e instanceof Error ? e.message : '查询失败'
   }
 }
 
@@ -785,6 +789,7 @@ function handleAddDeployment(): void {
   editingDeployId.value = null
   resetDeployForm()
   errorMessage.value = ''
+  pricingFetchError.value = ''
   showDeployForm.value = true
 }
 
@@ -827,6 +832,7 @@ function handleEditDeployment(d: Deployment): void {
   deployDropParams.value = params.drop_params === true
   showAdvanced.value = !!(deployWeight.value || deployOrder.value || deployDeployTags.value || deployTimeout.value || deployInputCostPerToken.value || deployInternalInputCost.value)
   errorMessage.value = ''
+  pricingFetchError.value = ''
   showDeployForm.value = true
 }
 
@@ -1561,6 +1567,7 @@ onMounted(() => {
               <button type="button" :disabled="registryLoading" class="shrink-0 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200 disabled:opacity-50" @click="handleRegistryFill">{{ registryLoading ? '查询中' : '查询' }}</button>
             </div>
             <p class="mt-1 text-xs text-slate-400">平台内置注册表快照,未覆盖模型请手填下方属性</p>
+            <p v-if="registryFillError" class="mt-1.5 text-sm text-red-500">{{ registryFillError }}</p>
             <div v-if="formDeprecationDate" class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
               <span class="text-xs font-medium text-amber-700">注意：该模型注册表标注弃用日期 {{ formDeprecationDate }}，建议尽快迁移替代方案</span>
             </div>
@@ -1767,6 +1774,7 @@ onMounted(() => {
                   <label class="mb-1 block text-xs text-slate-500">注册表查询名（默认取厂商模型名，可选/搜索 provider 全名）</label>
                   <ModelRegistryPicker v-model="deployPricingLookupName" placeholder="如 moonshot/kimi-k2.6" />
                   <p class="mt-1 text-xs text-slate-400">同模型不同 provider 定价不同，请从候选选实际部署的 provider</p>
+                  <p v-if="pricingFetchError" class="mt-1.5 text-sm text-red-500">{{ pricingFetchError }}</p>
                 </div>
                 <div class="grid grid-cols-2 gap-3">
                   <div>

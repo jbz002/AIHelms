@@ -58,6 +58,17 @@ class Settings(BaseSettings):
     # 成本计算
     usd_to_cny_rate: float = 7.0  # LiteLLM spend(美元) → 人民币汇率
 
+    # 模型注册表自动更新（启动时从官方 LiteLLM cost map 拉取最新快照）
+    model_registry_auto_update: bool = True
+    model_registry_url: str = (
+        "https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json,"
+        "https://cdn.jsdelivr.net/gh/BerriAI/litellm@main/model_prices_and_context_window.json"
+    )
+    model_registry_fetch_timeout: int = 10  # 拉取超时秒数，国内访问 GitHub raw 易超时
+    model_registry_refresh_min_age_hours: int = (
+        24  # 本地快照新于该时长则跳过，0 = 每次启动都拉
+    )
+
     # Gunicorn
     gunicorn_workers: int = 0
     gunicorn_timeout: int = 120

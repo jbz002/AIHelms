@@ -6,7 +6,6 @@ from fastapi import FastAPI
 
 from api.v1.router import router as api_v1_router
 from core.audit import AuditLogMiddleware, RequestIdMiddleware
-from core.config import settings
 from core.database import close_engine
 from core.exception_handlers import register_exception_handlers
 from core.idempotency import IdempotencyMiddleware
@@ -14,6 +13,7 @@ from core.logging import setup_logging
 from core.migrate import run_migrations
 from mcp_admin import create_admin_mcp_app
 from mcp_web import create_web_mcp_app
+from services import model_registry
 from services.docs_mcp_event_subscriber import run_docs_mcp_event_subscriber
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI):
     async with admin_mcp_app.lifespan(app):
         async with web_mcp_app.lifespan(app):
             await run_migrations()
+            await model_registry.refresh_from_remote()
             subscriber_task = asyncio.create_task(run_docs_mcp_event_subscriber())
             yield
             subscriber_task.cancel()

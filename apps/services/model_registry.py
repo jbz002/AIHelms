@@ -7,8 +7,12 @@
 
 import json
 import logging
+import os
+import time
 from functools import lru_cache
 from pathlib import Path
+
+import httpx
 
 from core.config import settings
 
@@ -99,3 +103,61 @@ def search(keyword: str, limit: int = 20) -> list[str]:
     if not kw:
         return keys[:limit]
     return [k for k in keys if kw in k.lower()][:limit]
+
+
+# 官方 cost map 中非模型元数据 key，校验 payload 时排除
+_REGISTRY_MIN_MODELS = 1000
+
+
+async def refresh_from_remote() -> bool:
+    """启动时从官方 LiteLLM cost map 拉最新快照覆盖本地 JSON。
+
+    国内服务器访问 GitHub raw 易超时：短超时 + 失败静默降级用旧快照，绝不阻断启动。
+    文件新于 model_registry_refresh_min_age_hours 则跳过（dev 热重载节流）。
+    """
+    if not settings.model_registry_auto_update:
+        return False
+    min_age = settings.model_registry_refresh_min_age_hours
+    if min_age > 0 and _REGISTRY_PATH.exists():
+        age_hours = (time.time() - _REGISTRY_PATH.stat().st_mtime) / 3600
+        if age_hours < min_age:
+            logger.info(
+                "model registry fresh (%.1fh < %dh), skip fetch", age_hours, min_age
+            )
+            return False
+    # 多源依次尝试：官方 raw 国内常超时，jsDelivr 镜像兜底
+    urls = [u.strip() for u in settings.model_registry_url.split(",") if u.strip()]
+    data: dict | None = None
+    async with httpx.AsyncClient(
+        timeout=settings.model_registry_fetch_timeout, trust_env=False
+    ) as client:
+        for url in urls:
+            try:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                payload = resp.json()
+            except Exception as e:
+                logger.warning("model registry fetch failed from %s: %s", url, e)
+                continue
+            if isinstance(payload, dict) and len(payload) >= _REGISTRY_MIN_MODELS:
+                data = payload
+                break
+            logger.warning(
+                "model registry payload invalid from %s (len=%s)",
+                url,
+                len(payload) if isinstance(payload, dict) else type(payload).__name__,
+            )
+    if data is None:
+        logger.warning("all model registry sources failed, keep local snapshot")
+        return False
+    tmp_path = _REGISTRY_PATH.with_suffix(".json.tmp")
+    try:
+        with tmp_path.open("w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False)
+        os.replace(tmp_path, _REGISTRY_PATH)
+    except OSError as e:
+        logger.error("model registry write failed: %s", e)
+        return False
+    _raw.cache_clear()
+    logger.info("model registry updated from remote: %d entries", len(data))
+    return True
