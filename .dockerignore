@@ -22,7 +22,7 @@ htmlcov/
 .ruff_cache/
 
 # Node
-node_modules/
+**/node_modules/
 .pnpm-store/
 *.tsbuildinfo
 

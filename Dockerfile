@@ -5,10 +5,11 @@ ARG NPM_MIRROR=https://registry.npmmirror.com
 
 WORKDIR /ui
 
-COPY ui/package.json ./
+COPY ui/package.json ui/package-lock.json ./
 COPY ui/packages/shared/package.json ./packages/shared/
 COPY ui/packages/admin/package.json ./packages/admin/
 COPY ui/packages/web/package.json ./packages/web/
+COPY ui/packages/cli/package.json ./packages/cli/
 
 RUN npm config set registry ${NPM_MIRROR} && npm install
 
