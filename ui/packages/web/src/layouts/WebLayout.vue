@@ -58,6 +58,9 @@ const navItems = computed(() => {
   ) {
     items.push({ path: '/contributor', labelKey: 'layout.nav.contributor' })
   }
+  if (hasPermission('document:read')) {
+    items.push({ path: '/docs', labelKey: 'layout.nav.docs' })
+  }
   return items
 })
 

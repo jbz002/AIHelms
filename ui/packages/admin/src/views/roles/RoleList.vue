@@ -47,6 +47,8 @@ const RESOURCE_LABELS: Record<string, string> = {
   usage_log: '使用日志',
   efficiency: 'AI效能',
   ai_policies: 'AI Policies',
+  document: '文档',
+  document_library: '文档库',
 }
 
 interface PermissionGroup {

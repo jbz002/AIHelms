@@ -241,6 +241,26 @@ export interface Document {
   metadata: Record<string, unknown>
 }
 
+export interface DocumentLibrary {
+  id: number
+  name: string
+  description: string
+  document_count: number
+  total_chunks: number
+  source_url: string
+  active_version: string | null
+  created_by: number | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface DocumentLibraryListResult {
+  items: DocumentLibrary[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface DocumentApiExtractStatus {
   id: number
   spec_id: string

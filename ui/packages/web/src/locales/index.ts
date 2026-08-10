@@ -12,6 +12,8 @@ import identityZh from './zh-CN/identity.json'
 import identityEn from './en-US/identity.json'
 import contributorZh from './zh-CN/contributor.json'
 import contributorEn from './en-US/contributor.json'
+import docsZh from './zh-CN/docs.json'
+import docsEn from './en-US/docs.json'
 
 export const messages = {
   'zh-CN': {
@@ -22,6 +24,7 @@ export const messages = {
     ...marketZh,
     ...identityZh,
     ...contributorZh,
+    ...docsZh,
   },
   'en-US': {
     ...commonEn,
@@ -31,5 +34,6 @@ export const messages = {
     ...marketEn,
     ...identityEn,
     ...contributorEn,
+    ...docsEn,
   },
 }

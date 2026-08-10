@@ -1279,7 +1279,8 @@ INSERT INTO aihelms.roles (name, display_name, description, is_system) VALUES
     ('admin', '管理员', '管理平台日常运营', true),
     ('department_manager', '部门管理员', '管理所属部门', true),
     ('user', '普通用户', '基础使用权限', true),
-    ('contributor', 'Skill 贡献者', '可在 web 端贡献 Skill 草稿并提发布审核', false)
+    ('contributor', 'Skill 贡献者', '可在 web 端贡献 Skill 草稿并提发布审核', false),
+    ('document_user', 'API文档使用者', '可在 web 端文档中心浏览/测试接口、上传文档、AI 提取接口', false)
 ON CONFLICT (name) DO NOTHING;
 
 -- 权限点
@@ -1332,7 +1333,11 @@ INSERT INTO aihelms.permissions (code, name, resource, action, description) VALU
     ('efficiency:write', '管理AI效能', 'efficiency', 'write', '生成报告、更新建议状态'),
     ('publish_review:read', '查看发布审核', 'publish_review', 'read', '查看发布审核申请列表和详情'),
     ('publish_review:approve', '审核发布申请', 'publish_review', 'approve', '审核通过或驳回发布申请'),
-    ('document:extract', '提取文档接口', 'document', 'extract', 'AI 提取文档中的 API 接口')
+    ('document:extract', '提取文档接口', 'document', 'extract', 'AI 提取文档中的 API 接口'),
+    ('document:read', '查看文档', 'document', 'read', '查看文档/库/接口列表与详情、调试代理'),
+    ('document:batch_extract', '批量提取库接口', 'document', 'batch_extract', '批量提取库内文档接口'),
+    ('document_library:read', '查看文档库', 'document_library', 'read', '查看文档库列表与详情'),
+    ('document_library:create', '创建文档库', 'document_library', 'create', '创建文档库')
 ON CONFLICT (code) DO NOTHING;
 
 -- super_admin 拥有所有权限
@@ -1363,6 +1368,14 @@ ON CONFLICT (role_id, permission_id) DO NOTHING;
 INSERT INTO aihelms.role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM aihelms.roles r, aihelms.permissions p
 WHERE r.name = 'contributor' AND p.code IN ('skill:contribute', 'mcp:contribute', 'agent:contribute')
+ON CONFLICT (role_id, permission_id) DO NOTHING;
+
+-- document_user 可在 web 端文档中心浏览/测试接口、上传文档、AI 提取接口
+INSERT INTO aihelms.role_permissions (role_id, permission_id)
+SELECT r.id, p.id FROM aihelms.roles r, aihelms.permissions p
+WHERE r.name = 'document_user'
+  AND p.code IN ('document:read', 'document:extract', 'document:batch_extract',
+                 'document_library:read', 'document_library:create')
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 

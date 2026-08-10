@@ -20,6 +20,8 @@ import type {
   DocTaskListResult,
   Document,
   DocumentListResult,
+  DocumentLibrary,
+  DocumentLibraryListResult,
   IngestStats,
   IngestBatchParams,
   DocumentDashboardSummary,
@@ -474,4 +476,19 @@ export function ingestDocumentBatch(params?: IngestBatchParams) {
 
 export function getDocumentDashboardSummary() {
   return request<DocumentDashboardSummary>('/api/v1/documents/dashboard-summary')
+}
+
+// ── 平台文档库(document_libraries)列表与创建 ──
+
+export function listLibraries(page = 1, pageSize = 50, keyword = '') {
+  return request<DocumentLibraryListResult>('/api/v1/document-libraries', {
+    params: { page, page_size: pageSize, keyword },
+  })
+}
+
+export function createLibrary(name: string, description = '') {
+  return request<DocumentLibrary>('/api/v1/document-libraries', {
+    method: 'POST',
+    body: { name, description },
+  })
 }

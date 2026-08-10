@@ -3,6 +3,7 @@
   "layout.nav.market": "AI Tools",
   "layout.nav.models": "Model Hub",
   "layout.nav.contributor": "Contributor",
+  "layout.nav.docs": "Docs",
   "layout.apiKeys": "API Keys",
   "layout.adminConsole": "Admin",
   "layout.logout": "Sign out"
