@@ -22,6 +22,7 @@ interface ModelItem {
   requires_approval: boolean
   deployment_count: number
   has_anthropic_deployment: boolean
+  has_openai_deployment: boolean
 }
 
 

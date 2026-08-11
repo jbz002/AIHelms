@@ -19,6 +19,7 @@ interface ModelItem {
   requires_approval: boolean
   deployment_count: number
   has_anthropic_deployment: boolean
+  has_openai_deployment: boolean
 }
 
 const props = defineProps<{
@@ -97,7 +98,27 @@ const isVideoMode = computed(() => resolvedMode.value === 'video_generation')
 const supportsVision = computed(() => isChatMode.value && (props.model?.capabilities || []).includes('vision'))
 const isAudioTranscription = computed(() => resolvedMode.value === 'audio_transcription')
 
-const showAnthropic = computed(() => !!props.model?.has_anthropic_deployment && isChatMode.value)
+// chat 模型按客户端 SDK 方言(openai / anthropic)各给一个 curl;model 名按可用路由组智能挑选,照抄即用
+const showAnthropic = computed(() => isChatMode.value)
+const bareModelName = computed(() => props.model?.model_id || '')
+const anthropicModelId = computed(() => `${bareModelName.value}(Anthropic)`)
+// openai 方言优先裸名组;纯 anthropic 部署时退回 (Anthropic) 组(LiteLLM 入口转格式)
+const openaiModelName = computed(() =>
+  props.model?.has_openai_deployment ? bareModelName.value : anthropicModelId.value
+)
+// anthropic 方言优先 (Anthropic) 组;纯 openai 部署时退回裸名组
+const anthropicGroupName = computed(() =>
+  props.model?.has_anthropic_deployment ? anthropicModelId.value : bareModelName.value
+)
+const currentModelName = computed(() =>
+  activeCurlTab.value === 'openai' ? openaiModelName.value : anthropicGroupName.value
+)
+// base_url 跟随客户端方言:OpenAI SDK 要带 /v1(SDK 自拼 /chat/completions),anthropic SDK 不带(SDK 自拼 /v1/messages)。与 MyIdentityView 的 openaiBaseUrl/anthropicBaseUrl 对齐
+const currentBaseUrl = computed(() => {
+  const u = props.litellmBaseUrl
+  if (!u) return ''
+  return activeCurlTab.value === 'anthropic' ? u : `${u}/v1`
+})
 const maskedKey = computed(() => {
   const k = props.mainKeyValue
   return k ? (showKeyFull.value ? k : k.slice(0, 8) + '****' + k.slice(-4)) : t('modelSquare.fallback.noKey')
@@ -120,13 +141,13 @@ const openaiCurl = computed(() => {
     return `curl ${u}/v1/audio/transcriptions \\\n  -H "Authorization: Bearer <your-api-key>" \\\n  -F "model=${m.model_id}" \\\n  -F "file=@audio.mp3"`
   if (mode === 'video_generation')
     return `# ${t('modelSquare.access.videoCurlPlaceholder')}\n# LiteLLM / OpenAI have no standard video-generation endpoint.\n# Call the provider SDK directly.`
-  return `curl ${u}/v1/chat/completions \\\n  -H "Authorization: Bearer <your-api-key>" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${m.model_id}", "messages": [{"role": "user", "content": "hi"}]}'`
+  return `curl ${u}/v1/chat/completions \\\n  -H "Authorization: Bearer <your-api-key>" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${openaiModelName.value}", "messages": [{"role": "user", "content": "hi"}]}'`
 })
 
 const anthropicCurl = computed(() => {
   const m = props.model
   if (!m) return ''
-  return `curl ${props.litellmBaseUrl}/v1/messages \\\n  -H "x-api-key: <your-api-key>" \\\n  -H "anthropic-version: 2023-06-01" \\\n  -H "content-type: application/json" \\\n  -d '{"model": "${m.model_id}(Anthropic)", "max_tokens": 100, "messages": [{"role": "user", "content": "hi"}]}'`
+  return `curl ${props.litellmBaseUrl}/v1/messages \\\n  -H "x-api-key: <your-api-key>" \\\n  -H "anthropic-version: 2023-06-01" \\\n  -H "content-type: application/json" \\\n  -d '{"model": "${anthropicGroupName.value}", "max_tokens": 100, "messages": [{"role": "user", "content": "hi"}]}'`
 })
 
 async function copyText(text: string, key: string): Promise<void> {
@@ -319,14 +340,23 @@ async function runChatStream(modelId: string, epoch: number): Promise<void> {
       </div>
 
       <div class="flex-1 space-y-4 overflow-y-auto px-6 py-5">
+        <!-- 顶层格式选择:统管下方 model ID + curl,chat 模型才有两种客户端格式 -->
+        <div v-if="showAnthropic" class="flex gap-1 rounded-lg bg-slate-100 p-1">
+          <button class="flex-1 rounded-md px-3 py-2 text-xs font-medium transition-colors"
+            :class="activeCurlTab === 'openai' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+            @click="activeCurlTab = 'openai'">{{ t('modelSquare.access.openaiProtocol') }}</button>
+          <button class="flex-1 rounded-md px-3 py-2 text-xs font-medium transition-colors"
+            :class="activeCurlTab === 'anthropic' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
+            @click="activeCurlTab = 'anthropic'">{{ t('modelSquare.access.anthropicProtocol') }}</button>
+        </div>
         <!-- 顶部:模型名称 / Base URL / API Key -->
         <div class="space-y-2 rounded-lg border border-slate-200/60 p-4">
           <div class="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
             <div class="flex min-w-0 items-baseline gap-2">
               <span class="shrink-0 text-xs text-slate-400">{{ t('modelSquare.access.modelId') }}</span>
-              <code class="truncate text-sm font-medium text-slate-800">{{ model.model_id }}</code>
+              <code class="truncate text-sm font-medium text-slate-800">{{ currentModelName }}</code>
             </div>
-            <button class="shrink-0 text-xs text-purple-600 hover:text-purple-700" @click="copyText(model.model_id, 'mid')">
+            <button class="shrink-0 text-xs text-purple-600 hover:text-purple-700" @click="copyText(currentModelName, 'mid')">
               {{ copied === 'mid' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
             </button>
           </div>
@@ -334,9 +364,9 @@ async function runChatStream(modelId: string, epoch: number): Promise<void> {
           <div class="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
             <div class="flex min-w-0 items-baseline gap-2">
               <span class="shrink-0 text-xs text-slate-400">Base URL</span>
-              <code class="truncate text-sm text-slate-800">{{ litellmBaseUrl || t('modelSquare.fallback.notConfigured') }}</code>
+              <code class="truncate text-sm text-slate-800">{{ currentBaseUrl || t('modelSquare.fallback.notConfigured') }}</code>
             </div>
-            <button class="shrink-0 text-xs text-purple-600 hover:text-purple-700" @click="copyText(litellmBaseUrl, 'url')">
+            <button class="shrink-0 text-xs text-purple-600 hover:text-purple-700" @click="copyText(currentBaseUrl, 'url')">
               {{ copied === 'url' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
             </button>
           </div>
@@ -357,16 +387,8 @@ async function runChatStream(modelId: string, epoch: number): Promise<void> {
           </div>
         </div>
 
-        <!-- curl 示例(OpenAI / Anthropic tab 切换) -->
+        <!-- curl 示例(跟随顶层格式选择) -->
         <div class="rounded-lg border border-slate-200/60 p-4">
-          <div v-if="showAnthropic" class="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1">
-            <button class="flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
-              :class="activeCurlTab === 'openai' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
-              @click="activeCurlTab = 'openai'">{{ t('modelSquare.access.openaiProtocol') }}</button>
-            <button class="flex-1 rounded-md px-3 py-1.5 text-xs font-medium transition-colors"
-              :class="activeCurlTab === 'anthropic' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'"
-              @click="activeCurlTab = 'anthropic'">{{ t('modelSquare.access.anthropicProtocol') }}</button>
-          </div>
           <p class="mb-1 text-xs font-medium text-slate-500">{{ t('modelSquare.access.curlLabel') }}</p>
           <div v-show="activeCurlTab === 'openai'" class="flex items-start justify-between gap-2 rounded-lg bg-slate-900 p-3">
             <pre class="flex-1 overflow-x-auto whitespace-pre-wrap break-all text-xs leading-5 text-slate-100">{{ openaiCurl }}</pre>

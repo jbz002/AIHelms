@@ -61,6 +61,9 @@ async def get_all_active_models(session: AsyncSession) -> list[dict]:
     anthropic_set = await model_repo.find_model_ids_with_anthropic_deployments(
         session, model_ids
     )
+    openai_set = await model_repo.find_model_ids_with_openai_deployments(
+        session, model_ids
+    )
     return [
         {
             "id": m.id,
@@ -81,6 +84,7 @@ async def get_all_active_models(session: AsyncSession) -> list[dict]:
             "registry_rpm": m.registry_rpm,
             "registry_tpm": m.registry_tpm,
             "has_anthropic_deployment": m.model_id in anthropic_set,
+            "has_openai_deployment": m.model_id in openai_set,
         }
         for m in models
     ]

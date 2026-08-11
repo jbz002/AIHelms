@@ -133,6 +133,7 @@ export interface ActiveModel {
   is_published?: boolean
   requires_approval?: boolean
   has_anthropic_deployment?: boolean
+  has_openai_deployment?: boolean
   max_input_tokens?: number | null
   max_output_tokens?: number | null
   supports_vision?: boolean

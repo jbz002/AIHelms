@@ -1,5 +1,5 @@
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -146,6 +146,33 @@ async def find_model_ids_with_anthropic_deployments(
             Model.model_id.in_(model_id_strs),
             ModelDeployment.is_active == True,
             Credential.credential_info["format"].astext == "anthropic",
+        )
+        .distinct()
+    )
+    return {row[0] for row in result.all()}
+
+
+async def find_model_ids_with_openai_deployments(
+    session: AsyncSession, model_id_strs: list[str]
+) -> set[str]:
+    """Return the subset of model_id strings that have active non-anthropic (openai-family) deployments.
+
+    与 anthropic 对称：凭证 format 非 anthropic（openai / ollama / lm-studio，含 NULL 兜底）
+    即归裸名组。NULL 兜底对应 _get_credential_format 缺失 format 时默认 openai 的语义。
+    """
+    if not model_id_strs:
+        return set()
+    result = await session.execute(
+        select(Model.model_id)
+        .join(ModelDeployment, ModelDeployment.model_id == Model.id)
+        .join(Credential, Credential.id == ModelDeployment.credential_id)
+        .where(
+            Model.model_id.in_(model_id_strs),
+            ModelDeployment.is_active == True,
+            or_(
+                Credential.credential_info["format"].astext != "anthropic",
+                Credential.credential_info["format"].astext.is_(None),
+            ),
         )
         .distinct()
     )
