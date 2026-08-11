@@ -9,6 +9,7 @@ import {
   deleteDocument,
   getDocsMcpLibraryDetail,
   deleteDocsMcpVersion,
+  deleteLibrary,
   toast,
 } from '@aihelms/shared'
 import { Loader2, Upload, Wand2, FileText, Trash2, Plus, RefreshCw } from 'lucide-vue-next'
@@ -17,6 +18,7 @@ import DocsAddVersionDialog from './DocsAddVersionDialog.vue'
 
 interface Props {
   libraryName: string
+  libraryId: number | null
   canManage: boolean
 }
 const props = defineProps<Props>()
@@ -71,6 +73,11 @@ const nextVersion = computed(() => {
   }
   return best ? `${best[0]}.${best[1]}.${best[2] + 1}` : '1.0.0'
 })
+
+// 上传增量目标版本：空库无版本桶 → 建首个版本(nextVersion，默认 1.0.0)；否则当前选中版本
+const uploadVersion = computed(() =>
+  versions.value.length === 0 ? nextVersion.value : effectiveVersion.value,
+)
 
 const STATUS_BADGE: Record<string, string> = {
   pending: 'bg-slate-100 text-slate-600',
@@ -183,9 +190,15 @@ async function pollOnce(docId: number): Promise<void> {
   }
 }
 
-function onUploaded(): void {
-  loadVersions()
-  load()
+function onUploaded(ver: string): void {
+  uploadVisible.value = false
+  // latest 桶已存在（增量到当前最新），直接刷；具体版本（含空库首建）异步生桶，轮询直到出现
+  if (ver === 'latest') {
+    loadVersions()
+    load()
+    return
+  }
+  startVersionPoll(ver)
 }
 
 function onVersionAdded(ver: string): void {
@@ -194,7 +207,23 @@ function onVersionAdded(ver: string): void {
 }
 
 async function handleDeleteVersion(): Promise<void> {
-  if (deletingVersion.value || versions.value.length === 0) return
+  if (deletingVersion.value) return
+  // 空库：docs-mcp 无版本桶，删版本 = 删平台库记录
+  if (versions.value.length === 0) {
+    if (props.libraryId === null) return
+    if (!window.confirm(t('docs.version.confirmDeleteLast', { name: props.libraryName }))) return
+    deletingVersion.value = true
+    try {
+      await deleteLibrary(props.libraryId)
+      toast.success(t('docs.version.deletedLast'))
+      emit('library-deleted')
+    } catch (e) {
+      toast.error((e as Error).message)
+    } finally {
+      deletingVersion.value = false
+    }
+    return
+  }
   const ver = effectiveVersion.value
   const msg = isLastVersion.value
     ? t('docs.version.confirmDeleteLast', { name: props.libraryName })
@@ -284,17 +313,15 @@ onUnmounted(() => {
           {{ t('docs.version.add') }}
         </button>
         <button
-          class="inline-flex items-center gap-1 rounded-md border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="versions.length === 0"
-          :title="versions.length === 0 ? t('docs.version.uploadDisabled') : ''"
+          class="inline-flex items-center gap-1 rounded-md border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100"
           @click="uploadVisible = true"
         >
           <Upload class="h-3.5 w-3.5" />
-          {{ t('docs.version.uploadIncremental') }}
+          {{ versions.length === 0 ? t('docs.doc.upload') : t('docs.version.uploadIncremental') }}
         </button>
         <button
           class="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
-          :disabled="deletingVersion || versions.length === 0"
+          :disabled="deletingVersion"
           @click="handleDeleteVersion"
         >
           <Loader2 v-if="deletingVersion" class="h-3.5 w-3.5 animate-spin" />
@@ -360,7 +387,7 @@ onUnmounted(() => {
       </table>
     </div>
 
-    <DocsUploadDialog :visible="uploadVisible" :library-name="libraryName" :version="effectiveVersion" @uploaded="onUploaded" @close="uploadVisible = false" />
+    <DocsUploadDialog :visible="uploadVisible" :library-name="libraryName" :version="uploadVersion" :lock-version="versions.length > 0" @uploaded="onUploaded" @close="uploadVisible = false" />
     <DocsAddVersionDialog :visible="addVersionVisible" :library-name="libraryName" :default-version="nextVersion" @uploaded="onVersionAdded" @close="addVersionVisible = false" />
   </div>
 </template>

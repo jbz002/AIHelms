@@ -8,13 +8,16 @@ interface Props {
   visible: boolean
   libraryName: string
   version: string
+  lockVersion?: boolean
 }
 const props = defineProps<Props>()
-const emit = defineEmits<{ close: []; uploaded: [] }>()
+const emit = defineEmits<{ close: []; uploaded: [version: string] }>()
 const { t } = useI18n()
 
+const DOCS_VERSION_RE = /^v?\d+\.\d+\.\d+$/
 const autoIngest = ref(true)
 const file = ref<File | null>(null)
+const localVersion = ref(props.version)
 const submitting = ref(false)
 
 watch(
@@ -23,6 +26,7 @@ watch(
     if (v) {
       autoIngest.value = true
       file.value = null
+      localVersion.value = props.version
     }
   },
 )
@@ -37,11 +41,22 @@ async function submit(): Promise<void> {
     toast.error(t('docs.upload.noFile'))
     return
   }
+  const actualVersion = props.lockVersion ? props.version : localVersion.value.trim()
+  if (!props.lockVersion) {
+    if (!actualVersion) {
+      toast.error(t('docs.addVersion.versionRequired'))
+      return
+    }
+    if (!DOCS_VERSION_RE.test(actualVersion)) {
+      toast.error(t('docs.addVersion.versionInvalid'))
+      return
+    }
+  }
   submitting.value = true
   try {
-    await uploadDocument(props.libraryName, file.value, props.version, autoIngest.value)
+    await uploadDocument(props.libraryName, file.value, actualVersion, autoIngest.value)
     toast.success(autoIngest.value ? t('docs.upload.success') : t('docs.upload.successExtract'))
-    emit('uploaded')
+    emit('uploaded', actualVersion)
     emit('close')
   } catch (e) {
     toast.error((e as Error).message)
@@ -63,10 +78,27 @@ async function submit(): Promise<void> {
         </div>
 
         <div class="space-y-3">
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-500">{{ t('docs.upload.library') }}</label>
-            <div class="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-600">
-              {{ libraryName }} · {{ version === 'latest' ? t('docs.version.latest') : version }}
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="mb-1 block text-xs font-medium text-slate-500">{{ t('docs.upload.library') }}</label>
+              <div class="truncate rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-600">
+                {{ libraryName }}
+              </div>
+            </div>
+            <div>
+              <label class="mb-1 block text-xs font-medium text-slate-500">
+                {{ t('docs.addVersion.version') }}<span v-if="!lockVersion" class="text-red-500">*</span>
+              </label>
+              <input
+                v-if="!lockVersion"
+                v-model="localVersion"
+                type="text"
+                :placeholder="t('docs.addVersion.versionPlaceholder')"
+                class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:border-purple-400 focus:outline-none"
+              />
+              <div v-else class="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-600">
+                {{ version === 'latest' ? t('docs.version.latest') : version }}
+              </div>
             </div>
           </div>
 

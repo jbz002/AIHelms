@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { usePermission, useAuth, listLibraries, createLibrary, updateLibrary, deleteLibrary, toast } from '@aihelms/shared'
+import { usePermission, useAuth, listLibraries, createLibrary, updateLibrary, deleteLibrary, uploadDocumentsBatch, toast } from '@aihelms/shared'
 import type { DocumentLibrary } from '@aihelms/shared'
-import { Library, Plus, Pencil, Trash2, Loader2, Search, X, FileText } from 'lucide-vue-next'
+import { Library, Plus, Pencil, Trash2, Loader2, Search, X, FileText, Upload } from 'lucide-vue-next'
 import DocsInterfacePanel from '../components/docs-center/DocsInterfacePanel.vue'
 import DocsDocumentPanel from '../components/docs-center/DocsDocumentPanel.vue'
 
@@ -69,14 +69,30 @@ const modalMode = ref<'create' | 'edit'>('create')
 const editingId = ref<number | null>(null)
 const formName = ref('')
 const formDesc = ref('')
+const formVersion = ref('1.0.0')
+const formFiles = ref<File[]>([])
 const creating = ref(false)
+const DOCS_VERSION_RE = /^v?\d+\.\d+\.\d+$/
 
 function openCreate(): void {
   modalMode.value = 'create'
   editingId.value = null
   formName.value = ''
   formDesc.value = ''
+  formVersion.value = '1.0.0'
+  formFiles.value = []
   modalOpen.value = true
+}
+
+function onModalFileChange(e: Event): void {
+  const target = e.target as HTMLInputElement
+  const picked = target.files ? Array.from(target.files) : []
+  if (picked.length) formFiles.value = [...formFiles.value, ...picked]
+  target.value = ''
+}
+
+function removeFormFile(index: number): void {
+  formFiles.value = formFiles.value.filter((_, i) => i !== index)
 }
 
 function openEdit(lib: DocumentLibrary): void {
@@ -89,13 +105,35 @@ function openEdit(lib: DocumentLibrary): void {
 
 async function confirmModal(): Promise<void> {
   if (!formName.value.trim()) return
+  const ver = formVersion.value.trim()
+  if (modalMode.value === 'create') {
+    if (!DOCS_VERSION_RE.test(ver)) {
+      toast.error(t('docs.addVersion.versionInvalid'))
+      return
+    }
+    if (formFiles.value.length === 0) {
+      toast.error(t('docs.addVersion.noFile'))
+      return
+    }
+  }
   creating.value = true
   try {
     if (modalMode.value === 'create') {
       const lib = await createLibrary(formName.value.trim(), formDesc.value)
+      try {
+        await uploadDocumentsBatch(lib.name, formFiles.value, ver, true)
+      } catch (uploadErr) {
+        // 库已建，上传失败：选中库让用户在文档面板重试上传
+        toast.error((uploadErr as Error).message)
+        await load()
+        selectedName.value = lib.name
+        modalOpen.value = false
+        return
+      }
       toast.success(t('docs.library.createSuccess'))
-      libraries.value = [lib, ...libraries.value]
+      await load()
       selectedName.value = lib.name
+      modalOpen.value = false
     } else if (editingId.value !== null) {
       const lib = await updateLibrary(editingId.value, {
         name: formName.value.trim(),
@@ -240,7 +278,7 @@ onMounted(load)
             >{{ t('docs.tab.interfaces') }}</button>
           </div>
 
-          <DocsDocumentPanel v-if="activeTab === 'documents'" :library-name="selectedName" :can-manage="canManage" @library-deleted="onLibDeleted" />
+          <DocsDocumentPanel v-if="activeTab === 'documents'" :library-name="selectedName" :library-id="selectedLib?.id ?? null" :can-manage="canManage" @library-deleted="onLibDeleted" />
           <DocsInterfacePanel v-else :library-name="selectedName" :can-manage="canManage" />
         </template>
         <div v-else-if="!loading" class="flex h-60 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white text-sm text-slate-400">
@@ -253,7 +291,7 @@ onMounted(load)
     <!-- 新建/编辑库 modal -->
     <Teleport to="body">
       <div v-if="modalOpen" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 p-4" @click.self="modalOpen = false">
-        <div class="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+        <div class="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl">
           <div class="mb-4 flex items-center justify-between">
             <h3 class="text-base font-semibold text-slate-900">{{ modalMode === 'create' ? t('docs.library.create') : t('docs.library.editTitle') }}</h3>
             <button class="text-slate-400 hover:text-slate-600" @click="modalOpen = false">
@@ -278,12 +316,43 @@ onMounted(load)
                 class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:border-purple-400 focus:outline-none"
               />
             </div>
+            <template v-if="modalMode === 'create'">
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-500">{{ t('docs.addVersion.version') }} *</label>
+                <input
+                  v-model="formVersion"
+                  :placeholder="t('docs.addVersion.versionPlaceholder')"
+                  class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:border-purple-400 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label class="mb-1 block text-xs font-medium text-slate-500">{{ t('docs.addVersion.file') }} *</label>
+                <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-dashed border-slate-300 p-3 transition-colors hover:border-purple-400 hover:bg-purple-50/50">
+                  <Upload class="h-4 w-4 shrink-0 text-slate-400" />
+                  <span class="text-xs text-slate-500">{{ t('docs.addVersion.pickFile') }}</span>
+                  <input type="file" multiple class="hidden" @change="onModalFileChange" />
+                </label>
+                <div v-if="formFiles.length" class="mt-1.5 space-y-1">
+                  <div
+                    v-for="(f, i) in formFiles"
+                    :key="`${f.name}-${f.size}-${i}`"
+                    class="flex items-center gap-2 rounded border border-slate-200 px-2 py-1 text-xs"
+                  >
+                    <FileText class="h-3.5 w-3.5 shrink-0 text-purple-500" />
+                    <span class="min-w-0 flex-1 truncate text-slate-700">{{ f.name }}</span>
+                    <button class="shrink-0 text-slate-400 hover:text-red-500" type="button" @click="removeFormFile(i)">
+                      <X class="h-3 w-3" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </template>
           </div>
           <div class="mt-5 flex justify-end gap-2">
             <button class="rounded-md px-4 py-2 text-sm text-slate-600 hover:bg-slate-100" @click="modalOpen = false">{{ t('docs.library.cancel') }}</button>
             <button
               class="flex items-center gap-1.5 rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-50"
-              :disabled="creating || !formName.trim()"
+              :disabled="creating || !formName.trim() || (modalMode === 'create' && (!DOCS_VERSION_RE.test(formVersion.trim()) || formFiles.length === 0))"
               @click="confirmModal"
             >
               <Loader2 v-if="creating" class="h-4 w-4 animate-spin" />
