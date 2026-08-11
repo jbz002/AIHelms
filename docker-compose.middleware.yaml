@@ -80,12 +80,32 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - ./docker/litellm/litellm.yaml:/app/config.yaml:ro
-    ports:
-      - "${LITELLM_PORT}:4000"
+    expose:
+      - "4000"
     command: ["--config", "/app/config.yaml"]
     depends_on:
       db:
         condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  openresty:
+    image: openresty/openresty:alpine
+    restart: unless-stopped
+    environment:
+      BACKEND_HOST: ${AIHELMS_BACKEND_HOST:-host.docker.internal}
+    volumes:
+      - ./docker/openresty/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./docker/openresty/model_rewrite.lua:/etc/openresty/model_rewrite.lua:ro
+    ports:
+      - "${LITELLM_PORT:-4000}:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - litellm
     logging:
       driver: "json-file"
       options:

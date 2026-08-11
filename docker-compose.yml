@@ -51,15 +51,36 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - ./docker/litellm/litellm.yaml:/app/config.yaml:ro
-    ports:
-      - "${LITELLM_PORT:-4000}:4000"
+    expose:
+      - "4000"
     command: ["--config", "/app/config.yaml"]
+    networks:
+      - internal
+    depends_on:
+      db:
+        condition: service_healthy
+
+  openresty:
+    image: openresty/openresty:alpine
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE:-50m}"
+        max-file: "${DOCKER_LOG_MAX_FILE:-3}"
+    environment:
+      BACKEND_HOST: aihelms
+    volumes:
+      - ./docker/openresty/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./docker/openresty/model_rewrite.lua:/etc/openresty/model_rewrite.lua:ro
+    ports:
+      - "${LITELLM_PORT:-4000}:80"
     networks:
       - internal
       - external
     depends_on:
-      db:
-        condition: service_healthy
+      - litellm
+      - aihelms
 
   aihelms:
     image: registry.cn-zhangjiakou.aliyuncs.com/microbaton/aihelms:${AIHELMS_VERSION:-latest}

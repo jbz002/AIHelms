@@ -98,21 +98,11 @@ const isVideoMode = computed(() => resolvedMode.value === 'video_generation')
 const supportsVision = computed(() => isChatMode.value && (props.model?.capabilities || []).includes('vision'))
 const isAudioTranscription = computed(() => resolvedMode.value === 'audio_transcription')
 
-// chat 模型按客户端 SDK 方言(openai / anthropic)各给一个 curl;model 名按可用路由组智能挑选,照抄即用
+// chat 模型按客户端 SDK 方言(openai / anthropic)各给一个 curl;model 名统一裸名,
+// openresty 网关按 (端点, has_openai/has_anthropic) 自动改写到正确 LiteLLM 组
 const showAnthropic = computed(() => isChatMode.value)
 const bareModelName = computed(() => props.model?.model_id || '')
-const anthropicModelId = computed(() => `${bareModelName.value}(Anthropic)`)
-// openai 方言优先裸名组;纯 anthropic 部署时退回 (Anthropic) 组(LiteLLM 入口转格式)
-const openaiModelName = computed(() =>
-  props.model?.has_openai_deployment ? bareModelName.value : anthropicModelId.value
-)
-// anthropic 方言优先 (Anthropic) 组;纯 openai 部署时退回裸名组
-const anthropicGroupName = computed(() =>
-  props.model?.has_anthropic_deployment ? anthropicModelId.value : bareModelName.value
-)
-const currentModelName = computed(() =>
-  activeCurlTab.value === 'openai' ? openaiModelName.value : anthropicGroupName.value
-)
+const currentModelName = computed(() => bareModelName.value)
 // base_url 跟随客户端方言:OpenAI SDK 要带 /v1(SDK 自拼 /chat/completions),anthropic SDK 不带(SDK 自拼 /v1/messages)。与 MyIdentityView 的 openaiBaseUrl/anthropicBaseUrl 对齐
 const currentBaseUrl = computed(() => {
   const u = props.litellmBaseUrl
@@ -141,13 +131,13 @@ const openaiCurl = computed(() => {
     return `curl ${u}/v1/audio/transcriptions \\\n  -H "Authorization: Bearer <your-api-key>" \\\n  -F "model=${m.model_id}" \\\n  -F "file=@audio.mp3"`
   if (mode === 'video_generation')
     return `# ${t('modelSquare.access.videoCurlPlaceholder')}\n# LiteLLM / OpenAI have no standard video-generation endpoint.\n# Call the provider SDK directly.`
-  return `curl ${u}/v1/chat/completions \\\n  -H "Authorization: Bearer <your-api-key>" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${openaiModelName.value}", "messages": [{"role": "user", "content": "hi"}]}'`
+  return `curl ${u}/v1/chat/completions \\\n  -H "Authorization: Bearer <your-api-key>" \\\n  -H "Content-Type: application/json" \\\n  -d '{"model": "${m.model_id}", "messages": [{"role": "user", "content": "hi"}]}'`
 })
 
 const anthropicCurl = computed(() => {
   const m = props.model
   if (!m) return ''
-  return `curl ${props.litellmBaseUrl}/v1/messages \\\n  -H "x-api-key: <your-api-key>" \\\n  -H "anthropic-version: 2023-06-01" \\\n  -H "content-type: application/json" \\\n  -d '{"model": "${anthropicGroupName.value}", "max_tokens": 100, "messages": [{"role": "user", "content": "hi"}]}'`
+  return `curl ${props.litellmBaseUrl}/v1/messages \\\n  -H "x-api-key: <your-api-key>" \\\n  -H "anthropic-version: 2023-06-01" \\\n  -H "content-type: application/json" \\\n  -d '{"model": "${m.model_id}", "max_tokens": 100, "messages": [{"role": "user", "content": "hi"}]}'`
 })
 
 async function copyText(text: string, key: string): Promise<void> {
