@@ -7,12 +7,12 @@ import { Loader2, X } from 'lucide-vue-next'
 interface Props {
   visible: boolean
   libraryName: string
+  version: string
 }
 const props = defineProps<Props>()
 const emit = defineEmits<{ close: []; uploaded: [] }>()
 const { t } = useI18n()
 
-const version = ref('')
 const autoIngest = ref(true)
 const file = ref<File | null>(null)
 const submitting = ref(false)
@@ -21,7 +21,6 @@ watch(
   () => props.visible,
   (v) => {
     if (v) {
-      version.value = ''
       autoIngest.value = true
       file.value = null
     }
@@ -40,7 +39,7 @@ async function submit(): Promise<void> {
   }
   submitting.value = true
   try {
-    await uploadDocument(props.libraryName, file.value, version.value || undefined, autoIngest.value)
+    await uploadDocument(props.libraryName, file.value, props.version, autoIngest.value)
     toast.success(autoIngest.value ? t('docs.upload.success') : t('docs.upload.successExtract'))
     emit('uploaded')
     emit('close')
@@ -66,16 +65,9 @@ async function submit(): Promise<void> {
         <div class="space-y-3">
           <div>
             <label class="mb-1 block text-xs font-medium text-slate-500">{{ t('docs.upload.library') }}</label>
-            <div class="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-600">{{ libraryName }}</div>
-          </div>
-
-          <div>
-            <label class="mb-1 block text-xs font-medium text-slate-500">{{ t('docs.upload.version') }}</label>
-            <input
-              v-model="version"
-              :placeholder="t('docs.upload.versionPlaceholder')"
-              class="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-sm focus:border-purple-400 focus:outline-none"
-            />
+            <div class="rounded-md border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-sm text-slate-600">
+              {{ libraryName }} · {{ version === 'latest' ? t('docs.version.latest') : version }}
+            </div>
           </div>
 
           <div>

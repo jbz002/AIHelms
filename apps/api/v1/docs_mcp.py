@@ -245,9 +245,12 @@ async def ask_library(
 async def delete_version(
     library_name: str,
     version: str,
-    _: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    writable_err = await _check_library_writable(library_name, current_user)
+    if writable_err:
+        return writable_err
     try:
         await docs_version_service.delete_version(db, library_name, version)
         return {"code": 200, "message": "版本已删除", "data": None}
@@ -269,10 +272,13 @@ async def delete_version(
 async def delete_version_documents(
     library_name: str,
     version: str,
-    _: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """删除版本下所有文档，保留版本记录本身。适用于清除后重新抓取。"""
+    writable_err = await _check_library_writable(library_name, current_user)
+    if writable_err:
+        return writable_err
     try:
         await docs_version_service.delete_version_documents(db, library_name, version)
         return {"code": 200, "message": "文档已清除", "data": None}
@@ -653,6 +659,9 @@ async def create_crawl_task(
         return {"code": 400, "message": "url 不能为空", "data": None}
     if not library:
         return {"code": 400, "message": "library 不能为空", "data": None}
+    writable_err = await _check_library_writable(library, current_user)
+    if writable_err:
+        return writable_err
 
     # latest→具体；空/库空 latest→None；再强校验非空 X.Y.Z，禁止「无版本」桶
     version = await docs_mcp_client.resolve_version(library, version)

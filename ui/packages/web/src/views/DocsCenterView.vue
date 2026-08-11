@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { usePermission, useAuth, listLibraries, createLibrary, updateLibrary, deleteLibrary, toast } from '@aihelms/shared'
 import type { DocumentLibrary } from '@aihelms/shared'
-import { Library, Plus, Pencil, Trash2, Loader2, Search, X } from 'lucide-vue-next'
+import { Library, Plus, Pencil, Trash2, Loader2, Search, X, FileText } from 'lucide-vue-next'
 import DocsInterfacePanel from '../components/docs-center/DocsInterfacePanel.vue'
 import DocsDocumentPanel from '../components/docs-center/DocsDocumentPanel.vue'
 
@@ -21,7 +21,7 @@ const libraries = ref<DocumentLibrary[]>([])
 const selectedName = ref<string | null>(null)
 const keyword = ref('')
 const scope = ref<'all' | 'mine'>('all')
-const activeTab = ref<'interfaces' | 'documents'>('interfaces')
+const activeTab = ref<'interfaces' | 'documents'>('documents')
 
 const selectedLib = computed(
   () => libraries.value.find((l) => l.name === selectedName.value) ?? null,
@@ -35,6 +35,18 @@ const filteredLibraries = computed(() => {
   if (!kw) return list
   return list.filter((l) => l.name.toLowerCase().includes(kw) || (l.description ?? '').toLowerCase().includes(kw))
 })
+
+// 切 scope/搜索后，当前选中库若不在过滤结果内，默认选第一个（无则清空）
+watch(filteredLibraries, (list) => {
+  if (!list.some((l) => l.name === selectedName.value)) {
+    selectedName.value = list[0]?.name ?? null
+  }
+})
+
+// 主区空状态文案：我的范围无库 → 引导新建；否则通用空提示
+const mainEmptyText = computed(() =>
+  scope.value === 'mine' ? t('docs.library.mineEmpty') : t('docs.library.empty'),
+)
 
 async function load(): Promise<void> {
   loading.value = true
@@ -114,6 +126,11 @@ async function handleDeleteLib(lib: DocumentLibrary): Promise<void> {
   } catch (e) {
     toast.error((e as Error).message)
   }
+}
+
+function onLibDeleted(): void {
+  selectedName.value = null
+  load()
 }
 
 onMounted(load)
@@ -213,21 +230,22 @@ onMounted(load)
           <div class="mb-3 flex gap-1 border-b border-slate-200">
             <button
               class="-mb-px border-b-2 px-4 py-2 text-sm transition-colors"
-              :class="activeTab === 'interfaces' ? 'border-purple-600 font-medium text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'"
-              @click="activeTab = 'interfaces'"
-            >{{ t('docs.tab.interfaces') }}</button>
-            <button
-              class="-mb-px border-b-2 px-4 py-2 text-sm transition-colors"
               :class="activeTab === 'documents' ? 'border-purple-600 font-medium text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'"
               @click="activeTab = 'documents'"
             >{{ t('docs.tab.documents') }}</button>
+            <button
+              class="-mb-px border-b-2 px-4 py-2 text-sm transition-colors"
+              :class="activeTab === 'interfaces' ? 'border-purple-600 font-medium text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'"
+              @click="activeTab = 'interfaces'"
+            >{{ t('docs.tab.interfaces') }}</button>
           </div>
 
-          <DocsInterfacePanel v-if="activeTab === 'interfaces'" :library-name="selectedName" :can-manage="canManage" />
-          <DocsDocumentPanel v-else :library-name="selectedName" :can-manage="canManage" />
+          <DocsDocumentPanel v-if="activeTab === 'documents'" :library-name="selectedName" :can-manage="canManage" @library-deleted="onLibDeleted" />
+          <DocsInterfacePanel v-else :library-name="selectedName" :can-manage="canManage" />
         </template>
-        <div v-else-if="!loading" class="flex h-60 items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white text-sm text-slate-400">
-          {{ t('docs.library.empty') }}
+        <div v-else-if="!loading" class="flex h-60 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white text-sm text-slate-400">
+          <FileText class="h-8 w-8 text-slate-300" />
+          <span>{{ mainEmptyText }}</span>
         </div>
       </main>
     </div>
