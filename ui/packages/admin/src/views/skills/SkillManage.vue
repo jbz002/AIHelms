@@ -8,6 +8,7 @@ import {
   getSkillDownloadUrl,
   getSkills,
   toast,
+  updateSkill,
   type Skill,
   type SkillCategory,
   type SkillVersion,
@@ -16,6 +17,7 @@ import {
 } from '@aihelms/shared'
 import { BarChart3, Download, Search, X } from 'lucide-vue-next'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
+import PublishSettingsDialog from '../../components/PublishSettingsDialog.vue'
 import HostedIcon from '@aihelms/shared/src/components/HostedIcon.vue'
 import SkillForm from './SkillForm.vue'
 import SkillGovernancePanel from './SkillGovernancePanel.vue'
@@ -50,6 +52,38 @@ const showCategoryForm = ref(false)
 const categoryFormName = ref('')
 const categoryFormDescription = ref('')
 const deleteCategoryTarget = ref<SkillCategory | null>(null)
+
+// 发布设置：从编辑表单抽出，独立按钮 + 弹窗
+const showPublishDialog = ref(false)
+const publishLoading = ref(false)
+const publishError = ref('')
+
+function openPublish(): void {
+  if (!selectedSkill.value) return
+  publishError.value = ''
+  showPublishDialog.value = true
+}
+
+async function handleSavePublish(payload: {
+  is_published: boolean
+  requires_approval: boolean
+  visibility_type: string
+}): Promise<void> {
+  if (!selectedSkill.value) return
+  publishLoading.value = true
+  try {
+    const updated = await updateSkill(selectedSkill.value.id, payload)
+    const idx = skills.value.findIndex((s) => s.id === updated.id)
+    if (idx >= 0) skills.value[idx] = updated
+    selectedSkill.value = updated
+    showPublishDialog.value = false
+    toast.success('发布设置更新成功')
+  } catch (e) {
+    publishError.value = (e as { message?: string }).message || '发布设置更新失败'
+  } finally {
+    publishLoading.value = false
+  }
+}
 
 const visibilityLabels: Record<string, string> = {
   all: '公开',
@@ -383,6 +417,14 @@ onUnmounted(stopAuditPolling)
                 编辑
               </button>
               <button
+                v-if="hasPermission('skill:update')"
+                class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                :class="selectedSkill.is_published ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'"
+                @click="openPublish"
+              >
+                发布设置
+              </button>
+              <button
                 v-if="hasPermission('skill:delete')"
                 class="rounded-md bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-100"
                 @click="deleteTarget = selectedSkill"
@@ -516,6 +558,20 @@ onUnmounted(stopAuditPolling)
       :categories="categories"
       @close="showForm = false"
       @saved="handleSaved"
+    />
+
+    <!-- 发布设置弹窗 -->
+    <PublishSettingsDialog
+      v-if="selectedSkill"
+      :visible="showPublishDialog"
+      :is-published="selectedSkill.is_published"
+      :requires-approval="selectedSkill.requires_approval"
+      :visibility-type="selectedSkill.visibility_type || 'all'"
+      :loading="publishLoading"
+      :error-message="publishError"
+      title="Skill 发布设置"
+      @close="showPublishDialog = false"
+      @save="handleSavePublish"
     />
 
     <!-- Delete skill confirm -->

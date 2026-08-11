@@ -39,9 +39,6 @@ const form = ref({
   external_cost_per_call: 0,
   icon_url: '/icons/v1/default.svg',
   documentation_url: '',
-  is_published: false,
-  requires_approval: false,
-  visibility_type: 'all',
 })
 
 const error = ref('')
@@ -90,9 +87,6 @@ watch(
           external_cost_per_call: s.external_cost_per_call,
           icon_url: s.icon_url,
           documentation_url: s.documentation_url,
-          is_published: s.is_published,
-          requires_approval: s.requires_approval,
-          visibility_type: s.visibility_type || 'all',
         }
       } else {
         form.value = {
@@ -111,9 +105,6 @@ watch(
           external_cost_per_call: 0,
           icon_url: '/icons/v1/default.svg',
           documentation_url: '',
-          is_published: false,
-          requires_approval: false,
-          visibility_type: 'all',
         }
       }
     }
@@ -157,9 +148,6 @@ async function handleSubmit(): Promise<void> {
       external_cost_per_call: Number(form.value.external_cost_per_call),
       icon_url: form.value.icon_url,
       documentation_url: form.value.documentation_url,
-      is_published: form.value.is_published,
-      requires_approval: form.value.requires_approval,
-      visibility_type: form.value.visibility_type,
     }
     if (props.editing) {
       await updateMcpServer(props.editing.id, payload)
@@ -330,38 +318,8 @@ async function handleSubmit(): Promise<void> {
             class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
           />
         </div>
-        <div class="col-span-2">
-          <label class="mb-1 block text-sm font-medium text-slate-700">可见性</label>
-          <select
-            v-model="form.visibility_type"
-            class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
-          >
-            <option value="all">公开（进入市场列表）</option>
-            <option value="private">仅创建者（私有）</option>
-            <option value="unlisted">不列出（仅直链可访问）</option>
-          </select>
-          <p class="mt-1 text-xs text-slate-400">
-            private 仅创建者和管理员可见；unlisted 不进市场列表，持有直链的登录用户可查看详情
-          </p>
-        </div>
-        <div class="col-span-2 flex items-center gap-4">
-          <label class="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              v-model="form.is_published"
-              type="checkbox"
-              class="h-4 w-4 rounded border-slate-300"
-            />
-            发布到用户端
-          </label>
-          <label class="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              v-model="form.requires_approval"
-              type="checkbox"
-              :disabled="!form.is_published"
-              class="h-4 w-4 rounded border-slate-300 disabled:opacity-50"
-            />
-            领用前需要审批
-          </label>
+        <div class="col-span-2 flex items-center gap-2 rounded-lg border border-slate-200 p-3">
+          <span class="text-xs text-slate-400">发布与领用方式请在列表页「发布设置」按钮中配置</span>
         </div>
       </div>
 

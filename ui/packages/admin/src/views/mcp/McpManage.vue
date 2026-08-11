@@ -7,6 +7,7 @@ import {
   getMcpCategories,
   createMcpCategory,
   deleteMcpCategory,
+  updateMcpServer,
   type McpServer,
   type McpServerVersion,
   type McpCategory,
@@ -15,6 +16,7 @@ import { toast, usePermission } from '@aihelms/shared'
 import { Activity, RefreshCw, Eye as EyeIcon, EyeOff as EyeOffIcon } from 'lucide-vue-next'
 import HostedIcon from '@aihelms/shared/src/components/HostedIcon.vue'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
+import PublishSettingsDialog from '../../components/PublishSettingsDialog.vue'
 import McpServerForm from './McpServerForm.vue'
 import McpToolPanel from './McpToolPanel.vue'
 import McpVersionSwitcher from './McpVersionSwitcher.vue'
@@ -38,6 +40,38 @@ const categoryFormName = ref('')
 const categoryFormDescription = ref('')
 const deleteCategoryTarget = ref<McpCategory | null>(null)
 const showAuthValue = ref(false)
+
+// 发布设置：从编辑表单抽出，独立按钮 + 弹窗
+const showPublishDialog = ref(false)
+const publishLoading = ref(false)
+const publishError = ref('')
+
+function openPublish(): void {
+  if (!selectedServer.value) return
+  publishError.value = ''
+  showPublishDialog.value = true
+}
+
+async function handleSavePublish(payload: {
+  is_published: boolean
+  requires_approval: boolean
+  visibility_type: string
+}): Promise<void> {
+  if (!selectedServer.value) return
+  publishLoading.value = true
+  try {
+    const updated = await updateMcpServer(selectedServer.value.id, payload)
+    const idx = servers.value.findIndex((s) => s.id === updated.id)
+    if (idx >= 0) servers.value[idx] = updated
+    selectedServer.value = updated
+    showPublishDialog.value = false
+    toast.success('发布设置更新成功')
+  } catch (e) {
+    publishError.value = (e as { message?: string }).message || '发布设置更新失败'
+  } finally {
+    publishLoading.value = false
+  }
+}
 
 const categoriesWithCount = computed(() => {
   const counts = new Map<string, number>()
@@ -347,6 +381,14 @@ onMounted(loadData)
                 编辑
               </button>
               <button
+                v-if="hasPermission('mcp:update')"
+                class="rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+                :class="selectedServer.is_published ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-amber-50 text-amber-600 hover:bg-amber-100'"
+                @click="openPublish"
+              >
+                发布设置
+              </button>
+              <button
                 v-if="hasPermission('mcp:delete')"
                 class="rounded-md bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-100"
                 @click="deleteTarget = selectedServer"
@@ -460,6 +502,20 @@ onMounted(loadData)
       :categories="categories"
       @close="showForm = false"
       @saved="handleSaved"
+    />
+
+    <!-- 发布设置弹窗 -->
+    <PublishSettingsDialog
+      v-if="selectedServer"
+      :visible="showPublishDialog"
+      :is-published="selectedServer.is_published"
+      :requires-approval="selectedServer.requires_approval"
+      :visibility-type="selectedServer.visibility_type || 'all'"
+      :loading="publishLoading"
+      :error-message="publishError"
+      title="MCP Server 发布设置"
+      @close="showPublishDialog = false"
+      @save="handleSavePublish"
     />
 
     <!-- Delete server confirm -->

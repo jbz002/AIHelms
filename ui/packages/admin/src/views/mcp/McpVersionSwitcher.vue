@@ -10,7 +10,7 @@ import {
   type McpServer,
   type McpServerVersion,
 } from '@aihelms/shared'
-import { Plus, ChevronDown } from 'lucide-vue-next'
+import { Plus } from 'lucide-vue-next'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 
 interface Props {
@@ -162,16 +162,13 @@ async function handleCreate(): Promise<void> {
     <!-- 版本下拉 -->
     <div class="relative">
       <select
-        class="appearance-none rounded-md border border-slate-200 bg-white py-1 pl-2.5 pr-7 text-xs font-medium text-slate-800 focus:border-purple-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+        class="rounded-md border border-slate-200 bg-white py-1 pl-2.5 pr-7 text-xs font-medium text-slate-800 focus:border-purple-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
         :value="selectedVersion?.id"
         :disabled="loading || versions.length === 0"
         @change="onSelectChange"
       >
-        <option v-for="v in versions" :key="v.id" :value="v.id">
-          v{{ v.version }}{{ v.is_active ? ' · 当前' : '' }} · {{ lifecycleBadge(v.lifecycle_status).label }}
-        </option>
+        <option v-for="v in versions" :key="v.id" :value="v.id">v{{ v.version }}</option>
       </select>
-      <ChevronDown class="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
     </div>
 
     <!-- 状态徽标 -->
