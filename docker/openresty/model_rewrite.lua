@@ -97,6 +97,41 @@ local function ends_with(s, suffix)
 end
 
 
+-- GET /v1/models 响应过滤:剔除 id 以 (Anthropic) 结尾的条目
+-- 网关已把裸名自动路由到正确后缀组,客户端不应看到这些方言分身
+function _M.filter_models_body()
+    local chunk = ngx.arg[1]
+    local eof = ngx.arg[2]
+    if chunk and #chunk > 0 then
+        ngx.ctx.models_buf = (ngx.ctx.models_buf or "") .. chunk
+    end
+    if not eof then
+        ngx.arg[1] = nil
+        return
+    end
+    local body = ngx.ctx.models_buf or ""
+    ngx.ctx.models_buf = nil
+    local data = cjson.decode(body)
+    if data and type(data.data) == "table" then
+        local kept = {}
+        for _, mi in ipairs(data.data) do
+            if type(mi.id) == "string" and not ends_with(mi.id, SUFFIX) then
+                kept[#kept + 1] = mi
+            end
+        end
+        data.data = kept
+        ngx.arg[1] = cjson.encode(data)
+    else
+        ngx.arg[1] = body
+    end
+end
+
+-- 响应体被改写,长度变化,清 Content-Length 走 chunked
+function _M.strip_content_length()
+    ngx.header.content_length = nil
+end
+
+
 function _M.rewrite()
     if ngx.var.request_method ~= "POST" then return end
     local uri = ngx.var.uri
