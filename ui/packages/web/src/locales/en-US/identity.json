@@ -29,6 +29,8 @@
   "identity.overview.thisMonth": "This month",
   "identity.overview.lastMonth": "Last month",
   "identity.applications.title": "My requests",
+  "identity.endpoint.modelsLabel": "Models · Auto-discovery",
+  "identity.endpoint.modelsHint": "Request this URL with your Key (OpenAI-compatible GET /v1/models) to auto-discover the models available to this Key.",
   "identity.status.pending": "Pending",
   "identity.status.approved": "Approved",
   "identity.status.rejected": "Rejected"

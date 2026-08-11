@@ -29,6 +29,8 @@
   "identity.overview.thisMonth": "本月",
   "identity.overview.lastMonth": "上月",
   "identity.applications.title": "我的申请",
+  "identity.endpoint.modelsLabel": "模型列表 · 自动发现",
+  "identity.endpoint.modelsHint": "客户端携带本 Key 请求此地址（OpenAI 兼容 GET /v1/models），可自动获取该 Key 可用的模型列表。",
   "identity.status.pending": "审批中",
   "identity.status.approved": "已通过",
   "identity.status.rejected": "已拒绝"

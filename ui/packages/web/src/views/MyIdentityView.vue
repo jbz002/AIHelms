@@ -47,6 +47,8 @@ const openaiBaseUrl = computed(() => endpointUrl.value ? `${endpointUrl.value}/v
 
 const anthropicBaseUrl = computed(() => endpointUrl.value)
 
+const modelsEndpointUrl = computed(() => openaiBaseUrl.value ? `${openaiBaseUrl.value}/models` : '')
+
 const budgetDisplay = computed(() => {
   if (!mainKey.value) return '无限制'
   const scope = mainKey.value.budget_scope
@@ -314,6 +316,20 @@ onMounted(async () => {
                     </button>
                   </div>
                 </div>
+              </div>
+
+              <!-- 模型自动发现端点 -->
+              <div v-if="modelsEndpointUrl" class="mt-3 border-t border-slate-100 pt-3">
+                <div class="text-[10px] font-bold tracking-[1px] text-[#7B61FF]">{{ t('identity.endpoint.modelsLabel') }}</div>
+                <div class="mt-1 flex items-center gap-1.5">
+                  <code class="flex-1 truncate text-xs font-bold text-gray-900">{{ modelsEndpointUrl }}</code>
+                  <button @click="copyText(modelsEndpointUrl, 'models')"
+                    class="flex shrink-0 items-center justify-center rounded-md border border-slate-200/60 bg-white p-1 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-700">
+                    <Check v-if="copiedField === 'models'" class="h-3 w-3 text-green-600" />
+                    <Copy v-else class="h-3 w-3" />
+                  </button>
+                </div>
+                <p class="mt-1 text-[11px] leading-relaxed text-slate-400">{{ t('identity.endpoint.modelsHint') }}</p>
               </div>
 
               <!-- 底部 meta -->
