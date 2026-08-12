@@ -4,17 +4,16 @@ import { useI18n } from 'vue-i18n'
 import type { Document, DocsMcpVersion } from '@aihelms/shared'
 import {
   getDocuments,
-  extractDocumentInterfaces,
-  getDocumentExtractStatus,
   deleteDocument,
   getDocsMcpLibraryDetail,
   deleteDocsMcpVersion,
   deleteLibrary,
   toast,
 } from '@aihelms/shared'
-import { Loader2, Upload, Wand2, FileText, Trash2, Plus, RefreshCw } from 'lucide-vue-next'
+import { Loader2, Upload, Code2, FileText, Trash2, Plus, RefreshCw, Eye } from 'lucide-vue-next'
 import DocsUploadDialog from './DocsUploadDialog.vue'
 import DocsAddVersionDialog from './DocsAddVersionDialog.vue'
+import DocsDocumentViewerDrawer from './DocsDocumentViewerDrawer.vue'
 
 interface Props {
   libraryName: string
@@ -22,15 +21,15 @@ interface Props {
   canManage: boolean
 }
 const props = defineProps<Props>()
-const emit = defineEmits<{ 'library-deleted': [] }>()
+const emit = defineEmits<{ 'library-deleted': []; 'view-interfaces': [docId: number, docTitle: string] }>()
 const { t } = useI18n()
 
 const loading = ref(false)
 const documents = ref<Document[]>([])
 const uploadVisible = ref(false)
 const addVersionVisible = ref(false)
-const extracting = ref<Set<number>>(new Set())
-const extractTimers = new Map<number, number>()
+const viewerVisible = ref(false)
+const viewerDocId = ref<number | null>(null)
 
 const versions = ref<DocsMcpVersion[]>([])
 const loadingVersions = ref(false)
@@ -85,6 +84,10 @@ const STATUS_BADGE: Record<string, string> = {
   ingested: 'bg-green-50 text-green-700',
   failed: 'bg-red-50 text-red-700',
   duplicate: 'bg-amber-50 text-amber-700',
+}
+
+function sourceLabel(s: string): string {
+  return s === 'crawl' ? t('docs.doc.sourceType.crawl') : t('docs.doc.sourceType.upload')
 }
 
 async function loadVersions(): Promise<void> {
@@ -142,54 +145,6 @@ function stopVersionPoll(): void {
   }
 }
 
-async function handleExtract(doc: Document): Promise<void> {
-  if (extracting.value.has(doc.id)) return
-  extracting.value = new Set(extracting.value).add(doc.id)
-  try {
-    await extractDocumentInterfaces(doc.id)
-    toast.success(t('docs.doc.extractQueued'))
-    startPoll(doc.id)
-  } catch (e) {
-    extracting.value = new Set([...extracting.value].filter((id) => id !== doc.id))
-    const msg = (e as Error).message || ''
-    if (msg.includes('进行中') || msg.includes('409')) {
-      toast.error(t('docs.doc.extractBusy'))
-    } else {
-      toast.error(msg)
-    }
-  }
-}
-
-function startPoll(docId: number): void {
-  stopPoll(docId)
-  const timer = window.setInterval(() => pollOnce(docId), 5000)
-  extractTimers.set(docId, timer)
-}
-function stopPoll(docId: number): void {
-  const timer = extractTimers.get(docId)
-  if (timer !== undefined) {
-    window.clearInterval(timer)
-    extractTimers.delete(docId)
-  }
-}
-async function pollOnce(docId: number): Promise<void> {
-  try {
-    const s = await getDocumentExtractStatus(docId)
-    if (!s || s.status === 'completed' || s.status === 'failed') {
-      stopPoll(docId)
-      extracting.value = new Set([...extracting.value].filter((id) => id !== docId))
-      if (s?.status === 'completed') {
-        toast.success(t('docs.doc.extractDone', { n: s.endpoint_count ?? 0 }))
-      } else if (s?.status === 'failed') {
-        toast.error(t('docs.doc.extractFailed'))
-      }
-    }
-  } catch {
-    stopPoll(docId)
-    extracting.value = new Set([...extracting.value].filter((id) => id !== docId))
-  }
-}
-
 function onUploaded(ver: string): void {
   uploadVisible.value = false
   // latest 桶已存在（增量到当前最新），直接刷；具体版本（含空库首建）异步生桶，轮询直到出现
@@ -204,6 +159,15 @@ function onUploaded(ver: string): void {
 function onVersionAdded(ver: string): void {
   addVersionVisible.value = false
   startVersionPoll(ver)
+}
+
+function openViewer(doc: Document): void {
+  viewerDocId.value = doc.id
+  viewerVisible.value = true
+}
+
+function onViewerSaved(): void {
+  load()
 }
 
 async function handleDeleteVersion(): Promise<void> {
@@ -279,9 +243,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopVersionPoll()
-  for (const id of extractTimers.keys()) {
-    stopPoll(id)
-  }
 })
 </script>
 
@@ -356,7 +317,7 @@ onUnmounted(() => {
         <tbody class="divide-y divide-slate-100">
           <tr v-for="doc in documents" :key="doc.id" class="hover:bg-slate-50">
             <td class="max-w-xs truncate px-3 py-2 text-slate-700">{{ doc.title || doc.source_id }}</td>
-            <td class="px-3 py-2 text-slate-500">{{ doc.source_type }}</td>
+            <td class="px-3 py-2 text-slate-500">{{ sourceLabel(doc.source_type) }}</td>
             <td class="px-3 py-2">
               <span class="inline-flex rounded px-2 py-0.5 text-xs font-medium" :class="STATUS_BADGE[doc.ingest_status] ?? 'bg-slate-100 text-slate-600'">
                 {{ t(`docs.doc.status.${doc.ingest_status}`) }}
@@ -365,13 +326,18 @@ onUnmounted(() => {
             <td class="px-3 py-2 text-right">
               <div v-if="canManage" class="flex items-center justify-end gap-1">
                 <button
-                  class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-purple-600 hover:bg-purple-50 disabled:opacity-50"
-                  :disabled="extracting.has(doc.id) || doc.ingest_status !== 'ingested'"
-                  @click="handleExtract(doc)"
+                  class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-sky-600 hover:bg-sky-50"
+                  @click="openViewer(doc)"
                 >
-                  <Loader2 v-if="extracting.has(doc.id)" class="h-3.5 w-3.5 animate-spin" />
-                  <Wand2 v-else class="h-3.5 w-3.5" />
-                  {{ extracting.has(doc.id) ? t('docs.doc.extracting') : t('docs.doc.extract') }}
+                  <Eye class="h-3.5 w-3.5" />
+                  {{ t('docs.doc.preview') }}
+                </button>
+                <button
+                  class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-purple-600 hover:bg-purple-50"
+                  @click="emit('view-interfaces', doc.id, String(doc.title || doc.source_id || doc.id))"
+                >
+                  <Code2 class="h-3.5 w-3.5" />
+                  {{ t('docs.doc.interfaces') }}
                 </button>
                 <button
                   class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-red-600 hover:bg-red-50"
@@ -389,5 +355,6 @@ onUnmounted(() => {
 
     <DocsUploadDialog :visible="uploadVisible" :library-name="libraryName" :version="uploadVersion" :lock-version="versions.length > 0" @uploaded="onUploaded" @close="uploadVisible = false" />
     <DocsAddVersionDialog :visible="addVersionVisible" :library-name="libraryName" :default-version="nextVersion" @uploaded="onVersionAdded" @close="addVersionVisible = false" />
+    <DocsDocumentViewerDrawer :visible="viewerVisible" :doc-id="viewerDocId" :library-name="libraryName" @close="viewerVisible = false" @saved="onViewerSaved" />
   </div>
 </template>

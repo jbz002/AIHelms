@@ -13,14 +13,17 @@ import {
   getLibraryExtractStatus,
   toast,
 } from '@aihelms/shared'
-import { Loader2, Code2, Wand2, Search, ChevronDown, ChevronRight } from 'lucide-vue-next'
+import { Loader2, Code2, Wand2, Search, ChevronDown, ChevronRight, X } from 'lucide-vue-next'
 import DocsTryItOut from './DocsTryItOut.vue'
 
 interface Props {
   libraryName: string
   canManage: boolean
+  focusDocId?: number | null
+  focusDocTitle?: string
 }
 const props = defineProps<Props>()
+const emit = defineEmits<{ 'clear-focus': [] }>()
 const { t } = useI18n()
 
 const loading = ref(false)
@@ -51,6 +54,7 @@ const items = computed(() =>
     path: e.path,
     summary: e.summary,
     category: e.category,
+    documentId: e.document_id,
   })),
 )
 const selected = computed<LibraryEndpoint | null>(
@@ -60,9 +64,13 @@ const selected = computed<LibraryEndpoint | null>(
 const keyword = ref('')
 const collapsedTags = ref<Set<string>>(new Set())
 const filteredItems = computed(() => {
+  let list = items.value
+  if (props.focusDocId != null) {
+    list = list.filter((e) => e.documentId === props.focusDocId)
+  }
   const kw = keyword.value.trim().toLowerCase()
-  if (!kw) return items.value
-  return items.value.filter(
+  if (!kw) return list
+  return list.filter(
     (e) =>
       e.path.toLowerCase().includes(kw) ||
       (e.summary ?? '').toLowerCase().includes(kw) ||
@@ -87,11 +95,22 @@ function toggleTag(tag: string): void {
   collapsedTags.value = next
 }
 
+// focusDocId 命中：选中该文档首个接口并展开其分类，便于从文档列表跳转定位
+function applyFocus(): void {
+  if (props.focusDocId == null || !result.value) return
+  const target = result.value.endpoints.find((e) => e.document_id === props.focusDocId)
+  if (!target) return
+  selectedKey.value = String(target.id)
+  const tag = target.category || t('docs.interfaces.defaultCategory')
+  if (collapsedTags.value.has(tag)) toggleTag(tag)
+}
+
 async function load(): Promise<void> {
   loading.value = true
   try {
     result.value = await getLibraryInterfaces(props.libraryName)
-    if (result.value.endpoints.length && !selectedKey.value) {
+    if (props.focusDocId != null) applyFocus()
+    if (!selectedKey.value && result.value.endpoints.length) {
       selectedKey.value = String(result.value.endpoints[0].id)
     }
   } catch (e) {
@@ -160,6 +179,11 @@ watch(
   },
 )
 
+watch(
+  () => props.focusDocId,
+  () => applyFocus(),
+)
+
 onMounted(() => {
   load()
   getLibraryExtractStatus(props.libraryName).then((s) => {
@@ -177,6 +201,15 @@ onUnmounted(stopBatchPoll)
         {{ t('docs.interfaces.title') }} · {{ libraryName }}
       </h2>
       <span v-if="result" class="text-xs text-slate-500">{{ t('docs.interfaces.total', { n: result.total }) }}</span>
+      <span
+        v-if="focusDocId != null"
+        class="inline-flex max-w-xs items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700"
+      >
+        <span class="truncate">{{ t('docs.interfaces.filteredByDoc', { name: focusDocTitle || `#${focusDocId}` }) }}</span>
+        <button type="button" class="shrink-0 text-purple-500 hover:text-purple-900" @click="emit('clear-focus')">
+          <X class="h-3 w-3" />
+        </button>
+      </span>
       <div v-if="canManage" class="ml-auto">
         <button
           class="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-60"

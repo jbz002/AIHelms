@@ -179,7 +179,7 @@ onMounted(loadDocument)
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white">
-        <MdEditor v-model="editContent" language="zh-CN" :preview="true" :toolbars-exclude="['preview']" />
+        <MdEditor v-model="editContent" language="zh-CN" :toolbars-exclude="['github', 'prettier']" input-box-width="38%" />
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-4">

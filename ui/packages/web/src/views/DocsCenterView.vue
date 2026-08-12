@@ -22,6 +22,8 @@ const selectedName = ref<string | null>(null)
 const keyword = ref('')
 const scope = ref<'all' | 'mine'>('mine')
 const activeTab = ref<'interfaces' | 'documents'>('documents')
+const focusDocId = ref<number | null>(null)
+const focusDocTitle = ref<string>('')
 
 const selectedLib = computed(
   () => libraries.value.find((l) => l.name === selectedName.value) ?? null,
@@ -171,6 +173,23 @@ function onLibDeleted(): void {
   load()
 }
 
+function viewInterfaces(docId: number, docTitle: string): void {
+  focusDocId.value = docId
+  focusDocTitle.value = docTitle
+  activeTab.value = 'interfaces'
+}
+
+function switchTab(tab: 'interfaces' | 'documents'): void {
+  focusDocId.value = null
+  focusDocTitle.value = ''
+  activeTab.value = tab
+}
+
+function clearFocus(): void {
+  focusDocId.value = null
+  focusDocTitle.value = ''
+}
+
 onMounted(load)
 </script>
 
@@ -269,17 +288,17 @@ onMounted(load)
             <button
               class="-mb-px border-b-2 px-4 py-2 text-sm transition-colors"
               :class="activeTab === 'documents' ? 'border-purple-600 font-medium text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'"
-              @click="activeTab = 'documents'"
+              @click="switchTab('documents')"
             >{{ t('docs.tab.documents') }}</button>
             <button
               class="-mb-px border-b-2 px-4 py-2 text-sm transition-colors"
               :class="activeTab === 'interfaces' ? 'border-purple-600 font-medium text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'"
-              @click="activeTab = 'interfaces'"
+              @click="switchTab('interfaces')"
             >{{ t('docs.tab.interfaces') }}</button>
           </div>
 
-          <DocsDocumentPanel v-if="activeTab === 'documents'" :library-name="selectedName" :library-id="selectedLib?.id ?? null" :can-manage="canManage" @library-deleted="onLibDeleted" />
-          <DocsInterfacePanel v-else :library-name="selectedName" :can-manage="canManage" />
+          <DocsDocumentPanel v-if="activeTab === 'documents'" :library-name="selectedName" :library-id="selectedLib?.id ?? null" :can-manage="canManage" @library-deleted="onLibDeleted" @view-interfaces="viewInterfaces" />
+          <DocsInterfacePanel v-else :library-name="selectedName" :can-manage="canManage" :focus-doc-id="focusDocId" :focus-doc-title="focusDocTitle" @clear-focus="clearFocus" />
         </template>
         <div v-else-if="!loading" class="flex h-60 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white text-sm text-slate-400">
           <FileText class="h-8 w-8 text-slate-300" />
