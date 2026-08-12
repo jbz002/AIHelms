@@ -107,11 +107,9 @@
   "docs.upload.title": "上传文档",
   "docs.upload.library": "目标库",
   "docs.upload.file": "选择文件",
-  "docs.upload.autoIngest": "上传后自动入库",
   "docs.upload.submit": "上传",
   "docs.upload.submitting": "上传中...",
   "docs.upload.success": "文档入库成功",
-  "docs.upload.successExtract": "文档上传成功",
   "docs.upload.noFile": "请选择文件",
   "docs.upload.unsupported": "不支持的文件格式: {ext}",
 

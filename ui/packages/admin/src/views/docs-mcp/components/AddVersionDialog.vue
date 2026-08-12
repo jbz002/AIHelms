@@ -5,14 +5,11 @@ import { X } from 'lucide-vue-next'
 import AddVersionCrawlForm from './AddVersionCrawlForm.vue'
 import AddVersionUploadForm from './AddVersionUploadForm.vue'
 
-type CrawlIngestMode = 'direct' | 'crawl-only'
-
 interface CrawlSubmitParams {
   url: string
   library: string
   version: string
   options: DocsMcpScrapeOptions
-  ingestMode: CrawlIngestMode
 }
 
 interface Props {

@@ -107,11 +107,9 @@
   "docs.upload.title": "Upload document",
   "docs.upload.library": "Target library",
   "docs.upload.file": "Choose file",
-  "docs.upload.autoIngest": "Auto-ingest after upload",
   "docs.upload.submit": "Upload",
   "docs.upload.submitting": "Uploading...",
   "docs.upload.success": "Document ingested",
-  "docs.upload.successExtract": "Document uploaded",
   "docs.upload.noFile": "Please choose a file",
   "docs.upload.unsupported": "Unsupported file type: {ext}",
 

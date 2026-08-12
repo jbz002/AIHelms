@@ -15,7 +15,6 @@ const emit = defineEmits<{ close: []; uploaded: [version: string] }>()
 const { t } = useI18n()
 
 const DOCS_VERSION_RE = /^v?\d+\.\d+\.\d+$/
-const autoIngest = ref(true)
 const file = ref<File | null>(null)
 const localVersion = ref(props.version)
 const submitting = ref(false)
@@ -24,7 +23,6 @@ watch(
   () => props.visible,
   (v) => {
     if (v) {
-      autoIngest.value = true
       file.value = null
       localVersion.value = props.version
     }
@@ -54,8 +52,8 @@ async function submit(): Promise<void> {
   }
   submitting.value = true
   try {
-    await uploadDocument(props.libraryName, file.value, actualVersion, autoIngest.value)
-    toast.success(autoIngest.value ? t('docs.upload.success') : t('docs.upload.successExtract'))
+    await uploadDocument(props.libraryName, file.value, actualVersion, true)
+    toast.success(t('docs.upload.success'))
     emit('uploaded', actualVersion)
     emit('close')
   } catch (e) {
@@ -110,11 +108,6 @@ async function submit(): Promise<void> {
               @change="onFileChange"
             />
           </div>
-
-          <label class="flex items-center gap-2 text-sm text-slate-600">
-            <input v-model="autoIngest" type="checkbox" class="rounded border-slate-300 text-purple-600 focus:ring-purple-500" />
-            {{ t('docs.upload.autoIngest') }}
-          </label>
         </div>
 
         <div class="mt-5 flex justify-end gap-2">

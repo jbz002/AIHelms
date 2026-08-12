@@ -4,8 +4,6 @@ import type { DocTask, DocTaskSource, DocTaskStatus, CrawledPage } from '@aihelm
 import {
   getDocTasks,
   getCrawlPages,
-  ingestCrawlTask,
-  ingestUploadRecord,
   getUploadRecordContent,
   pauseCrawlTask,
   resumeCrawlTask,
@@ -21,7 +19,6 @@ import {
   ChevronDown,
   ChevronRight,
   Loader2,
-  ArrowDownToLine,
   AlertCircle,
   RefreshCw,
   Pause,
@@ -45,7 +42,6 @@ const dateFilter = ref<string>('today')
 const expandedKey = ref<string | null>(null)
 const expandedPages = ref<CrawledPage[]>([])
 const expandedPagesTotal = ref(0)
-const ingestingKey = ref<string | null>(null)
 const pausingKey = ref<string | null>(null)
 const resumingKey = ref<string | null>(null)
 const deletingKey = ref<string | null>(null)
@@ -75,7 +71,6 @@ function stopPoll(): void {
 const statusConfig: Record<DocTaskStatus, { label: string; cls: string; spin: boolean }> = {
   pending: { label: '等待中', cls: 'bg-gray-100 text-gray-700', spin: false },
   processing: { label: '处理中', cls: 'bg-blue-100 text-blue-700', spin: true },
-  ready: { label: '待入库', cls: 'bg-emerald-100 text-emerald-700', spin: false },
   ingesting: { label: '入库中', cls: 'bg-blue-100 text-blue-700', spin: true },
   ingested: { label: '已入库', cls: 'bg-purple-100 text-purple-700', spin: false },
   failed: { label: '失败', cls: 'bg-red-100 text-red-700', spin: false },
@@ -98,7 +93,6 @@ const statusOptions: { value: '' | DocTaskStatus; label: string }[] = [
   { value: '', label: '全部状态' },
   { value: 'pending', label: '等待中' },
   { value: 'processing', label: '处理中' },
-  { value: 'ready', label: '待入库' },
   { value: 'ingesting', label: '入库中' },
   { value: 'ingested', label: '已入库' },
   { value: 'failed', label: '失败' },
@@ -196,25 +190,6 @@ async function toggleExpand(task: DocTask): Promise<void> {
   } catch {
     expandedPages.value = []
     expandedPagesTotal.value = 0
-  }
-}
-
-async function handleIngest(task: DocTask): Promise<void> {
-  if (ingestingKey.value) return
-  ingestingKey.value = task.key
-  try {
-    if (task.source === 'external_crawl') {
-      await ingestCrawlTask(task.raw_id)
-    } else {
-      await ingestUploadRecord(task.raw_id)
-    }
-    toast.success('入库任务已提交，后台处理中')
-    await loadTasks()
-    emit('refresh')
-  } catch (e) {
-    toast.error((e as Error).message || '提交入库失败')
-  } finally {
-    ingestingKey.value = null
   }
 }
 
@@ -411,10 +386,6 @@ defineExpose({ loadTasks })
             >
               <Loader2 v-if="resumingKey === task.key" class="h-4 w-4 animate-spin" />
               <Play v-else class="h-4 w-4" />
-            </button>
-            <button v-if="task.can_ingest" class="rounded-md p-1 text-emerald-600 hover:bg-emerald-50" title="入库" :disabled="ingestingKey === task.key" @click="handleIngest(task)">
-              <Loader2 v-if="ingestingKey === task.key" class="h-4 w-4 animate-spin" />
-              <ArrowDownToLine v-else class="h-4 w-4" />
             </button>
             <button
               class="rounded-md p-1 text-gray-400 hover:bg-red-50 hover:text-red-500"

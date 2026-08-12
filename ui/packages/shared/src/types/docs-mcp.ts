@@ -185,7 +185,6 @@ export type DocTaskSource = 'external_crawl' | 'internal_upload'
 export type DocTaskStatus =
   | 'pending'
   | 'processing'
-  | 'ready'
   | 'ingesting'
   | 'ingested'
   | 'failed'

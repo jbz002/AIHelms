@@ -17,7 +17,6 @@ const { t } = useI18n()
 
 const version = ref(props.defaultVersion)
 const files = ref<File[]>([])
-const autoIngest = ref(true)
 const submitting = ref(false)
 
 watch(
@@ -26,7 +25,6 @@ watch(
     if (v) {
       version.value = props.defaultVersion
       files.value = []
-      autoIngest.value = true
     }
   },
 )
@@ -66,7 +64,7 @@ async function submit(): Promise<void> {
   }
   submitting.value = true
   try {
-    await uploadDocumentsBatch(props.libraryName, files.value, v, autoIngest.value)
+    await uploadDocumentsBatch(props.libraryName, files.value, v, true)
     toast.success(t('docs.addVersion.success', { n: files.value.length }))
     emit('uploaded', v)
     emit('close')
@@ -143,11 +141,6 @@ async function submit(): Promise<void> {
               </div>
             </div>
           </div>
-
-          <label class="flex items-center gap-2 text-sm text-slate-600">
-            <input v-model="autoIngest" type="checkbox" class="rounded border-slate-300 text-purple-600 focus:ring-purple-500" />
-            {{ t('docs.upload.autoIngest') }}
-          </label>
         </div>
 
         <div class="mt-5 flex justify-end gap-2">

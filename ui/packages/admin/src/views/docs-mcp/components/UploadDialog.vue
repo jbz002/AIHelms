@@ -5,8 +5,6 @@ import { X, Upload, Loader2, FileText } from 'lucide-vue-next'
 
 const DOCS_VERSION_RE = /^v?\d+\.\d+\.\d+$/
 
-type IngestMode = 'direct' | 'extract-only'
-
 interface Props {
   visible: boolean
   defaultLibrary?: string
@@ -26,7 +24,6 @@ const emit = defineEmits<Emits>()
 const library = ref(props.defaultLibrary ?? '')
 const version = ref(props.defaultVersion ?? '')
 const files = ref<File[]>([])
-const ingestMode = ref<IngestMode>('direct')
 const uploading = ref(false)
 const submitError = ref<string | null>(null)
 
@@ -40,7 +37,6 @@ watch(() => props.visible, (v) => {
     } else {
       version.value = props.defaultVersion?.trim() || '1.0.0'
     }
-    ingestMode.value = 'direct'
   }
 })
 
@@ -81,7 +77,7 @@ async function handleSubmit(): Promise<void> {
       library.value.trim(),
       files.value,
       version.value.trim() || undefined,
-      ingestMode.value === 'direct',
+      true,
     )
     toast.success(`已提交 ${count} 个文件到后台处理`)
     emit('uploaded')
@@ -122,24 +118,6 @@ function formatFileSize(bytes: number): string {
         <h3 class="mb-4 text-lg font-semibold text-gray-900">上传文档</h3>
 
         <div class="space-y-4">
-          <!-- 入库模式 -->
-          <div class="flex items-center gap-6 rounded-md border border-gray-200 px-4 py-3">
-            <label class="flex cursor-pointer items-center gap-2">
-              <input v-model="ingestMode" type="radio" name="uploadIngestMode" value="direct" class="accent-blue-600" />
-              <div>
-                <span class="text-sm font-medium text-gray-900">直接入库</span>
-                <p class="text-xs text-gray-500">提取后自动入库，可立即搜索</p>
-              </div>
-            </label>
-            <label class="flex cursor-pointer items-center gap-2">
-              <input v-model="ingestMode" type="radio" name="uploadIngestMode" value="extract-only" class="accent-emerald-600" />
-              <div>
-                <span class="text-sm font-medium text-gray-900">仅提取</span>
-                <p class="text-xs text-gray-500">先提取内容，可预览后手动入库</p>
-              </div>
-            </label>
-          </div>
-
           <div class="grid grid-cols-2 gap-3">
             <div>
               <label class="mb-1 block text-sm font-medium text-gray-700">文档库 *</label>
@@ -218,8 +196,7 @@ function formatFileSize(bytes: number): string {
             关闭
           </button>
           <button
-            class="inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-50"
-            :class="ingestMode === 'extract-only' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'"
+            class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="!library.trim() || (!lockVersion && !version.trim()) || files.length === 0 || uploading"
             @click="handleSubmit"
           >

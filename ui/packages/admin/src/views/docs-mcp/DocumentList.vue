@@ -311,7 +311,6 @@ async function handleSubmitJob(params: {
   library: string
   version: string
   options: DocsMcpScrapeOptions
-  ingestMode: string
 }): Promise<void> {
   try {
     await createCrawlTask({
@@ -319,7 +318,7 @@ async function handleSubmitJob(params: {
       library: params.library,
       version: params.version,
       options: params.options,
-      auto_ingest: params.ingestMode === 'direct',
+      auto_ingest: true,
     })
     toast.success('爬取任务已创建')
     showScrapeDialog.value = false

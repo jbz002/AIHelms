@@ -20,7 +20,7 @@ const loading = ref(false)
 const libraries = ref<DocumentLibrary[]>([])
 const selectedName = ref<string | null>(null)
 const keyword = ref('')
-const scope = ref<'all' | 'mine'>('all')
+const scope = ref<'all' | 'mine'>('mine')
 const activeTab = ref<'interfaces' | 'documents'>('documents')
 
 const selectedLib = computed(
