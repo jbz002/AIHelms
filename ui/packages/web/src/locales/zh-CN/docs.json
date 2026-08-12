@@ -156,5 +156,9 @@
   "docs.addVersion.fileHint": "支持 Markdown、TXT、PDF、Office、图片等",
   "docs.addVersion.noFile": "请至少选择一个文件",
   "docs.addVersion.submit": "上传",
-  "docs.addVersion.success": "已提交 {n} 个文件到后台处理"
+  "docs.addVersion.success": "已提交 {n} 个文件到后台处理",
+
+  "docs.action.back": "返回",
+  "docs.doc.readonly": "只读预览，仅库所有者可编辑",
+  "docs.interfaces.docScope": "文档「{name}」的接口"
 }

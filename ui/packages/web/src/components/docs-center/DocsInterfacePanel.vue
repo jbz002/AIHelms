@@ -13,17 +13,16 @@ import {
   getLibraryExtractStatus,
   toast,
 } from '@aihelms/shared'
-import { Loader2, Code2, Wand2, Search, ChevronDown, ChevronRight, X } from 'lucide-vue-next'
+import { Loader2, Code2, Wand2, Search, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import DocsTryItOut from './DocsTryItOut.vue'
 
 interface Props {
   libraryName: string
   canManage: boolean
-  focusDocId?: number | null
-  focusDocTitle?: string
+  // 传入则只列该文档的接口（文档接口页），不传则列整库接口（库接口页）
+  docId?: number | null
 }
 const props = defineProps<Props>()
-const emit = defineEmits<{ 'clear-focus': [] }>()
 const { t } = useI18n()
 
 const loading = ref(false)
@@ -65,8 +64,8 @@ const keyword = ref('')
 const collapsedTags = ref<Set<string>>(new Set())
 const filteredItems = computed(() => {
   let list = items.value
-  if (props.focusDocId != null) {
-    list = list.filter((e) => e.documentId === props.focusDocId)
+  if (props.docId != null) {
+    list = list.filter((e) => e.documentId === props.docId)
   }
   const kw = keyword.value.trim().toLowerCase()
   if (!kw) return list
@@ -95,23 +94,12 @@ function toggleTag(tag: string): void {
   collapsedTags.value = next
 }
 
-// focusDocId 命中：选中该文档首个接口并展开其分类，便于从文档列表跳转定位
-function applyFocus(): void {
-  if (props.focusDocId == null || !result.value) return
-  const target = result.value.endpoints.find((e) => e.document_id === props.focusDocId)
-  if (!target) return
-  selectedKey.value = String(target.id)
-  const tag = target.category || t('docs.interfaces.defaultCategory')
-  if (collapsedTags.value.has(tag)) toggleTag(tag)
-}
-
 async function load(): Promise<void> {
   loading.value = true
   try {
     result.value = await getLibraryInterfaces(props.libraryName)
-    if (props.focusDocId != null) applyFocus()
-    if (!selectedKey.value && result.value.endpoints.length) {
-      selectedKey.value = String(result.value.endpoints[0].id)
+    if (!selectedKey.value && filteredItems.value.length) {
+      selectedKey.value = filteredItems.value[0].key
     }
   } catch (e) {
     toast.error((e as Error).message)
@@ -179,11 +167,6 @@ watch(
   },
 )
 
-watch(
-  () => props.focusDocId,
-  () => applyFocus(),
-)
-
 onMounted(() => {
   load()
   getLibraryExtractStatus(props.libraryName).then((s) => {
@@ -200,17 +183,8 @@ onUnmounted(stopBatchPoll)
       <h2 class="text-base font-semibold text-slate-900 truncate">
         {{ t('docs.interfaces.title') }} · {{ libraryName }}
       </h2>
-      <span v-if="result" class="text-xs text-slate-500">{{ t('docs.interfaces.total', { n: result.total }) }}</span>
-      <span
-        v-if="focusDocId != null"
-        class="inline-flex max-w-xs items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-medium text-purple-700"
-      >
-        <span class="truncate">{{ t('docs.interfaces.filteredByDoc', { name: focusDocTitle || `#${focusDocId}` }) }}</span>
-        <button type="button" class="shrink-0 text-purple-500 hover:text-purple-900" @click="emit('clear-focus')">
-          <X class="h-3 w-3" />
-        </button>
-      </span>
-      <div v-if="canManage" class="ml-auto">
+      <span v-if="result" class="text-xs text-slate-500">{{ t('docs.interfaces.total', { n: filteredItems.length }) }}</span>
+      <div v-if="canManage && docId == null" class="ml-auto">
         <button
           class="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-60"
           :disabled="isBusy"
@@ -228,7 +202,7 @@ onUnmounted(stopBatchPoll)
     </div>
 
     <div
-      v-else-if="!result || !result.endpoints.length"
+      v-else-if="!result || !filteredItems.length"
       class="flex h-60 flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-white"
     >
       <Code2 class="h-10 w-10 text-slate-300" />

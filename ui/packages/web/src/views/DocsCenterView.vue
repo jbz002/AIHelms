@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { usePermission, useAuth, listLibraries, createLibrary, updateLibrary, deleteLibrary, uploadDocumentsBatch, toast } from '@aihelms/shared'
 import type { DocumentLibrary } from '@aihelms/shared'
 import { Library, Plus, Pencil, Trash2, Loader2, Search, X, FileText, Upload } from 'lucide-vue-next'
-import DocsInterfacePanel from '../components/docs-center/DocsInterfacePanel.vue'
-import DocsDocumentPanel from '../components/docs-center/DocsDocumentPanel.vue'
 
+const router = useRouter()
 const { t } = useI18n()
 const { hasPermission } = usePermission()
 const { currentUser } = useAuth()
@@ -18,17 +18,8 @@ function isLibraryOwner(lib: DocumentLibrary): boolean {
 
 const loading = ref(false)
 const libraries = ref<DocumentLibrary[]>([])
-const selectedName = ref<string | null>(null)
 const keyword = ref('')
 const scope = ref<'all' | 'mine'>('mine')
-const activeTab = ref<'interfaces' | 'documents'>('documents')
-const focusDocId = ref<number | null>(null)
-const focusDocTitle = ref<string>('')
-
-const selectedLib = computed(
-  () => libraries.value.find((l) => l.name === selectedName.value) ?? null,
-)
-const canManage = computed(() => (selectedLib.value ? isLibraryOwner(selectedLib.value) : false))
 
 const filteredLibraries = computed(() => {
   let list = libraries.value
@@ -36,13 +27,6 @@ const filteredLibraries = computed(() => {
   const kw = keyword.value.trim().toLowerCase()
   if (!kw) return list
   return list.filter((l) => l.name.toLowerCase().includes(kw) || (l.description ?? '').toLowerCase().includes(kw))
-})
-
-// 切 scope/搜索后，当前选中库若不在过滤结果内，默认选第一个（无则清空）
-watch(filteredLibraries, (list) => {
-  if (!list.some((l) => l.name === selectedName.value)) {
-    selectedName.value = list[0]?.name ?? null
-  }
 })
 
 // 主区空状态文案：我的范围无库 → 引导新建；否则通用空提示
@@ -55,14 +39,15 @@ async function load(): Promise<void> {
   try {
     const res = await listLibraries(1, 100)
     libraries.value = res.items
-    if (libraries.value.length && !selectedName.value) {
-      selectedName.value = libraries.value[0].name
-    }
   } catch (e) {
     toast.error((e as Error).message)
   } finally {
     loading.value = false
   }
+}
+
+function goLibrary(lib: DocumentLibrary): void {
+  router.push({ name: 'DocsDocumentList', params: { libraryName: lib.name } })
 }
 
 // 新建/编辑库 modal
@@ -125,16 +110,14 @@ async function confirmModal(): Promise<void> {
       try {
         await uploadDocumentsBatch(lib.name, formFiles.value, ver, true)
       } catch (uploadErr) {
-        // 库已建，上传失败：选中库让用户在文档面板重试上传
+        // 库已建，上传失败：刷新首页让用户进库重试上传
         toast.error((uploadErr as Error).message)
         await load()
-        selectedName.value = lib.name
         modalOpen.value = false
         return
       }
       toast.success(t('docs.library.createSuccess'))
       await load()
-      selectedName.value = lib.name
       modalOpen.value = false
     } else if (editingId.value !== null) {
       const lib = await updateLibrary(editingId.value, {
@@ -144,9 +127,8 @@ async function confirmModal(): Promise<void> {
       toast.success(t('docs.library.editSuccess'))
       const idx = libraries.value.findIndex((l) => l.id === editingId.value)
       if (idx !== -1) libraries.value[idx] = lib
-      if (selectedName.value !== lib.name) selectedName.value = lib.name
+      modalOpen.value = false
     }
-    modalOpen.value = false
   } catch (e) {
     toast.error((e as Error).message)
   } finally {
@@ -160,34 +142,9 @@ async function handleDeleteLib(lib: DocumentLibrary): Promise<void> {
     await deleteLibrary(lib.id)
     toast.success(t('docs.library.deleteSuccess'))
     libraries.value = libraries.value.filter((l) => l.id !== lib.id)
-    if (selectedName.value === lib.name) {
-      selectedName.value = libraries.value[0]?.name ?? null
-    }
   } catch (e) {
     toast.error((e as Error).message)
   }
-}
-
-function onLibDeleted(): void {
-  selectedName.value = null
-  load()
-}
-
-function viewInterfaces(docId: number, docTitle: string): void {
-  focusDocId.value = docId
-  focusDocTitle.value = docTitle
-  activeTab.value = 'interfaces'
-}
-
-function switchTab(tab: 'interfaces' | 'documents'): void {
-  focusDocId.value = null
-  focusDocTitle.value = ''
-  activeTab.value = tab
-}
-
-function clearFocus(): void {
-  focusDocId.value = null
-  focusDocTitle.value = ''
 }
 
 onMounted(load)
@@ -204,108 +161,88 @@ onMounted(load)
       {{ t('docs.msg.noPermission') }}
     </div>
 
-    <div v-else class="flex flex-col gap-4 lg:flex-row">
-      <!-- 库侧栏 -->
-      <aside class="w-full shrink-0 lg:w-64">
-        <div class="rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div class="border-b border-slate-100 p-3">
-            <div class="mb-2 flex rounded-md bg-slate-100 p-0.5 text-xs">
-              <button
-                class="flex-1 rounded py-1 font-medium transition-colors"
-                :class="scope === 'all' ? 'bg-white text-purple-700 shadow-sm' : 'text-slate-500'"
-                @click="scope = 'all'"
-              >{{ t('docs.scope.all') }}</button>
-              <button
-                class="flex-1 rounded py-1 font-medium transition-colors"
-                :class="scope === 'mine' ? 'bg-white text-purple-700 shadow-sm' : 'text-slate-500'"
-                @click="scope = 'mine'"
-              >{{ t('docs.scope.mine') }}</button>
+    <template v-else>
+      <!-- 工具栏 -->
+      <div class="mb-5 flex flex-wrap items-center gap-2">
+        <div class="flex rounded-md bg-slate-100 p-0.5 text-xs">
+          <button
+            class="rounded px-3 py-1.5 font-medium transition-colors"
+            :class="scope === 'all' ? 'bg-white text-purple-700 shadow-sm' : 'text-slate-500'"
+            @click="scope = 'all'"
+          >{{ t('docs.scope.all') }}</button>
+          <button
+            class="rounded px-3 py-1.5 font-medium transition-colors"
+            :class="scope === 'mine' ? 'bg-white text-purple-700 shadow-sm' : 'text-slate-500'"
+            @click="scope = 'mine'"
+          >{{ t('docs.scope.mine') }}</button>
+        </div>
+        <div class="relative min-w-[14rem] flex-1">
+          <Search class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            v-model="keyword"
+            :placeholder="t('docs.library.searchPlaceholder')"
+            class="w-full rounded-md border border-slate-200 py-1.5 pl-8 pr-2 text-sm focus:border-purple-400 focus:outline-none"
+          />
+        </div>
+        <button
+          class="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
+          @click="openCreate"
+        >
+          <Plus class="h-4 w-4" />
+          {{ t('docs.library.create') }}
+        </button>
+      </div>
+
+      <div v-if="loading" class="flex h-60 items-center justify-center">
+        <Loader2 class="h-6 w-6 animate-spin text-slate-400" />
+      </div>
+
+      <div
+        v-else-if="!filteredLibraries.length"
+        class="flex h-60 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white text-sm text-slate-400"
+      >
+        <FileText class="h-8 w-8 text-slate-300" />
+        <span>{{ mainEmptyText }}</span>
+      </div>
+
+      <!-- 库卡片网格 -->
+      <div v-else class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          v-for="lib in filteredLibraries"
+          :key="lib.id"
+          class="group relative cursor-pointer rounded-lg border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-purple-300 hover:shadow"
+          @click="goLibrary(lib)"
+        >
+          <div class="flex items-start gap-2">
+            <Library class="h-5 w-5 shrink-0 text-purple-500" />
+            <div class="min-w-0 flex-1">
+              <h3 class="truncate text-sm font-semibold text-slate-900">{{ lib.name }}</h3>
+              <p class="mt-1 line-clamp-2 text-xs text-slate-500">{{ lib.description || '—' }}</p>
             </div>
-            <div class="relative">
-              <Search class="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-              <input
-                v-model="keyword"
-                :placeholder="t('docs.library.searchPlaceholder')"
-                class="w-full rounded-md border border-slate-200 py-1.5 pl-8 pr-2 text-sm focus:border-purple-400 focus:outline-none"
-              />
-            </div>
+          </div>
+          <div class="mt-3 flex items-center gap-3 text-xs text-slate-400">
+            <span>{{ lib.document_count }} {{ t('docs.library.docs') }}</span>
+            <span>{{ lib.total_chunks }} {{ t('docs.library.chunks') }}</span>
+          </div>
+          <div v-if="isLibraryOwner(lib)" class="absolute right-2 top-2 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100" @click.stop>
             <button
-              class="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700"
-              @click="openCreate"
+              class="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-purple-600"
+              :title="t('docs.library.edit')"
+              @click="openEdit(lib)"
             >
-              <Plus class="h-4 w-4" />
-              {{ t('docs.library.create') }}
+              <Pencil class="h-3.5 w-3.5" />
+            </button>
+            <button
+              class="rounded p-1 text-slate-400 hover:bg-slate-100 hover:text-red-600"
+              :title="t('docs.library.delete')"
+              @click="handleDeleteLib(lib)"
+            >
+              <Trash2 class="h-3.5 w-3.5" />
             </button>
           </div>
-
-          <div v-if="loading" class="flex h-40 items-center justify-center">
-            <Loader2 class="h-5 w-5 animate-spin text-slate-400" />
-          </div>
-          <div v-else-if="!filteredLibraries.length" class="p-6 text-center text-xs text-slate-400">
-            {{ t('docs.library.empty') }}
-          </div>
-          <ul v-else class="max-h-[70vh] divide-y divide-slate-50 overflow-y-auto">
-            <li
-              v-for="lib in filteredLibraries"
-              :key="lib.id"
-              class="group flex items-start gap-1 px-2 py-2 transition-colors"
-              :class="selectedName === lib.name ? 'bg-purple-50' : 'hover:bg-slate-50'"
-            >
-              <button class="flex min-w-0 flex-1 flex-col items-start text-left" @click="selectedName = lib.name">
-                <span class="flex items-center gap-1.5 text-sm font-medium" :class="selectedName === lib.name ? 'text-purple-700' : 'text-slate-700'">
-                  <Library class="h-3.5 w-3.5 shrink-0" />
-                  <span class="truncate">{{ lib.name }}</span>
-                </span>
-                <span class="mt-0.5 pl-5 text-xs text-slate-400">
-                  {{ lib.document_count }} {{ t('docs.library.docs') }} · {{ lib.total_chunks }} {{ t('docs.library.chunks') }}
-                </span>
-              </button>
-              <div v-if="isLibraryOwner(lib)" class="flex shrink-0 items-center gap-0.5 pt-0.5">
-                <button
-                  class="rounded p-1 text-slate-400 hover:bg-white hover:text-purple-600"
-                  :title="t('docs.library.edit')"
-                  @click.stop="openEdit(lib)"
-                >
-                  <Pencil class="h-3.5 w-3.5" />
-                </button>
-                <button
-                  class="rounded p-1 text-slate-400 hover:bg-white hover:text-red-600"
-                  :title="t('docs.library.delete')"
-                  @click.stop="handleDeleteLib(lib)"
-                >
-                  <Trash2 class="h-3.5 w-3.5" />
-                </button>
-              </div>
-            </li>
-          </ul>
         </div>
-      </aside>
-
-      <!-- 主区 -->
-      <main class="min-w-0 flex-1">
-        <template v-if="selectedName">
-          <div class="mb-3 flex gap-1 border-b border-slate-200">
-            <button
-              class="-mb-px border-b-2 px-4 py-2 text-sm transition-colors"
-              :class="activeTab === 'documents' ? 'border-purple-600 font-medium text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'"
-              @click="switchTab('documents')"
-            >{{ t('docs.tab.documents') }}</button>
-            <button
-              class="-mb-px border-b-2 px-4 py-2 text-sm transition-colors"
-              :class="activeTab === 'interfaces' ? 'border-purple-600 font-medium text-purple-700' : 'border-transparent text-slate-500 hover:text-slate-700'"
-              @click="switchTab('interfaces')"
-            >{{ t('docs.tab.interfaces') }}</button>
-          </div>
-
-          <DocsDocumentPanel v-if="activeTab === 'documents'" :library-name="selectedName" :library-id="selectedLib?.id ?? null" :can-manage="canManage" @library-deleted="onLibDeleted" @view-interfaces="viewInterfaces" />
-          <DocsInterfacePanel v-else :library-name="selectedName" :can-manage="canManage" :focus-doc-id="focusDocId" :focus-doc-title="focusDocTitle" @clear-focus="clearFocus" />
-        </template>
-        <div v-else-if="!loading" class="flex h-60 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white text-sm text-slate-400">
-          <FileText class="h-8 w-8 text-slate-300" />
-          <span>{{ mainEmptyText }}</span>
-        </div>
-      </main>
-    </div>
+      </div>
+    </template>
 
     <!-- 新建/编辑库 modal -->
     <Teleport to="body">

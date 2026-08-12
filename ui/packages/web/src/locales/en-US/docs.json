@@ -156,5 +156,9 @@
   "docs.addVersion.fileHint": "Markdown, TXT, PDF, Office, images, etc.",
   "docs.addVersion.noFile": "Pick at least one file",
   "docs.addVersion.submit": "Upload",
-  "docs.addVersion.success": "{n} file(s) submitted for processing"
+  "docs.addVersion.success": "{n} file(s) submitted for processing",
+
+  "docs.action.back": "Back",
+  "docs.doc.readonly": "Read-only preview; only the library owner can edit",
+  "docs.interfaces.docScope": "Endpoints of “{name}”"
 }
