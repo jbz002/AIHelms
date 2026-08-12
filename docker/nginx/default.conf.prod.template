@@ -12,6 +12,9 @@ server {
     add_header X-XSS-Protection "1; mode=block" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
+    # internal 接口无鉴权，公网入口屏蔽（openresty 拉映射直连 aihelms 不过 nginx）
+    location /api/v1/internal/ { return 403; }
+
     # API 代理
     location /api {
         proxy_pass http://aihelms_api;

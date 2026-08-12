@@ -1,7 +1,7 @@
 # AIHelms 正式服部署（host 网络模式，复用平台 pg/redis）
 # 服务器: 131.131.2.10（daemon.json iptables=false → 必须 host）
 # 复用中间件: pg 127.0.0.1:35432 / redis 127.0.0.1:36379（由 xzs-ai-infra 管理）
-# 端口: nginx 30700 / litellm 30710 / aihelms 30720 / skillspector 8010(内部)
+# 端口: nginx 30700 / openresty 30710(对外AI入口) / litellm 30711(内部) / aihelms 30720 / skillspector 8010(内部)
 #
 # 用法:
 #   cd /home/ai/aihelms/AIHelms
@@ -28,7 +28,28 @@ services:
       TZ: ${TZ:-Asia/Shanghai}
     volumes:
       - ./docker/litellm/litellm.yaml:/app/config.yaml:ro
-    command: ["--config", "/app/config.yaml", "--host", "0.0.0.0", "--port", "30710"]
+    command: ["--config", "/app/config.yaml", "--host", "0.0.0.0", "--port", "${LITELLM_INTERNAL_PORT:-30711}"]
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+  openresty:
+    image: openresty/openresty:alpine
+    container_name: aihelms-openresty
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      # host 模式必须用 IP（无 resolver、/etc/hosts 无容器名）
+      BACKEND_HOST: 127.0.0.1
+      BACKEND_PORT: ${AIHELMS_PORT:-30720}
+    volumes:
+      - ./docker/openresty/nginx.prod.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
+      - ./docker/openresty/model_rewrite.lua:/etc/openresty/model_rewrite.lua:ro
+    depends_on:
+      - litellm
+      - aihelms
     logging:
       driver: json-file
       options:
@@ -66,7 +87,8 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${DB_PORT}/${POSTGRES_DB}
       REDIS_URL: redis://:${REDIS_PASSWORD}@127.0.0.1:${REDIS_PORT}/0
-      LITELLM_URL: http://127.0.0.1:${LITELLM_PORT}
+      # 直连内部 litellm，不过 openresty 网关（管理/同步调用不被 body 改写干扰）
+      LITELLM_URL: http://127.0.0.1:${LITELLM_INTERNAL_PORT:-30711}
       LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
       SECRET_KEY: ${SECRET_KEY}
       SUPER_ADMIN_PASSWORD: ${SUPER_ADMIN_PASSWORD}
