@@ -119,6 +119,21 @@ async def find_all_active_deployments(session: AsyncSession) -> list[ModelDeploy
     return list(result.scalars().all())
 
 
+async def find_all_litellm_model_ids(session: AsyncSession) -> set[str]:
+    """Return all non-empty litellm_model_id tracked by aihelms (incl. inactive).
+
+    用于反向对账:构成 aihelms 追踪集合 A,与 LiteLLM 真值集合 L 求差集找孤儿。
+    inactive deployment 的 litellm 记录仍被追踪,故不过滤 is_active。
+    """
+    result = await session.execute(
+        select(ModelDeployment.litellm_model_id).where(
+            ModelDeployment.litellm_model_id.isnot(None),
+            ModelDeployment.litellm_model_id != "",
+        )
+    )
+    return {row[0] for row in result.all()}
+
+
 async def find_model_ids_by_credential_ids(
     session: AsyncSession, credential_ids: list[int]
 ) -> list[str]:

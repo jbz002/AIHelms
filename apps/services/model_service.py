@@ -424,6 +424,57 @@ async def delete_model(session: AsyncSession, model_id: int) -> None:
                 mid,
             )
 
+    # best-effort: 反向对账清理 LiteLLM 侧该模型的历史孤儿残留
+    try:
+        await reconcile_litellm_deployments(session)
+    except Exception:
+        logger.error("post-delete litellm reconcile failed", exc_info=True)
+
+
+async def reconcile_litellm_deployments(session: AsyncSession) -> dict:
+    """反向对账清理 LiteLLM 孤儿 deployment。
+
+    拉 LiteLLM 全量 deployment(L)与 aihelms 追踪的 litellm_model_id 集合(A),
+    差集 L−A 即 aihelms 不再追踪的孤儿,逐个删除。best-effort,失败只记录不抛出。
+    """
+    litellm_models = await litellm_client.list_models()
+    tracked = await model_repo.find_all_litellm_model_ids(session)
+    litellm_ids = {
+        (m.get("model_info") or {}).get("id")
+        for m in litellm_models
+        if (m.get("model_info") or {}).get("id")
+    }
+    orphans = litellm_ids - tracked
+
+    deleted = 0
+    failed = 0
+    for oid in orphans:
+        try:
+            await litellm_client.delete_model(oid)
+            deleted += 1
+        except litellm_client.LiteLLMError as e:
+            if "404" in str(e):
+                logger.warning("orphan litellm model already gone: %s", oid)
+                deleted += 1
+            else:
+                logger.error("failed to delete orphan litellm model %s: %s", oid, e)
+                failed += 1
+    logger.info(
+        "litellm deployment reconcile done: checked=%d tracked=%d orphan=%d deleted=%d failed=%d",
+        len(litellm_ids),
+        len(tracked),
+        len(orphans),
+        deleted,
+        failed,
+    )
+    return {
+        "checked": len(litellm_ids),
+        "tracked": len(tracked),
+        "orphan": len(orphans),
+        "deleted": deleted,
+        "failed": failed,
+    }
+
 
 # --- Deployment helpers ---
 

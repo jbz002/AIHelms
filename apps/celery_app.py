@@ -56,6 +56,10 @@ celery_app.conf.beat_schedule = {
         "task": "doc.reconcile_crawl",
         "schedule": 120,
     },
+    "reconcile-litellm-deployments": {
+        "task": "model.reconcile_litellm",
+        "schedule": crontab(hour=5, minute=7),
+    },
 }
 
 # 显式导入 tasks 包以注册所有 celery 任务

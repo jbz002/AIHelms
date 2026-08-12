@@ -96,7 +96,7 @@ SELECT count(*) FROM "LiteLLM_ProxyModelTable" WHERE model_name LIKE '%deepseek-
 - [x] litellm `LiteLLM_ProxyModelTable` deepseek 残留 = 0
 - [x] aihelms `models` / `model_deployments` = 0
 - [x] `ai_keys.models` 无 deepseek 引用
-- [ ] 反向对账任务落地后，再次删模型验证无残留（待开发）
+- [x] 反向对账任务已落地（2026-08-12）：`model.reconcile_litellm` 每日定时 + `delete_model` 末尾即时；本地注入孤儿验证 orphan 清掉、追踪记录不动；删模型末尾挂钩待线上验证
 
 ## 相关文件
 
