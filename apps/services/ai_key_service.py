@@ -737,36 +737,52 @@ async def remove_public_resource_from_all_keys(
     resource_type: str,
     resource_id: str | int,
 ) -> int:
-    """从所有主 Key 中移除一个公开资源。返回更新的 Key 数量。"""
-    all_main_keys = await ai_key_repo.find_all_main_keys(session)
+    """从所有引用该资源的 Key（含场景 Key）中移除一个公开资源。返回更新的 Key 数量。"""
+    finder = {
+        "models": ai_key_repo.find_keys_referencing_model,
+        "skills": ai_key_repo.find_keys_referencing_skill,
+        "mcps": ai_key_repo.find_keys_referencing_mcp,
+        "agents": ai_key_repo.find_keys_referencing_agent,
+    }.get(resource_type)
+    keys = (
+        await finder(session, resource_id)
+        if finder
+        else await ai_key_repo.find_all_main_keys(session)
+    )
     updated = 0
-    for key in all_main_keys:
+    for key in keys:
         field = getattr(key, resource_type, None)
-        if field is None:
+        if field is None or resource_id not in field:
             continue
-        if resource_id in field:
-            while resource_id in field:
-                field.remove(resource_id)
-            from sqlalchemy.orm.attributes import flag_modified
+        setattr(key, resource_type, [x for x in field if x != resource_id])
+        from sqlalchemy.orm.attributes import flag_modified
 
-            flag_modified(key, resource_type)
-            updated += 1
-            if resource_type in ("models", "mcps"):
-                try:
-                    await _sync_key_to_litellm(
-                        key,
-                        models_changed=resource_type == "models",
-                        mcps_changed=resource_type == "mcps",
-                        budget_changed=False,
-                        model_budgets_changed=False,
-                        rate_limits_changed=key.rate_limit_mode
-                        == RATE_LIMIT_MODE_PER_MODEL,
-                        session=session,
-                    )
-                except litellm_client.LiteLLMError:
-                    logger.warning(
-                        "remove resource sync to litellm failed for key %s", key.id
-                    )
+        flag_modified(key, resource_type)
+        # mcps 额外清理 mcp_budgets（dict key 为 str(server_id)）
+        if resource_type == "mcps":
+            budget_key = str(resource_id)
+            if key.mcp_budgets and budget_key in key.mcp_budgets:
+                budgets = dict(key.mcp_budgets)
+                budgets.pop(budget_key, None)
+                key.mcp_budgets = budgets
+                flag_modified(key, "mcp_budgets")
+        updated += 1
+        if resource_type in ("models", "mcps"):
+            try:
+                await _sync_key_to_litellm(
+                    key,
+                    models_changed=resource_type == "models",
+                    mcps_changed=resource_type == "mcps",
+                    budget_changed=False,
+                    model_budgets_changed=False,
+                    rate_limits_changed=key.rate_limit_mode
+                    == RATE_LIMIT_MODE_PER_MODEL,
+                    session=session,
+                )
+            except litellm_client.LiteLLMError:
+                logger.warning(
+                    "remove resource sync to litellm failed for key %s", key.id
+                )
     if updated:
         await session.flush()
     return updated

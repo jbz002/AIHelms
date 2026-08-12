@@ -371,6 +371,21 @@ async def _remove_model_from_all_keys(session: AsyncSession, model_id: str) -> N
     await session.flush()
 
 
+async def _remove_model_from_access_groups(
+    session: AsyncSession, model_id: str
+) -> None:
+    """删除模型时，从所有引用该模型的访问组 model_ids 中移除。"""
+    from sqlalchemy.orm.attributes import flag_modified
+
+    groups = await model_repo.find_access_groups_referencing_model(session, model_id)
+    for g in groups:
+        if g.model_ids and model_id in g.model_ids:
+            g.model_ids = [m for m in g.model_ids if m != model_id]
+            flag_modified(g, "model_ids")
+    if groups:
+        await session.flush()
+
+
 async def delete_model(session: AsyncSession, model_id: int) -> None:
     model = await model_repo.find_by_id(session, model_id)
     if not model:
@@ -395,9 +410,10 @@ async def delete_model(session: AsyncSession, model_id: int) -> None:
                     )
                     raise ConflictError("LiteLLM 侧删除失败，请稍后重试")
 
-    # 从所有 Key（含场景 Key）中移除该模型
+    # 从所有 Key（含场景 Key）与访问组中移除该模型
     if model.model_id:
         await _remove_model_from_all_keys(session, model.model_id)
+        await _remove_model_from_access_groups(session, model.model_id)
 
     # 硬删除 — 用 Core-level DELETE 绕过 ORM 关系处理，
     # 避免 selectin 加载的 deployments 被 SQLAlchemy 尝试 SET NULL FK
@@ -410,17 +426,22 @@ async def delete_model(session: AsyncSession, model_id: int) -> None:
 
     # 观测:commit 后重查 DB 真值,捕获"UPDATE 写旧值"偶发现场
     if mid:
-        leaked = await ai_key_repo.find_keys_referencing_model(session, mid)
-        if leaked:
+        leaked_keys = await ai_key_repo.find_keys_referencing_model(session, mid)
+        leaked_groups = await model_repo.find_access_groups_referencing_model(
+            session, mid
+        )
+        if leaked_keys or leaked_groups:
             logger.warning(
-                "delete_model cleanup LEAK: model_id=%s still in %d keys after commit: %s",
+                "delete_model cleanup LEAK: model_id=%s still in %d keys / %d access_groups after commit: keys=%s groups=%s",
                 mid,
-                len(leaked),
-                [(k.id, k.models) for k in leaked],
+                len(leaked_keys),
+                len(leaked_groups),
+                [(k.id, k.models) for k in leaked_keys],
+                [(g.id, g.group_name) for g in leaked_groups],
             )
         else:
             logger.info(
-                "delete_model cleanup verified: model_id=%s removed from all keys",
+                "delete_model cleanup verified: model_id=%s removed from all keys and access_groups",
                 mid,
             )
 

@@ -221,7 +221,7 @@ async def get_daily_active_users(
     sql = text(
         "SELECT c.summary_date::date AS d, COUNT(DISTINCT c.user_id) AS dau"
         " FROM aihelms.cost_summary_daily c"
-        " JOIN aihelms.users u ON u.id = c.user_id AND u.is_active = true"
+        " LEFT JOIN aihelms.users u ON u.id = c.user_id"
         " WHERE c.summary_date >= :start AND c.summary_date <= :end AND c.user_id IS NOT NULL"
         f"{scope_filter}"
         " GROUP BY 1 ORDER BY 1"
@@ -248,7 +248,7 @@ async def get_user_call_counts(
     )
     sql = text(
         "SELECT c.user_id, SUM(c.total_requests) AS calls FROM aihelms.cost_summary_daily c"
-        " JOIN aihelms.users u ON u.id = c.user_id AND u.is_active = true"
+        " LEFT JOIN aihelms.users u ON u.id = c.user_id"
         " WHERE c.summary_date >= :start AND c.summary_date <= :end AND c.user_id IS NOT NULL"
         f"{scope_filter} GROUP BY c.user_id"
     )
@@ -274,7 +274,7 @@ async def get_daily_heavy_user_ratio(
         " FROM ("
         "   SELECT c.summary_date::date AS d, c.user_id, SUM(c.total_requests) AS calls"
         "   FROM aihelms.cost_summary_daily c"
-        "   JOIN aihelms.users u ON u.id = c.user_id AND u.is_active = true"
+        "   LEFT JOIN aihelms.users u ON u.id = c.user_id"
         "   WHERE c.summary_date >= :start AND c.summary_date <= :end AND c.user_id IS NOT NULL"
         f"{scope_filter}"
         "   GROUP BY 1, 2"

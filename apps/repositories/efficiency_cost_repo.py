@@ -143,13 +143,13 @@ async def get_cost_by_dept(
     session: AsyncSession, start_date: date, end_date: date
 ) -> list[dict]:
     sql = text(
-        "SELECT d.name, COALESCE(SUM(c.internal_cost), 0) AS internal_cost,"
+        "SELECT COALESCE(d.name,'未分配部门') AS name, COALESCE(SUM(c.internal_cost), 0) AS internal_cost,"
         " COALESCE(SUM(c.external_cost), 0) AS external_cost"
         " FROM aihelms.cost_summary_daily c"
-        " JOIN aihelms.user_departments ud_dim ON ud_dim.user_id = c.user_id"
-        " JOIN aihelms.departments d ON d.id = ud_dim.department_id"
+        " LEFT JOIN aihelms.user_departments ud_dim ON ud_dim.user_id = c.user_id"
+        " LEFT JOIN aihelms.departments d ON d.id = ud_dim.department_id"
         " WHERE c.summary_date >= :start AND c.summary_date <= :end"
-        " GROUP BY d.name ORDER BY internal_cost DESC"
+        " GROUP BY COALESCE(d.name,'未分配部门') ORDER BY internal_cost DESC"
     )
     result = await session.execute(sql, {"start": start_date, "end": end_date})
     return [
@@ -167,12 +167,12 @@ async def get_dept_per_capita_cost(
     session: AsyncSession, start_date: date, end_date: date
 ) -> list[dict]:
     sql = text(
-        "SELECT d.name, COALESCE(SUM(c.internal_cost), 0) AS cost, COUNT(DISTINCT c.user_id) AS users"
+        "SELECT COALESCE(d.name,'未分配部门') AS name, COALESCE(SUM(c.internal_cost), 0) AS cost, COUNT(DISTINCT c.user_id) AS users"
         " FROM aihelms.cost_summary_daily c"
-        " JOIN aihelms.user_departments ud_dim ON ud_dim.user_id = c.user_id"
-        " JOIN aihelms.departments d ON d.id = ud_dim.department_id"
+        " LEFT JOIN aihelms.user_departments ud_dim ON ud_dim.user_id = c.user_id"
+        " LEFT JOIN aihelms.departments d ON d.id = ud_dim.department_id"
         " WHERE c.summary_date >= :start AND c.summary_date <= :end AND c.user_id IS NOT NULL"
-        " GROUP BY d.name ORDER BY cost DESC"
+        " GROUP BY COALESCE(d.name,'未分配部门') ORDER BY cost DESC"
     )
     result = await session.execute(sql, {"start": start_date, "end": end_date})
     return [
@@ -187,15 +187,15 @@ async def get_dept_per_capita_cost(
 def _cost_dimension_config(dimension: str) -> tuple[str, str, str]:
     if dimension == "project":
         return (
-            "p.name",
-            "JOIN aihelms.user_projects up_dim ON up_dim.user_id = c.user_id "
-            "JOIN aihelms.projects p ON p.id = up_dim.project_id",
+            "COALESCE(p.name,'未分配项目')",
+            "LEFT JOIN aihelms.user_projects up_dim ON up_dim.user_id = c.user_id "
+            "LEFT JOIN aihelms.projects p ON p.id = up_dim.project_id",
             "项目",
         )
     return (
-        "d.name",
-        "JOIN aihelms.user_departments ud_dim ON ud_dim.user_id = c.user_id "
-        "JOIN aihelms.departments d ON d.id = ud_dim.department_id",
+        "COALESCE(d.name,'未分配部门')",
+        "LEFT JOIN aihelms.user_departments ud_dim ON ud_dim.user_id = c.user_id "
+        "LEFT JOIN aihelms.departments d ON d.id = ud_dim.department_id",
         "部门",
     )
 
@@ -318,13 +318,13 @@ async def get_cost_detail_by_department(
         start_date, end_date, cost_type, department_id, "c", project_id
     )
     sql = text(
-        f"SELECT d.name, COALESCE(SUM(c.internal_cost), 0) AS internal_cost,"
+        f"SELECT COALESCE(d.name,'未分配部门') AS name, COALESCE(SUM(c.internal_cost), 0) AS internal_cost,"
         f" COALESCE(SUM(c.external_cost), 0) AS external_cost,"
         f" COALESCE(SUM(c.total_requests), 0) AS requests, COUNT(DISTINCT c.user_id) AS users"
         f" FROM aihelms.cost_summary_daily c"
-        f" JOIN aihelms.user_departments ud_dim ON ud_dim.user_id = c.user_id"
-        f" JOIN aihelms.departments d ON d.id = ud_dim.department_id"
-        f" {filters} GROUP BY d.name ORDER BY internal_cost DESC"
+        f" LEFT JOIN aihelms.user_departments ud_dim ON ud_dim.user_id = c.user_id"
+        f" LEFT JOIN aihelms.departments d ON d.id = ud_dim.department_id"
+        f" {filters} GROUP BY COALESCE(d.name,'未分配部门') ORDER BY internal_cost DESC"
     )
     result = await session.execute(sql, params)
     return [
@@ -706,7 +706,7 @@ async def get_cost_detail_scope_users(
         " COALESCE(SUM(c.cache_creation_tokens), 0) AS cache_creation_tokens,"
         " COALESCE(SUM(c.reasoning_tokens), 0) AS reasoning_tokens"
         " FROM aihelms.cost_summary_daily c"
-        " JOIN aihelms.users u ON u.id = c.user_id"
+        " LEFT JOIN aihelms.users u ON u.id = c.user_id"
         " LEFT JOIN user_dept udp ON udp.user_id = c.user_id"
         f" {filters}{member_filter}"
         " GROUP BY c.user_id, u.username, u.display_name, udp.path"
@@ -767,7 +767,7 @@ async def get_user_top10(
         " ORDER BY ud.user_id, length(ap.path) DESC"
         " )"
         " SELECT c.user_id,"
-        " COALESCE(NULLIF(u.display_name, ''), u.username, '') AS user_name,"
+        " COALESCE(NULLIF(u.display_name, ''), u.username, '已删除用户') AS user_name,"
         " COALESCE(udp.path, '') AS department,"
         " COALESCE(SUM(c.internal_cost), 0) AS internal_cost,"
         " COALESCE(SUM(c.input_tokens), 0) AS input_tokens,"
@@ -777,7 +777,7 @@ async def get_user_top10(
         " COALESCE(SUM(c.reasoning_tokens), 0) AS reasoning_tokens,"
         " COALESCE(SUM(c.total_requests), 0) AS requests"
         " FROM aihelms.cost_summary_daily c"
-        " JOIN aihelms.users u ON u.id = c.user_id AND u.is_active = true"
+        " LEFT JOIN aihelms.users u ON u.id = c.user_id"
         " LEFT JOIN user_dept udp ON udp.user_id = c.user_id"
         f" {filters} AND c.user_id IS NOT NULL"
         " GROUP BY c.user_id, u.display_name, u.username, udp.path"

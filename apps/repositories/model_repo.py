@@ -231,6 +231,18 @@ async def find_all_access_groups(session: AsyncSession) -> list[ModelAccessGroup
     return list(result.scalars().all())
 
 
+async def find_access_groups_referencing_model(
+    session: AsyncSession, model_id_str: str
+) -> list[ModelAccessGroup]:
+    """查找 model_ids 中引用了指定 model_id 字符串的所有访问组。"""
+    result = await session.execute(
+        select(ModelAccessGroup).where(
+            ModelAccessGroup.model_ids.contains([model_id_str])
+        )
+    )
+    return list(result.scalars().all())
+
+
 # --- Router Settings ---
 
 

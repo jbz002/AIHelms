@@ -142,3 +142,32 @@ async def test_remove_model_sync_failure_does_not_raise(monkeypatch):
     assert key_a.models == []
     assert key_b.models == []
     assert call_count["n"] == 2
+
+
+@pytest.mark.asyncio
+async def test_remove_model_from_access_groups_cleans_references(monkeypatch):
+    """删除模型时须从引用该模型的访问组 model_ids 移除（历史缺陷：delete_model 不清访问组）。"""
+    from repositories import model_repo
+
+    group_a = SimpleNamespace(id=1, group_name="A", model_ids=["gpt-4o", "claude"])
+    group_b = SimpleNamespace(id=2, group_name="B", model_ids=["gpt-4o"])
+    group_c = SimpleNamespace(id=3, group_name="C", model_ids=["claude"])
+
+    async def fake_find_groups(session, model_id_str):
+        return [group_a, group_b]
+
+    async def fake_flush():
+        pass
+
+    monkeypatch.setattr(
+        model_repo, "find_access_groups_referencing_model", fake_find_groups
+    )
+    monkeypatch.setattr(sa_attrs, "flag_modified", lambda *a, **k: None)
+
+    await model_service._remove_model_from_access_groups(
+        SimpleNamespace(flush=fake_flush), "gpt-4o"
+    )
+
+    assert group_a.model_ids == ["claude"]
+    assert group_b.model_ids == []
+    assert group_c.model_ids == ["claude"]  # 未引用的访问组不动

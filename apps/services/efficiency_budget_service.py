@@ -69,10 +69,10 @@ async def get_budget(
     if selected_key_ids is not None:
         keys = [key for key in keys if int(key.id) in selected_key_ids]
     total_budget = sum(float(k.budget_limit) for k in keys)
-    key_ids = [int(key.id) for key in keys] if selected_key_ids is not None else None
+    key_ids = [int(key.id) for key in keys]
     has_scope_filter = bool(department_ids or project_ids)
-    total_used = await efficiency_repo.get_total_cost(
-        session, month_start, usage_end, department_ids, project_ids
+    total_used = await efficiency_repo.get_budget_used_for_keys(
+        session, month_start, usage_end, key_ids
     )
     execution_rate = (
         round(total_used / total_budget * 100, 1) if total_budget > 0 else 0

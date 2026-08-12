@@ -84,6 +84,36 @@ async def find_keys_referencing_model(
     return list(result.scalars().all())
 
 
+async def find_keys_referencing_skill(
+    session: AsyncSession, skill_id: int
+) -> list[AiKey]:
+    """查找 skills 数组中引用了指定 skill id 的所有 Key（含场景 Key）。"""
+    result = await session.execute(
+        select(AiKey).where(AiKey.skills.contains([skill_id]))
+    )
+    return list(result.scalars().all())
+
+
+async def find_keys_referencing_mcp(
+    session: AsyncSession, server_id: int
+) -> list[AiKey]:
+    """查找 mcps 数组中引用了指定 MCP Server id 的所有 Key（含场景 Key）。"""
+    result = await session.execute(
+        select(AiKey).where(AiKey.mcps.contains([server_id]))
+    )
+    return list(result.scalars().all())
+
+
+async def find_keys_referencing_agent(
+    session: AsyncSession, agent_id: int
+) -> list[AiKey]:
+    """查找 agents 数组中引用了指定 Agent id 的所有 Key（含场景 Key）。"""
+    result = await session.execute(
+        select(AiKey).where(AiKey.agents.contains([agent_id]))
+    )
+    return list(result.scalars().all())
+
+
 async def find_main_key(
     session: AsyncSession, owner_type: str, owner_id: int, key_type: str
 ) -> AiKey | None:

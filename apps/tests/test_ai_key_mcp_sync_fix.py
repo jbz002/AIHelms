@@ -23,20 +23,23 @@ async def test_remove_mcp_public_resource_triggers_litellm_sync(monkeypatch):
         litellm_key_id="lit-1",
         mcps=[42],
         models=[],
+        mcp_budgets={},
         rate_limit_mode="none",
     )
 
     async def fake_sync(key_arg, **flags):
         sync_calls.append(flags)
 
-    async def fake_find_main(session):
+    async def fake_find_referencing_mcp(session, server_id):
         return [key]
 
     async def fake_flush():
         pass
 
     monkeypatch.setattr(ai_key_service, "_sync_key_to_litellm", fake_sync)
-    monkeypatch.setattr(ai_key_repo, "find_all_main_keys", fake_find_main)
+    monkeypatch.setattr(
+        ai_key_repo, "find_keys_referencing_mcp", fake_find_referencing_mcp
+    )
     monkeypatch.setattr(sa_attrs, "flag_modified", lambda *a, **k: None)
 
     fake_session = SimpleNamespace(flush=fake_flush)
@@ -50,6 +53,52 @@ async def test_remove_mcp_public_resource_triggers_litellm_sync(monkeypatch):
     assert sync_calls, "mcps 移除应触发 LiteLLM 同步（历史缺陷：曾只对 models 触发）"
     assert sync_calls[0]["mcps_changed"] is True
     assert sync_calls[0]["models_changed"] is False
+
+
+@pytest.mark.asyncio
+async def test_remove_skill_public_resource_clears_scene_key(monkeypatch):
+    """remove_public_resource_from_all_keys 须覆盖场景 Key（find_keys_referencing_*），不只主 Key。
+
+    历史缺陷：只遍历 find_all_main_keys，场景 Key 的 skills 残留已删资源。
+    """
+
+    main_key = SimpleNamespace(
+        id=1,
+        litellm_key_id="lit-main",
+        skills=[10, 20],
+        models=[],
+        rate_limit_mode="none",
+    )
+    scene_key = SimpleNamespace(
+        id=2,
+        litellm_key_id="lit-scene",
+        skills=[10],
+        models=[],
+        rate_limit_mode="none",
+    )
+
+    async def fake_sync(key_arg, **flags):
+        raise AssertionError("skills 移除不应触发 LiteLLM 同步")
+
+    async def fake_find_referencing_skill(session, skill_id):
+        return [main_key, scene_key]
+
+    async def fake_flush():
+        pass
+
+    monkeypatch.setattr(ai_key_service, "_sync_key_to_litellm", fake_sync)
+    monkeypatch.setattr(
+        ai_key_repo, "find_keys_referencing_skill", fake_find_referencing_skill
+    )
+    monkeypatch.setattr(sa_attrs, "flag_modified", lambda *a, **k: None)
+
+    updated = await ai_key_service.remove_public_resource_from_all_keys(
+        SimpleNamespace(flush=fake_flush), "skills", 10
+    )
+
+    assert updated == 2
+    assert main_key.skills == [20]
+    assert scene_key.skills == []  # 场景 Key 也清理（历史缺陷：曾被漏掉）
 
 
 @pytest.mark.asyncio
