@@ -11,10 +11,13 @@ import {
   getLibraryInterfaces,
   extractLibraryInterfaces,
   getLibraryExtractStatus,
+  extractDocumentInterfaces,
+  getDocumentExtractStatus,
   toast,
 } from '@aihelms/shared'
 import { Loader2, Code2, Wand2, Search, ChevronDown, ChevronRight } from 'lucide-vue-next'
 import DocsOperationDetail from './DocsOperationDetail.vue'
+import DocsExtractConfirmDialog from './DocsExtractConfirmDialog.vue'
 
 interface Props {
   libraryName: string
@@ -30,13 +33,31 @@ const result = ref<LibraryInterfacesResult | null>(null)
 const selectedKey = ref<string | null>(null)
 
 const submitting = ref(false)
+const showExtractConfirm = ref(false)
 const batchStatus = ref<LibraryBatchExtractStatus | null>(null)
 let batchTimer: number | null = null
+const submittingDoc = ref(false)
+let docExtractTimer: number | null = null
 
 const isBatchRunning = computed(
   () => batchStatus.value?.status === 'queued' || batchStatus.value?.status === 'running',
 )
 const isBusy = computed(() => isBatchRunning.value || submitting.value)
+
+// 库是否已提取过：有接口或有过完成的批量任务。用于按钮文案区分首次提取与增量更新
+const hasExtracted = computed(
+  () =>
+    (result.value?.endpoints?.length ?? 0) > 0 ||
+    batchStatus.value?.finished_at != null,
+)
+const batchTitle = computed(() => {
+  const hint = t('docs.interfaces.batchHint')
+  const b = batchStatus.value
+  if (b?.finished_at) {
+    return `${hint}\n上次：${b.total_documents} 文档 / ${b.total_endpoints} 接口 / 跳过 ${b.skipped_documents ?? 0}`
+  }
+  return hint
+})
 
 const METHOD_COLOR: Record<HttpMethod, string> = {
   get: 'bg-green-50 text-green-700 ring-green-200',
@@ -122,6 +143,11 @@ async function confirmBatchExtract(): Promise<void> {
   }
 }
 
+async function onConfirmExtract(): Promise<void> {
+  showExtractConfirm.value = false
+  await confirmBatchExtract()
+}
+
 function startBatchPoll(): void {
   stopBatchPoll()
   batchTimer = window.setInterval(pollBatch, 5000)
@@ -167,6 +193,50 @@ watch(
   },
 )
 
+async function confirmDocExtract(): Promise<void> {
+  if (submittingDoc.value || props.docId == null) return
+  submittingDoc.value = true
+  try {
+    await extractDocumentInterfaces(props.docId)
+    toast.success(t('docs.interfaces.docExtractSubmitted'))
+    startDocExtractPoll()
+  } catch (e) {
+    toast.error((e as Error).message || t('docs.interfaces.extractFailed'))
+    submittingDoc.value = false
+  }
+}
+
+function startDocExtractPoll(): void {
+  stopDocExtractPoll()
+  docExtractTimer = window.setInterval(pollDocExtract, 5000)
+}
+function stopDocExtractPoll(): void {
+  if (docExtractTimer !== null) {
+    window.clearInterval(docExtractTimer)
+    docExtractTimer = null
+  }
+}
+async function pollDocExtract(): Promise<void> {
+  if (props.docId == null) return
+  try {
+    const s = await getDocumentExtractStatus(props.docId)
+    if (!s) return
+    if (s.status === 'completed') {
+      stopDocExtractPoll()
+      submittingDoc.value = false
+      toast.success(t('docs.interfaces.docExtractDone', { n: s.endpoint_count ?? 0 }))
+      await load()
+    } else if (s.status === 'failed') {
+      stopDocExtractPoll()
+      submittingDoc.value = false
+      toast.error(s.error_message || t('docs.interfaces.extractFailed'))
+    }
+  } catch {
+    stopDocExtractPoll()
+    submittingDoc.value = false
+  }
+}
+
 onMounted(() => {
   load()
   getLibraryExtractStatus(props.libraryName).then((s) => {
@@ -174,7 +244,10 @@ onMounted(() => {
     if (s && (s.status === 'queued' || s.status === 'running')) startBatchPoll()
   })
 })
-onUnmounted(stopBatchPoll)
+onUnmounted(() => {
+  stopBatchPoll()
+  stopDocExtractPoll()
+})
 </script>
 
 <template>
@@ -188,11 +261,12 @@ onUnmounted(stopBatchPoll)
         <button
           class="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-60"
           :disabled="isBusy"
-          @click="confirmBatchExtract"
+          :title="batchTitle"
+          @click="showExtractConfirm = true"
         >
           <Loader2 v-if="isBatchRunning || submitting" class="h-4 w-4 animate-spin" />
           <Wand2 v-else class="h-4 w-4" />
-          {{ isBatchRunning ? t('docs.interfaces.extracting', { done: batchStatus?.completed_documents ?? 0, total: batchStatus?.total_documents ?? 0 }) : t('docs.interfaces.batchExtract') }}
+          {{ isBatchRunning ? t('docs.interfaces.extracting', { done: batchStatus?.completed_documents ?? 0, total: batchStatus?.total_documents ?? 0 }) : (hasExtracted ? t('docs.interfaces.updateExtract') : t('docs.interfaces.batchExtract')) }}
         </button>
       </div>
     </div>
@@ -207,6 +281,16 @@ onUnmounted(stopBatchPoll)
     >
       <Code2 class="h-10 w-10 text-slate-300" />
       <p class="mt-3 px-6 text-center text-sm text-slate-500">{{ t('docs.interfaces.empty') }}</p>
+      <button
+        v-if="canManage && docId != null"
+        class="mt-4 inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-60"
+        :disabled="submittingDoc"
+        @click="confirmDocExtract"
+      >
+        <Loader2 v-if="submittingDoc" class="h-4 w-4 animate-spin" />
+        <Wand2 v-else class="h-4 w-4" />
+        {{ submittingDoc ? t('docs.interfaces.extractingSingle') : t('docs.interfaces.extractSingle') }}
+      </button>
     </div>
 
     <div v-else class="flex flex-col gap-4 lg:flex-row">
@@ -273,5 +357,12 @@ onUnmounted(stopBatchPoll)
         </div>
       </div>
     </div>
+
+    <DocsExtractConfirmDialog
+      :visible="showExtractConfirm"
+      :library-name="libraryName"
+      @close="showExtractConfirm = false"
+      @confirm="onConfirmExtract"
+    />
   </div>
 </template>

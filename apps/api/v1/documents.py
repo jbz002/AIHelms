@@ -217,6 +217,19 @@ async def get_library_extract_status(
     return {"code": 200, "message": "ok", "data": result}
 
 
+@library_router.get("/{library_name}/extract-preview")
+async def get_library_extract_preview(
+    library_name: str,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("document:read")),
+):
+    """预览库级提取：将提取（新增/变更）与将跳过（未变更）的文档分组，前端确认弹窗用。"""
+    result = await document_api_batch_service.preview_library_extraction(
+        session, library_name
+    )
+    return {"code": 200, "message": "ok", "data": result}
+
+
 @library_router.post("/{library_name}/classify-interfaces", summary="分类库接口")
 async def classify_library_interfaces(
     library_name: str,
@@ -423,6 +436,7 @@ async def update_document(
             title=req.title,
             content=req.content,
             metadata_=req.metadata_,
+            current_user=current_user,
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="文档不存在")

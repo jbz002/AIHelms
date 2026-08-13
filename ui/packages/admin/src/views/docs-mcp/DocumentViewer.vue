@@ -8,7 +8,6 @@ import {
   getDocument,
   updateDocument,
   ingestDocument,
-  extractDocumentInterfaces,
   getDocumentExtractStatus,
   toast,
 } from '@aihelms/shared'
@@ -82,20 +81,13 @@ async function reingestInBackground(): Promise<void> {
 }
 
 async function triggerExtract(): Promise<void> {
-  // 入库完成后自动重新提取接口（读平台 DB content，不依赖 docs-mcp 入库结果）
-  try {
-    await extractDocumentInterfaces(docId.value)
-    toast.info('内容已变更，正在重新提取接口…')
-  } catch (e) {
-    // 409 进行中 / 400 内容为空 / 403 无权限 —— 仅 toast，不阻断主流程
-    toast.error((e as Error).message || '提交接口提取失败')
-    return
-  }
+  // 后端在内容变更且文档已有接口时已自动派发提取（document_service.update_document），
+  // 此处仅轮询提取状态展示进度，不主动派发，避免与后端重复触发 409。
   for (let i = 0; i < 60; i++) {
     await sleep(5000)
     try {
       const s = await getDocumentExtractStatus(docId.value)
-      if (!s) return
+      if (!s) return // 后端未派发（文档无历史接口），无需等待
       if (s.status === 'completed') {
         toast.success(`接口提取完成，共 ${s.endpoint_count} 个接口`)
         return

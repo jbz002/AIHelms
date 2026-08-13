@@ -27,6 +27,7 @@ import type {
   DocumentDashboardSummary,
   DocumentApiExtractStatus,
   LibraryBatchExtractStatus,
+  LibraryExtractPreview,
   LibraryClassifyStatus,
   LibraryEndpoint,
   LibraryInterfacesResult,
@@ -415,6 +416,12 @@ export function extractLibraryInterfaces(libraryName: string) {
 export function getLibraryExtractStatus(libraryName: string) {
   return request<LibraryBatchExtractStatus | null>(
     `/api/v1/document-libraries/${encodeURIComponent(libraryName)}/extract-status`,
+  )
+}
+
+export function getLibraryExtractPreview(libraryName: string) {
+  return request<LibraryExtractPreview>(
+    `/api/v1/document-libraries/${encodeURIComponent(libraryName)}/extract-preview`,
   )
 }
 

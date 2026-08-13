@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from exceptions import NotFoundError
 from models.db import Document
-from repositories import crawled_page_repo, doc_upload_repo, document_repo
+from repositories import (
+    crawled_page_repo,
+    doc_upload_repo,
+    document_api_repo,
+    document_repo,
+)
 from services import document_library_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
@@ -154,22 +159,54 @@ async def update_document(
     title: str | None = None,
     content: str | None = None,
     metadata_: dict | None = None,
+    current_user: dict | None = None,
 ) -> dict:
-    """更新文档标题/内容/元数据。内容变更时自动重置入库状态。"""
+    """更新文档标题/内容/元数据。内容变更时重置入库状态并按需重提接口。"""
     doc = await document_repo.find_by_id(session, document_id)
     if doc is None:
         raise NotFoundError("document", document_id)
     await document_repo.update_document_fields(
         session, document_id, title=title, content=content, metadata_=metadata_
     )
+    content_changed = False
     if content is not None:
         new_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
         if new_hash != doc.content_hash:
             await document_repo.update_content_hash(session, document_id, new_hash)
             await document_repo.update_ingest_status(session, document_id, "pending")
+            content_changed = True
     await session.commit()
     await session.refresh(doc)
+
+    # 内容变更且文档已有接口 → 后端直接派发提取，不依赖前端轮询或入库结果
+    # （提取只读平台 DB content，与 docs-mcp 向量化无关）。无历史接口的新文档
+    # 不触发，符合"新增不自动提取"的省 token 设计。
+    if content_changed and current_user is not None:
+        await _maybe_reextract_interfaces(session, doc, current_user)
+
     return _serialize_document(doc)
+
+
+async def _maybe_reextract_interfaces(
+    session: AsyncSession, doc: Document, current_user: dict
+) -> None:
+    """文档已有历史接口时派发一次提取；失败不影响编辑保存。
+
+    复用 document_api_service.create_extraction（含并发防护与 Celery 派发）。
+    无历史接口的文档跳过（避免对未提取过的文档浪费 LLM 调用）。
+    """
+    try:
+        if await document_api_repo.count_by_document(session, doc.id) <= 0:
+            return
+        from services import document_api_service
+
+        await document_api_service.create_extraction(session, doc.id, current_user)
+        logger.info("auto re-extract enqueued after edit: doc_id=%s", doc.id)
+    except Exception:
+        # 并发冲突(已有任务在跑)/派发异常均不影响编辑结果，仅记日志
+        logger.warning(
+            "auto re-extract interfaces skipped: doc_id=%s", doc.id, exc_info=True
+        )
 
 
 async def delete_document(session: AsyncSession, document_id: int) -> None:

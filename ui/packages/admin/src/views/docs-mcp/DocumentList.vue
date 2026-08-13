@@ -18,6 +18,8 @@ import {
   createCrawlTask,
   getDocsMcpEventSourceUrl,
   getDocsMcpLibraryDetail,
+  extractLibraryInterfaces,
+  getLibraryExtractStatus,
   toast,
 } from '@aihelms/shared'
 import {
@@ -33,10 +35,12 @@ import {
   Code2,
   Trash2,
   Search,
+  Wand2,
 } from 'lucide-vue-next'
 import ScrapeJobDialog from './components/ScrapeJobDialog.vue'
 import AddVersionDialog from './components/AddVersionDialog.vue'
 import UploadDialog from './components/UploadDialog.vue'
+import ExtractConfirmDialog from './components/ExtractConfirmDialog.vue'
 import SearchCard from './components/SearchCard.vue'
 import DocSummary from './components/DocSummary.vue'
 
@@ -60,6 +64,9 @@ const ingestingId = ref<number | null>(null)
 const deletingId = ref<number | null>(null)
 const deletingVersion = ref(false)
 const batchIngesting = ref(false)
+const extractingLib = ref(false)
+let libExtractTimer: number | null = null
+const showExtractConfirm = ref(false)
 const showScrapeDialog = ref(false)
 const showUploadDialog = ref(false)
 const library = ref<DocsMcpLibrary | null>(null)
@@ -306,6 +313,55 @@ async function handleBatchIngest(): Promise<void> {
   }
 }
 
+async function onConfirmExtract(): Promise<void> {
+  showExtractConfirm.value = false
+  await handleLibraryExtract()
+}
+
+async function handleLibraryExtract(): Promise<void> {
+  if (extractingLib.value) return
+  extractingLib.value = true
+  try {
+    await extractLibraryInterfaces(libraryName.value)
+    toast.success('批量提取任务已提交，完成后自动刷新')
+    pollLibExtract()
+  } catch (e) {
+    toast.error((e as Error).message || '提交批量提取失败')
+    extractingLib.value = false
+  }
+}
+
+function pollLibExtract(): void {
+  stopLibExtract()
+  libExtractTimer = window.setInterval(async () => {
+    try {
+      const s = await getLibraryExtractStatus(libraryName.value)
+      if (!s || (s.status !== 'queued' && s.status !== 'running')) {
+        stopLibExtract()
+        extractingLib.value = false
+        if (s?.status === 'completed') {
+          const skip = s.skipped_documents ?? 0
+          toast.success(`提取完成，共 ${s.total_endpoints} 个接口${skip ? `，跳过 ${skip} 个未变更文档` : ''}`)
+        } else if (s?.status === 'failed') {
+          toast.error('批量提取失败')
+        }
+        await loadDocuments()
+        await loadStats()
+      }
+    } catch {
+      stopLibExtract()
+      extractingLib.value = false
+    }
+  }, 5000)
+}
+
+function stopLibExtract(): void {
+  if (libExtractTimer) {
+    window.clearInterval(libExtractTimer)
+    libExtractTimer = null
+  }
+}
+
 async function handleSubmitJob(params: {
   url: string
   library: string
@@ -401,6 +457,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  stopLibExtract()
   if (eventSource) {
     eventSource.close()
     eventSource = null
@@ -444,6 +501,16 @@ onUnmounted(() => {
         删除版本
       </button>
       <div class="ml-auto flex items-center gap-2">
+        <button
+          class="inline-flex items-center gap-1.5 rounded-md border border-purple-300 bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700 hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="extractingLib"
+          title="仅提取新增/变更文档，未变更的自动跳过"
+          @click="showExtractConfirm = true"
+        >
+          <Loader2 v-if="extractingLib" class="h-4 w-4 animate-spin" />
+          <Wand2 v-else class="h-4 w-4" />
+          提取接口
+        </button>
         <button
           class="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
           @click="showScrapeDialog = true"
@@ -651,6 +718,12 @@ onUnmounted(() => {
       :version="effectiveVersion"
       :query="activeQuery"
       @close="showSummaryDrawer = false"
+    />
+    <ExtractConfirmDialog
+      :visible="showExtractConfirm"
+      :library-name="libraryName"
+      @close="showExtractConfirm = false"
+      @confirm="onConfirmExtract"
     />
   </div>
 </template>

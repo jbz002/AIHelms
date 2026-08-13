@@ -152,6 +152,43 @@ async def count_by_library(session: AsyncSession, library_name: str) -> int:
     return result.scalar_one()
 
 
+async def count_endpoints_grouped_by_library(
+    session: AsyncSession, library_name: str
+) -> dict[int, int]:
+    """该库每文档的接口数（{document_id: count}）—— 批量预览分类用，避免 N+1。"""
+    result = await session.execute(
+        select(DocumentApiEndpoint.document_id, func.count(DocumentApiEndpoint.id))
+        .join(Document, DocumentApiEndpoint.document_id == Document.id)
+        .where(func.lower(Document.library) == library_name.lower())
+        .group_by(DocumentApiEndpoint.document_id)
+    )
+    return {int(doc_id): int(cnt) for doc_id, cnt in result.all()}
+
+
+async def latest_completed_hash_by_library(
+    session: AsyncSession, library_name: str
+) -> dict[int, str]:
+    """该库每文档最近成功提取的 content_hash（{document_id: hash}）—— 批量预览用。
+
+    结果按 document_id、updated_at 倒序，Python 端按 document_id 去重保留首条（即最新）。
+    """
+    result = await session.execute(
+        select(DocumentApiSpec.document_id, DocumentApiSpec.content_hash)
+        .join(Document, DocumentApiSpec.document_id == Document.id)
+        .where(
+            func.lower(Document.library) == library_name.lower(),
+            DocumentApiSpec.status == "completed",
+        )
+        .order_by(DocumentApiSpec.document_id, DocumentApiSpec.updated_at.desc())
+    )
+    latest: dict[int, str] = {}
+    for doc_id, content_hash in result.all():
+        key = int(doc_id)
+        if key not in latest and content_hash:
+            latest[key] = str(content_hash)
+    return latest
+
+
 async def bulk_update_category(
     session: AsyncSession, updates: list[tuple[int, str]]
 ) -> None:

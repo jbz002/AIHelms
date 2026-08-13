@@ -9,11 +9,14 @@ import {
   getDocsMcpLibraryDetail,
   deleteDocsMcpVersion,
   deleteLibrary,
+  extractLibraryInterfaces,
+  getLibraryExtractStatus,
   toast,
 } from '@aihelms/shared'
-import { Loader2, Upload, Code2, FileText, Trash2, Plus, RefreshCw, ArrowLeft } from 'lucide-vue-next'
+import { Loader2, Upload, Code2, FileText, Trash2, Plus, RefreshCw, ArrowLeft, Wand2 } from 'lucide-vue-next'
 import DocsUploadDialog from '../../components/docs-center/DocsUploadDialog.vue'
 import DocsAddVersionDialog from '../../components/docs-center/DocsAddVersionDialog.vue'
+import DocsExtractConfirmDialog from '../../components/docs-center/DocsExtractConfirmDialog.vue'
 import { useDocsOwner } from '../../composables/useDocsOwner'
 
 const route = useRoute()
@@ -35,6 +38,9 @@ const selectedVersion = computed<string>({
 const { library, canManage } = useDocsOwner(libraryName)
 
 const loading = ref(false)
+const extractingLib = ref(false)
+let libExtractTimer: number | null = null
+const showExtractConfirm = ref(false)
 const documents = ref<Document[]>([])
 const uploadVisible = ref(false)
 const addVersionVisible = ref(false)
@@ -161,6 +167,57 @@ function onUploaded(ver: string): void {
   startVersionPoll(ver)
 }
 
+async function onConfirmExtract(): Promise<void> {
+  showExtractConfirm.value = false
+  await handleLibraryExtract()
+}
+
+async function handleLibraryExtract(): Promise<void> {
+  if (extractingLib.value) return
+  extractingLib.value = true
+  try {
+    await extractLibraryInterfaces(libraryName.value)
+    toast.success(t('docs.interfaces.batchSubmitted'))
+    pollLibExtract()
+  } catch (e) {
+    toast.error((e as Error).message || t('docs.interfaces.batchFailed'))
+    extractingLib.value = false
+  }
+}
+
+function pollLibExtract(): void {
+  stopLibExtract()
+  libExtractTimer = window.setInterval(async () => {
+    try {
+      const s = await getLibraryExtractStatus(libraryName.value)
+      if (!s || (s.status !== 'queued' && s.status !== 'running')) {
+        stopLibExtract()
+        extractingLib.value = false
+        if (s?.status === 'completed') {
+          const skip = s.skipped_documents ?? 0
+          toast.success(
+            t('docs.interfaces.batchDone', { n: s.total_endpoints ?? 0 }) +
+              (skip ? t('docs.interfaces.batchSkipped', { n: skip }) : ''),
+          )
+        } else if (s?.status === 'failed') {
+          toast.error(t('docs.interfaces.batchFailed'))
+        }
+        load()
+      }
+    } catch {
+      stopLibExtract()
+      extractingLib.value = false
+    }
+  }, 5000)
+}
+
+function stopLibExtract(): void {
+  if (libExtractTimer) {
+    window.clearInterval(libExtractTimer)
+    libExtractTimer = null
+  }
+}
+
 function onVersionAdded(ver: string): void {
   addVersionVisible.value = false
   startVersionPoll(ver)
@@ -252,6 +309,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stopVersionPoll()
+  stopLibExtract()
 })
 </script>
 
@@ -297,6 +355,16 @@ onUnmounted(() => {
         </button>
       </div>
       <div v-if="canManage" class="ml-auto flex items-center gap-1">
+        <button
+          class="inline-flex items-center gap-1 rounded-md border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="extractingLib"
+          :title="t('docs.interfaces.batchHint')"
+          @click="showExtractConfirm = true"
+        >
+          <Loader2 v-if="extractingLib" class="h-3.5 w-3.5 animate-spin" />
+          <Wand2 v-else class="h-3.5 w-3.5" />
+          {{ t('docs.interfaces.extractLib') }}
+        </button>
         <button
           class="inline-flex items-center gap-1 rounded-md border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100"
           @click="uploadVisible = true"
@@ -370,5 +438,6 @@ onUnmounted(() => {
 
     <DocsUploadDialog :visible="uploadVisible" :library-name="libraryName" :version="uploadVersion" :lock-version="versions.length > 0" @uploaded="onUploaded" @close="uploadVisible = false" />
     <DocsAddVersionDialog :visible="addVersionVisible" :library-name="libraryName" :default-version="nextVersion" @uploaded="onVersionAdded" @close="addVersionVisible = false" />
+    <DocsExtractConfirmDialog :visible="showExtractConfirm" :library-name="libraryName" @close="showExtractConfirm = false" @confirm="onConfirmExtract" />
   </div>
 </template>

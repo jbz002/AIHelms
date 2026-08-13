@@ -17,6 +17,7 @@ import {
 import { ArrowLeft, Loader2, Code2, Wand2 } from 'lucide-vue-next'
 import LibraryEndpointList from './interface-debugger/LibraryEndpointList.vue'
 import OperationDetail from './interface-debugger/OperationDetail.vue'
+import ExtractConfirmDialog from './components/ExtractConfirmDialog.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -27,6 +28,7 @@ const result = ref<LibraryInterfacesResult | null>(null)
 const selectedKey = ref<string | null>(null)
 
 const submitting = ref(false)
+const showExtractConfirm = ref(false)
 const batchStatus = ref<LibraryBatchExtractStatus | null>(null)
 const classifyStatus = ref<LibraryClassifyStatus | null>(null)
 let batchTimer: number | null = null
@@ -39,6 +41,21 @@ const isClassifyRunning = computed(
   () => classifyStatus.value?.status === 'queued' || classifyStatus.value?.status === 'running',
 )
 const isBusy = computed(() => isBatchRunning.value || isClassifyRunning.value || submitting.value)
+
+// 库是否已提取过：有接口或有过完成的批量任务。用于按钮文案区分首次提取与增量更新
+const hasExtracted = computed(
+  () =>
+    (result.value?.endpoints?.length ?? 0) > 0 ||
+    batchStatus.value?.finished_at != null,
+)
+const batchTitle = computed(() => {
+  const hint = '仅提取新增/变更文档，未变更的自动跳过'
+  const b = batchStatus.value
+  if (b?.finished_at) {
+    return `${hint}\n上次：${b.total_documents} 文档 / ${b.total_endpoints} 接口 / 跳过 ${b.skipped_documents ?? 0}`
+  }
+  return hint
+})
 
 const items = computed(() =>
   (result.value?.endpoints ?? []).map((e) => ({
@@ -79,6 +96,11 @@ async function confirmBatchExtract(): Promise<void> {
   } finally {
     submitting.value = false
   }
+}
+
+async function onConfirmExtract(): Promise<void> {
+  showExtractConfirm.value = false
+  await confirmBatchExtract()
 }
 
 function startBatchPoll(): void {
@@ -185,11 +207,12 @@ onUnmounted(() => {
         <button
           class="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-purple-700 disabled:opacity-60"
           :disabled="isBusy"
-          @click="confirmBatchExtract"
+          :title="batchTitle"
+          @click="showExtractConfirm = true"
         >
           <Loader2 v-if="isBatchRunning || submitting" class="h-4 w-4 animate-spin" />
           <Wand2 v-else class="h-4 w-4" />
-          {{ isBatchRunning ? `提取中 ${batchStatus?.completed_documents ?? 0}/${batchStatus?.total_documents ?? 0}` : '批量提取接口' }}
+          {{ isBatchRunning ? `提取中 ${batchStatus?.completed_documents ?? 0}/${batchStatus?.total_documents ?? 0}` : (hasExtracted ? '更新接口' : '批量提取接口') }}
         </button>
         <span v-if="isClassifyRunning" class="inline-flex items-center gap-1 text-xs text-indigo-600">
           <Loader2 class="h-3.5 w-3.5 animate-spin" />
@@ -228,5 +251,12 @@ onUnmounted(() => {
         </div>
       </div>
     </div>
+
+    <ExtractConfirmDialog
+      :visible="showExtractConfirm"
+      :library-name="libraryName"
+      @close="showExtractConfirm = false"
+      @confirm="onConfirmExtract"
+    />
   </div>
 </template>

@@ -337,6 +337,18 @@ export interface LibraryBatchExtractStatus {
   updated_at: string
 }
 
+export interface LibraryExtractPreviewItem {
+  id: number
+  title: string
+  reason?: 'new' | 'changed'
+}
+
+export interface LibraryExtractPreview {
+  to_extract: LibraryExtractPreviewItem[]
+  skipped: LibraryExtractPreviewItem[]
+  summary: { new: number; changed: number; skipped: number }
+}
+
 export interface LibraryClassifyStatus {
   id: number
   job_id: string

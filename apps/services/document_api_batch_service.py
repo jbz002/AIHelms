@@ -255,3 +255,49 @@ async def get_library_extraction_status(
 ) -> dict | None:
     job = await document_api_repo.find_latest_batch_by_library(session, library_name)
     return _serialize_batch_job(job) if job else None
+
+
+async def preview_library_extraction(session: AsyncSession, library_name: str) -> dict:
+    """预览库级提取：列出将提取（新增/变更）与将跳过（未变更）的文档，不执行提取。
+
+    供前端确认弹窗展示。分类逻辑与 process_library_extraction 的增量判断一致：
+    有 content_hash + 已有接口 + hash 未变 → 跳过；否则需提取（new/changed）。
+    批量查询 counts/hashes，避免逐文档 N+1。
+    """
+    docs = await document_repo.list_by_ingest_status(
+        session, ["ingested"], library=library_name
+    )
+    counts = await document_api_repo.count_endpoints_grouped_by_library(
+        session, library_name
+    )
+    latest_hashes = await document_api_repo.latest_completed_hash_by_library(
+        session, library_name
+    )
+
+    to_extract: list[dict] = []
+    skipped: list[dict] = []
+    new_count = 0
+    changed_count = 0
+    for doc in docs:
+        title = doc.title or f"document-{doc.id}"
+        existing = counts.get(doc.id, 0)
+        latest_hash = latest_hashes.get(doc.id)
+        if doc.content_hash and existing > 0 and latest_hash == doc.content_hash:
+            skipped.append({"id": doc.id, "title": title})
+        else:
+            reason = "new" if existing == 0 else "changed"
+            if reason == "new":
+                new_count += 1
+            else:
+                changed_count += 1
+            to_extract.append({"id": doc.id, "title": title, "reason": reason})
+
+    return {
+        "to_extract": to_extract,
+        "skipped": skipped,
+        "summary": {
+            "new": new_count,
+            "changed": changed_count,
+            "skipped": len(skipped),
+        },
+    }
