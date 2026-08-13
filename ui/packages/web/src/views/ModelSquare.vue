@@ -118,9 +118,9 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-6 py-8">
+  <div>
     <div class="mb-6">
-      <h1 class="text-xl font-bold text-slate-900">模型广场</h1>
+      <h1 class="text-2xl font-bold text-slate-900">模型广场</h1>
       <p class="mt-1 text-sm text-slate-500">浏览可用模型，申请开通后即可在客户端调用</p>
     </div>
 

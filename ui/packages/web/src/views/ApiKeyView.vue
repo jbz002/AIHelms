@@ -105,7 +105,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-6 py-8">
+  <div>
     <!-- 标题 -->
     <div class="mb-6 flex items-center justify-between">
       <div>

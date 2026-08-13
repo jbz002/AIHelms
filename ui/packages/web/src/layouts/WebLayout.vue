@@ -138,7 +138,9 @@ function updateDropdownPosition(): void {
 
     <!-- 内容区 -->
     <main class="relative z-10 flex-1 overflow-y-auto">
-      <RouterView />
+      <div class="mx-auto max-w-7xl px-6 py-8">
+        <RouterView />
+      </div>
     </main>
 
     <!-- 下拉菜单（Teleport 到 body 避免 z-index 层叠问题） -->

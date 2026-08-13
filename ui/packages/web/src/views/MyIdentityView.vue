@@ -220,7 +220,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-5xl px-6 py-8">
+  <div>
     <!-- 加载态 -->
     <div v-if="isLoading" class="space-y-6">
       <div class="h-48 animate-pulse rounded-2xl bg-white" />

@@ -149,7 +149,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto max-w-7xl px-6 py-8">
+  <div>
     <div class="mb-4 flex items-center gap-3">
       <button class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700" @click="back">
         <ArrowLeft class="h-4 w-4" />

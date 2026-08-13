@@ -76,7 +76,7 @@ onMounted(loadDetail)
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl px-6 py-8 space-y-6">
+  <div class="mx-auto max-w-3xl space-y-6">
     <button class="text-sm text-slate-500 hover:text-slate-700" @click="goMarket">
       ← {{ t('market.detail.back') }}
     </button>
