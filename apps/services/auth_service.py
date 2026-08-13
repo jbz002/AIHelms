@@ -19,7 +19,6 @@ async def _upsert_and_sign(
     aihub_user: dict,
     app_roles: list[str],
     phone: str = "",
-    aihub_dept_name: str | None = None,
 ) -> tuple[str, User]:
     """upsert 本地用户档案 + 签本地 JWT。OAuth2/Ticket 两条登录链共用后半段。"""
     aihub_user_id = str(aihub_user["id"])
@@ -40,10 +39,11 @@ async def _upsert_and_sign(
     )
 
     # 同步 AIHub 部门到本地 departments + user_departments（让 /me 的 departments 关系有数据）
+    # aihub 三个用户信息接口均返 department_name，ticket/oauth2 两条路径统一从 aihub_user 取
     aihub_dept_id = aihub_user.get("department_id")
     local_dept = (
         await department_repo.upsert_by_aihub_id(
-            session, str(aihub_dept_id), aihub_dept_name
+            session, str(aihub_dept_id), aihub_user.get("department_name")
         )
         if aihub_dept_id
         else None
@@ -93,9 +93,9 @@ async def oauth2_login(session: AsyncSession, code: str) -> tuple[str, User]:
         aihub_user = data["user"]
 
         # /token user 无 app_roles/phone，补调 /me（app_code 触发 app_roles 返回）
+        # department_name 三个接口都返，无需再单独调 /departments/{id}
         app_roles: list[str] = []
         phone: str = ""
-        dept_name: str | None = None
         me = await client.get(
             f"{base}/api/v1/auth/me",
             params={"app_code": settings.ai_hub_app_code},
@@ -105,17 +105,10 @@ async def oauth2_login(session: AsyncSession, code: str) -> tuple[str, User]:
             me_data = me.json()
             app_roles = list(me_data.get("app_roles") or [])
             phone = me_data.get("phone") or ""
-            # 补查部门名（/me 只返回 department_id，需 /departments/{id} 取 name）
-            dept_id = aihub_user.get("department_id") or me_data.get("department_id")
-            if dept_id:
-                dept_resp = await client.get(
-                    f"{base}/api/v1/departments/{dept_id}",
-                    headers={"Authorization": f"Bearer {aihub_token}"},
-                )
-                if dept_resp.status_code == 200:
-                    dept_name = dept_resp.json().get("name")
+            # /me 比 /token user 字段更全，优先用它（含 department_name）
+            aihub_user = me_data
 
-    return await _upsert_and_sign(session, aihub_user, app_roles, phone, dept_name)
+    return await _upsert_and_sign(session, aihub_user, app_roles, phone)
 
 
 async def ticket_login(session: AsyncSession, ticket: str) -> tuple[str, User]:
