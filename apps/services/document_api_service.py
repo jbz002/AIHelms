@@ -112,11 +112,24 @@ def _extract_json(text: str) -> dict | None:
 
 _EXTRACTION_SCHEMA = (
     '{"endpoints":['
-    '{"method":"GET","path":"/api/v1/users","summary":"获取用户列表",'
-    '"description":"分页返回用户。","operation_id":"listUsers","tags":["用户"],'
-    '"parameters":[{"name":"page","in":"query","required":false,"schema":{"type":"integer"}}],'
-    '"request_body":{"content":{"application/json":{"schema":{}}}},'
-    '"responses":{"200":{"description":"成功","content":{"application/json":{"schema":{}}}}}}]}'
+    '{"method":"POST","path":"/api/v1/users","summary":"创建用户",'
+    '"description":"新建一个用户并返回。","operation_id":"createUser","tags":["用户"],'
+    '"parameters":[{"name":"X-Trace-Id","in":"header","required":false,'
+    '"description":"链路追踪 ID","schema":{"type":"string"}}],'
+    '"request_body":{"content":{"application/json":{"schema":{"type":"object","properties":{'
+    '"name":{"type":"string","description":"用户名"},'
+    '"email":{"type":"string","format":"email","description":"邮箱地址"},'
+    '"roles":{"type":"array","items":{"type":"string"},"description":"角色列表"},'
+    '"profile":{"type":"object","description":"扩展资料","properties":{'
+    '"age":{"type":"integer","description":"年龄"},'
+    '"city":{"type":"string","description":"所在城市"}}}},'
+    '"required":["name","email"]}}}},'
+    '"responses":{"201":{"description":"创建成功","content":{"application/json":{"schema":'
+    '{"type":"object","properties":{'
+    '"id":{"type":"integer","description":"用户 ID"},'
+    '"name":{"type":"string","description":"用户名"},'
+    '"email":{"type":"string","description":"邮箱地址"}},'
+    '"required":["id"]}}}}}}]}'
 )
 
 
@@ -132,7 +145,13 @@ def _build_messages(title: str, content: str, retry: bool) -> list[dict]:
         "要求：\n"
         "- method 仅限 GET/POST/PUT/DELETE/PATCH，大写\n"
         "- path 以 / 开头\n"
-        "- 文档未提及的字段填空（parameters=[]、request_body={}、responses={}）\n"
+        "- 每个 parameter 必须含中文 description 说明其含义\n"
+        "- request_body 与每个响应的 schema 必须展开 properties：每个字段给出 type 与"
+        "中文 description；嵌套对象继续递归展开其 properties；数组字段用 items 描述元素结构；"
+        "用 required 数组标注必填字段\n"
+        "- schema 用 inline 结构，禁止使用 $ref\n"
+        "- 仅当文档确实未提及参数/请求体/响应结构时才填空"
+        "（parameters=[]、request_body={}、responses={}）\n"
         '- 找不到任何接口时返回 {"endpoints": []}'
         f"{retry_hint}"
     )
@@ -158,7 +177,7 @@ async def _call_llm(
 ) -> dict:
     common = {
         "temperature": 0,
-        "max_tokens": 8000,
+        "max_tokens": 12000,
         "timeout": 120,
         "api_key": api_key,
         "user": user_id,

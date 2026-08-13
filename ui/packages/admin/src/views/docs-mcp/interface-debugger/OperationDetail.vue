@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { MarkdownRenderer, type HttpMethod, type Operation, type Parameter } from '@aihelms/shared'
-import SchemaTree from './SchemaTree.vue'
+import { MarkdownRenderer, type HttpMethod, type Operation } from '@aihelms/shared'
+import ParamsTable from './ParamsTable.vue'
+import SchemaTable from './SchemaTable.vue'
 import TryItOut from './TryItOut.vue'
 
 interface Props {
@@ -21,15 +22,6 @@ const METHOD_COLOR: Record<HttpMethod, string> = {
   patch: 'bg-purple-50 text-purple-700 ring-purple-200',
 }
 
-type ParamGroup = 'path' | 'query' | 'header'
-
-const paramsByIn = computed(() => {
-  const groups: Record<ParamGroup, Parameter[]> = { path: [], query: [], header: [] }
-  for (const p of props.operation.parameters ?? []) {
-    if (p.in === 'path' || p.in === 'query' || p.in === 'header') groups[p.in].push(p)
-  }
-  return groups
-})
 const paramCount = computed(() => props.operation.parameters?.length ?? 0)
 const jsonBody = computed(() => props.operation.requestBody?.content?.['application/json'])
 const responses = computed(() => Object.entries(props.operation.responses ?? {}))
@@ -43,11 +35,6 @@ const tabs = computed(() => [
 ])
 const activeTab = ref('overview')
 
-function paramType(p: Parameter): string {
-  const t = p.schema?.type
-  if (!t) return ''
-  return Array.isArray(t) ? t.join(' | ') : String(t)
-}
 function statusClass(code: string): string {
   const n = Number(code)
   if (Number.isNaN(n)) return 'bg-slate-100 text-slate-700'
@@ -88,53 +75,51 @@ function statusClass(code: string): string {
     </div>
 
     <div class="flex-1 overflow-y-auto p-4 text-sm">
-      <!-- 概览 -->
-      <div v-if="activeTab === 'overview'" class="space-y-3">
-        <h3 v-if="operation.summary" class="text-base font-semibold text-slate-900">{{ operation.summary }}</h3>
-        <MarkdownRenderer v-if="operation.description" :content="operation.description" />
-        <p v-else class="text-sm text-slate-400">无描述</p>
-        <div v-if="operation.tags?.length" class="flex flex-wrap gap-1">
-          <span
-            v-for="tag in operation.tags"
-            :key="tag"
-            class="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500"
-          >{{ tag }}</span>
+      <!-- 概览：文档化拼接 参数 + 请求体 + 响应 -->
+      <div v-if="activeTab === 'overview'" class="space-y-4">
+        <div class="space-y-3">
+          <h3 v-if="operation.summary" class="text-base font-semibold text-slate-900">{{ operation.summary }}</h3>
+          <MarkdownRenderer v-if="operation.description" :content="operation.description" />
+          <p v-else class="text-sm text-slate-400">无描述</p>
+          <div v-if="operation.tags?.length" class="flex flex-wrap gap-1">
+            <span
+              v-for="tag in operation.tags"
+              :key="tag"
+              class="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500"
+            >{{ tag }}</span>
+          </div>
         </div>
+
+        <section v-if="paramCount">
+          <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">参数</div>
+          <ParamsTable :parameters="operation.parameters ?? []" />
+        </section>
+
+        <section v-if="operation.requestBody && jsonBody?.schema">
+          <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">请求体</div>
+          <SchemaTable :schema="jsonBody.schema" />
+        </section>
+
+        <section v-if="responses.length">
+          <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">响应</div>
+          <div class="space-y-2">
+            <div v-for="[code, resp] in responses" :key="code" class="rounded-md border border-slate-100 p-2">
+              <div class="mb-1 flex items-center gap-2">
+                <span
+                  class="inline-flex justify-center rounded px-1.5 py-0.5 font-mono text-xs font-semibold ring-1 ring-inset"
+                  :class="statusClass(code)"
+                >{{ code }}</span>
+                <span v-if="resp.description" class="text-xs text-slate-500">{{ resp.description }}</span>
+              </div>
+              <SchemaTable v-if="resp.content?.['application/json']?.schema" :schema="resp.content['application/json'].schema!" />
+            </div>
+          </div>
+        </section>
       </div>
 
       <!-- 参数 -->
-      <div v-else-if="activeTab === 'params'" class="space-y-4">
-        <template v-if="paramCount">
-          <section v-for="grp in (['path', 'query', 'header'] as ParamGroup[])" :key="grp">
-            <div v-if="paramsByIn[grp].length" class="mb-2">
-              <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{{ grp === 'path' ? '路径参数' : grp === 'query' ? '查询参数' : '请求头' }}</div>
-              <div class="overflow-hidden rounded-md border border-slate-100">
-                <table class="w-full text-sm">
-                  <thead class="bg-slate-50 text-slate-500">
-                    <tr>
-                      <th class="px-2 py-1.5 text-left font-medium">名称</th>
-                      <th class="px-2 py-1.5 text-left font-medium">类型</th>
-                      <th class="px-2 py-1.5 text-left font-medium">必填</th>
-                      <th class="px-2 py-1.5 text-left font-medium">说明</th>
-                    </tr>
-                  </thead>
-                  <tbody class="divide-y divide-slate-50">
-                    <tr v-for="p in paramsByIn[grp]" :key="p.name">
-                      <td class="px-2 py-1.5 font-mono text-slate-700">{{ p.name }}</td>
-                      <td class="px-2 py-1.5 font-mono text-xs text-slate-500">{{ paramType(p) || '-' }}</td>
-                      <td class="px-2 py-1.5">
-                        <span v-if="p.required" class="text-red-500">是</span>
-                        <span v-else class="text-slate-300">否</span>
-                      </td>
-                      <td class="px-2 py-1.5 text-slate-500">{{ p.description || '-' }}</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </section>
-        </template>
-        <p v-else class="py-6 text-center text-sm text-slate-300">该接口无参数</p>
+      <div v-else-if="activeTab === 'params'">
+        <ParamsTable :parameters="operation.parameters ?? []" />
       </div>
 
       <!-- 请求体 -->
@@ -145,9 +130,7 @@ function statusClass(code: string): string {
             <span v-if="operation.requestBody.required" class="text-red-500">必填</span>
           </div>
           <p v-if="operation.requestBody.description" class="text-sm text-slate-500">{{ operation.requestBody.description }}</p>
-          <div v-if="jsonBody?.schema" class="rounded-md bg-slate-50 p-2">
-            <SchemaTree :schema="jsonBody.schema" />
-          </div>
+          <SchemaTable v-if="jsonBody?.schema" :schema="jsonBody.schema" />
           <p v-else class="py-4 text-center text-sm text-slate-300">请求体未定义结构</p>
         </template>
         <p v-else class="py-6 text-center text-sm text-slate-300">该接口无请求体</p>
@@ -164,9 +147,7 @@ function statusClass(code: string): string {
               >{{ code }}</span>
               <span v-if="resp.description" class="text-xs text-slate-500">{{ resp.description }}</span>
             </div>
-            <div v-if="resp.content?.['application/json']?.schema" class="rounded bg-slate-50 p-2">
-              <SchemaTree :schema="resp.content['application/json'].schema!" />
-            </div>
+            <SchemaTable v-if="resp.content?.['application/json']?.schema" :schema="resp.content['application/json'].schema!" />
           </div>
         </template>
         <p v-else class="py-6 text-center text-sm text-slate-300">该接口未定义响应</p>
