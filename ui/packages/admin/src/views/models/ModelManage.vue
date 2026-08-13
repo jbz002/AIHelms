@@ -1145,19 +1145,6 @@ async function handleSavePublish(): Promise<void> {
   }
 }
 
-async function handleQuickPublish(model: ModelInfo, event: Event): Promise<void> {
-  event.stopPropagation()
-  try {
-    await updateModelPublish(model.id, { is_published: !model.is_published })
-    await fetchModels()
-    if (selectedModel.value?.id === model.id) {
-      await fetchModelDetail(model.id)
-    }
-  } catch {
-    // silent
-  }
-}
-
 onMounted(() => {
   fetchModels()
   fetchProviderList()
@@ -1234,16 +1221,12 @@ onMounted(() => {
             <div class="flex items-center gap-2">
               <span class="truncate text-sm font-medium" :class="selectedModel?.id === model.id ? 'text-purple-700' : 'text-slate-900'">{{ model.name }}</span>
               <span v-if="model.deployment_count" class="shrink-0 text-[10px] text-slate-400">{{ model.deployment_count }}凭证</span>
-              <button
-                v-if="hasPermission('user:update')"
-                :disabled="!model.is_published && model.deployment_count === 0"
-                :title="!model.is_published && model.deployment_count === 0 ? '请先添加凭证创建部署后再发布' : ''"
-                class="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                :class="model.is_published ? 'bg-green-50 text-green-600 hover:bg-green-100' : 'bg-slate-100 text-slate-400 hover:bg-slate-200'"
-                @click="handleQuickPublish(model, $event)"
+              <span
+                class="shrink-0 rounded px-1 py-0.5 text-[10px] font-medium"
+                :class="model.is_published ? 'bg-green-50 text-green-600' : 'bg-slate-100 text-slate-400'"
               >
                 {{ model.is_published ? '已发布' : '未发布' }}
-              </button>
+              </span>
             </div>
             <div class="mt-0.5 flex items-center gap-1.5">
               <span class="rounded bg-blue-50 px-1 py-0.5 text-[10px] text-blue-600">{{ categoryLabels[model.category] || model.category }}</span>
