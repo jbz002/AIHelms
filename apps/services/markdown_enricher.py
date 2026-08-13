@@ -62,7 +62,11 @@ def enrich_markdown(text: str) -> str:
         out.append(raw)
         i += 1
 
-    return "\n".join(out)
+    result = "\n".join(out)
+    # docling 转 md 时会对正文下划线做 markdown 转义（\_），导致接口字段名、URL
+    # 参数（如 cPsn_Num、your_token）被误伤。该转义发生在 enrich 之前的扁平段落
+    # 阶段，围栏内的 JSON 块同样受影响，故对整文统一还原而非仅围栏外。
+    return result.replace("\\_", "_")
 
 
 def _collect_json_block(lines: list[str], start: int) -> tuple[list[str] | None, int]:

@@ -52,3 +52,32 @@ def test_enrich_mixed_heading_and_json_realistic_doc():
     assert "```json" in result
     assert '"result": **true** ,' in result
     assert "说明：result 为 true 同步成功" in result
+
+
+def test_enrich_restores_escaped_underscore_in_text():
+    text = "http://x/person/query?token=your\\_token"
+    assert enrich_markdown(text) == "http://x/person/query?token=your_token"
+
+
+def test_enrich_restores_escaped_underscore_in_fenced_json():
+    text = '{\n\n"cPsn\\_Num": "0001",\n\n"cPsn\\_Name": "金利峰"\n\n}'
+    assert enrich_markdown(text) == (
+        '```json\n{\n"cPsn_Num": "0001",\n"cPsn_Name": "金利峰"\n}\n```'
+    )
+
+
+def test_enrich_restores_escaped_underscore_realistic_interface_doc():
+    text = (
+        "3、查询人员档案信息\n\n"
+        "http://x/person/query?token=your\\_token\n\n"
+        "{\n\n"
+        '"cPsn\\_Num": "0001",\n\n'
+        '"cPsn\\_Name": "金利峰"\n\n'
+        "}\n"
+    )
+    result = enrich_markdown(text)
+    assert "## 3. 查询人员档案信息" in result
+    assert "token=your_token" in result
+    assert "cPsn_Num" in result
+    assert "cPsn_Name" in result
+    assert "\\_" not in result
