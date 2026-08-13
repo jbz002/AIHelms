@@ -14,7 +14,7 @@ import {
   toast,
 } from '@aihelms/shared'
 import { Loader2, Code2, Wand2, Search, ChevronDown, ChevronRight } from 'lucide-vue-next'
-import DocsTryItOut from './DocsTryItOut.vue'
+import DocsOperationDetail from './DocsOperationDetail.vue'
 
 interface Props {
   libraryName: string
@@ -258,30 +258,16 @@ onUnmounted(stopBatchPoll)
         </div>
       </div>
 
-      <!-- 接口详情 + TryItOut -->
+      <!-- 接口详情（概览/参数/请求体/响应/调试） -->
       <div class="flex flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <template v-if="selected">
-          <div class="border-b border-slate-100 px-4 py-3">
-            <div class="flex items-center gap-2">
-              <span
-                class="inline-flex w-16 justify-center rounded px-2 py-0.5 font-mono text-xs font-semibold ring-1 ring-inset"
-                :class="METHOD_COLOR[selected.method]"
-              >{{ selected.method.toUpperCase() }}</span>
-              <span class="font-mono text-sm text-slate-800">{{ selected.path }}</span>
-            </div>
-            <p v-if="selected.summary" class="mt-1.5 text-sm text-slate-600">{{ selected.summary }}</p>
-            <p v-if="selected.operation.description" class="mt-1 whitespace-pre-wrap text-xs text-slate-400">{{ selected.operation.description }}</p>
-          </div>
-          <div class="overflow-y-auto p-4">
-            <DocsTryItOut
-              :method="selected.method"
-              :path="selected.path"
-              :operation="selected.operation"
-              :doc-id="selected.document_id"
-              :library-name="libraryName"
-            />
-          </div>
-        </template>
+        <DocsOperationDetail
+          v-if="selected"
+          :method="selected.method"
+          :path="selected.path"
+          :operation="selected.operation"
+          :doc-id="selected.document_id"
+          :library-name="libraryName"
+        />
         <div v-else class="flex h-full items-center justify-center p-8 text-sm text-slate-400">
           {{ t('docs.interfaces.selectPrompt') }}
         </div>

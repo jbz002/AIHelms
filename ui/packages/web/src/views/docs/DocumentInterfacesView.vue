@@ -25,7 +25,12 @@ onMounted(async () => {
 })
 
 function back(): void {
-  router.push({ name: 'DocsDocumentDetail', params: { libraryName: libraryName.value, docId: docId.value } })
+  // 两个入口（列表行操作 / 详情页按钮）共用此页：有历史则按来源返回，否则回退文档列表
+  if (window.history.state?.back) {
+    router.back()
+  } else {
+    router.push({ name: 'DocsDocumentList', params: { libraryName: libraryName.value } })
+  }
 }
 </script>
 

@@ -160,5 +160,26 @@
 
   "docs.action.back": "返回",
   "docs.doc.readonly": "只读预览，仅库所有者可编辑",
-  "docs.interfaces.docScope": "文档「{name}」的接口"
+  "docs.interfaces.docScope": "文档「{name}」的接口",
+
+  "docs.op.tab.overview": "概览",
+  "docs.op.tab.params": "参数",
+  "docs.op.tab.body": "请求体",
+  "docs.op.tab.response": "响应",
+  "docs.op.tab.debug": "调试",
+  "docs.op.noDesc": "无描述",
+  "docs.op.pathParams": "路径参数",
+  "docs.op.queryParams": "查询参数",
+  "docs.op.headers": "请求头",
+  "docs.op.col.name": "名称",
+  "docs.op.col.type": "类型",
+  "docs.op.col.required": "必填",
+  "docs.op.col.desc": "说明",
+  "docs.op.yes": "是",
+  "docs.op.no": "否",
+  "docs.op.noParams": "该接口无参数",
+  "docs.op.noBodySchema": "请求体未定义结构",
+  "docs.op.noBody": "该接口无请求体",
+  "docs.op.noResponse": "该接口未定义响应",
+  "docs.op.emptySchema": "无结构"
 }

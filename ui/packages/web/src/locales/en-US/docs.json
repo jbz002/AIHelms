@@ -160,5 +160,26 @@
 
   "docs.action.back": "Back",
   "docs.doc.readonly": "Read-only preview; only the library owner can edit",
-  "docs.interfaces.docScope": "Endpoints of “{name}”"
+  "docs.interfaces.docScope": "Endpoints of “{name}”",
+
+  "docs.op.tab.overview": "Overview",
+  "docs.op.tab.params": "Params",
+  "docs.op.tab.body": "Body",
+  "docs.op.tab.response": "Responses",
+  "docs.op.tab.debug": "Try it out",
+  "docs.op.noDesc": "No description",
+  "docs.op.pathParams": "Path params",
+  "docs.op.queryParams": "Query params",
+  "docs.op.headers": "Headers",
+  "docs.op.col.name": "Name",
+  "docs.op.col.type": "Type",
+  "docs.op.col.required": "Required",
+  "docs.op.col.desc": "Description",
+  "docs.op.yes": "Yes",
+  "docs.op.no": "No",
+  "docs.op.noParams": "No parameters",
+  "docs.op.noBodySchema": "Body schema undefined",
+  "docs.op.noBody": "No request body",
+  "docs.op.noResponse": "No responses defined",
+  "docs.op.emptySchema": "empty"
 }

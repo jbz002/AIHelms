@@ -278,27 +278,13 @@ onUnmounted(() => {
       >
         <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': loading }" />
       </button>
-      <button
-        class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-        @click="goLibraryInterfaces"
-      >
-        <Code2 class="h-3.5 w-3.5" />
-        {{ t('docs.interfaces.title') }}
-      </button>
-      <div v-if="canManage" class="ml-auto flex items-center gap-1">
+      <div v-if="canManage" class="flex items-center gap-1">
         <button
           class="inline-flex items-center gap-1 rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-purple-700"
           @click="addVersionVisible = true"
         >
           <Plus class="h-3.5 w-3.5" />
           {{ t('docs.version.add') }}
-        </button>
-        <button
-          class="inline-flex items-center gap-1 rounded-md border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100"
-          @click="uploadVisible = true"
-        >
-          <Upload class="h-3.5 w-3.5" />
-          {{ versions.length === 0 ? t('docs.doc.upload') : t('docs.version.uploadIncremental') }}
         </button>
         <button
           class="inline-flex items-center gap-1 rounded-md border border-red-200 bg-white px-2.5 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -310,6 +296,22 @@ onUnmounted(() => {
           {{ t('docs.version.delete') }}
         </button>
       </div>
+      <div v-if="canManage" class="ml-auto flex items-center gap-1">
+        <button
+          class="inline-flex items-center gap-1 rounded-md border border-purple-200 bg-purple-50 px-2.5 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100"
+          @click="uploadVisible = true"
+        >
+          <Upload class="h-3.5 w-3.5" />
+          {{ versions.length === 0 ? t('docs.doc.upload') : t('docs.version.uploadIncremental') }}
+        </button>
+      </div>
+      <button
+        class="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+        @click="goLibraryInterfaces"
+      >
+        <Code2 class="h-3.5 w-3.5" />
+        {{ t('docs.interfaces.title') }}
+      </button>
     </div>
 
     <div v-if="loading" class="flex h-60 items-center justify-center">
