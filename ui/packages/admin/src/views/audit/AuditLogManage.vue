@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { X, Copy, Check } from 'lucide-vue-next'
 import {
+  DateTimePicker,
   getAuditLogs,
   getAuditLogFilters,
   toast,
@@ -69,6 +70,7 @@ const prettySummary = computed<string>(() => {
   }
 })
 
+// 选择器返回 YYYY-MM-DDTHH:MM(本地),new Date 按本地解析再转 ISO,与后端 UTC created_at 对齐
 async function loadLogs(): Promise<void> {
   loading.value = true
   try {
@@ -135,7 +137,12 @@ function closeDetail(): void {
 
 function formatTime(iso: string): string {
   if (!iso) return ''
-  return iso.replace('T', ' ').slice(0, 19)
+  // 后端 created_at 为 naive UTC(isoformat 无偏移),补 Z 视为 UTC 再转浏览器本地时区
+  const normalized = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}Z`
+  const d = new Date(normalized)
+  if (Number.isNaN(d.getTime())) return iso.replace('T', ' ').slice(0, 19)
+  const pad = (n: number): string => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
 function isSuccess(code: number): boolean {
@@ -171,16 +178,20 @@ onMounted(() => {
     </div>
 
     <div class="mb-4 flex flex-wrap items-center gap-3">
-      <input
-        v-model="filterStartTime"
-        type="datetime-local"
-        class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none"
+      <DateTimePicker
+        :model-value="filterStartTime"
+        :max="filterEndTime || undefined"
+        placeholder="开始时间"
+        class="w-52"
+        @update:model-value="filterStartTime = $event"
       />
       <span class="text-sm text-slate-400">至</span>
-      <input
-        v-model="filterEndTime"
-        type="datetime-local"
-        class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none"
+      <DateTimePicker
+        :model-value="filterEndTime"
+        :min="filterStartTime || undefined"
+        placeholder="结束时间"
+        class="w-52"
+        @update:model-value="filterEndTime = $event"
       />
       <SearchableSelect
         v-model="filterUserId"

@@ -3,6 +3,7 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue'
 import { Download } from 'lucide-vue-next'
 import { useRoute } from 'vue-router'
 import {
+  DateTimePicker,
   getLlmLogs,
   getLlmLogById,
   getLlmLogFilters,
@@ -276,16 +277,20 @@ onUnmounted(() => {
 <template>
   <div>
     <div class="mb-4 flex flex-wrap items-center gap-3">
-      <input
-        v-model="filterStartTime"
-        type="datetime-local"
-        class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none"
+      <DateTimePicker
+        :model-value="filterStartTime"
+        :max="filterEndTime || undefined"
+        placeholder="开始时间"
+        class="w-52"
+        @update:model-value="filterStartTime = $event"
       />
       <span class="text-sm text-slate-400">至</span>
-      <input
-        v-model="filterEndTime"
-        type="datetime-local"
-        class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none"
+      <DateTimePicker
+        :model-value="filterEndTime"
+        :min="filterStartTime || undefined"
+        placeholder="结束时间"
+        class="w-52"
+        @update:model-value="filterEndTime = $event"
       />
       <SearchableSelect
         v-model="filterUserId"

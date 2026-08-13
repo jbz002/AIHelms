@@ -98,6 +98,8 @@ async function loadUsers(keyword = ''): Promise<void> {
 
 function handleUserSearch(keyword: string): void {
   clearTimeout(userSearchTimer)
+  const trimmed = keyword.trim()
+  if (!trimmed && users.value.length > 0) return
   userSearchTimer = setTimeout(() => loadUsers(keyword), 250)
 }
 
