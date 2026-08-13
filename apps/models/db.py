@@ -1623,6 +1623,7 @@ class DocumentApiEndpoint(Base):
     parameters: Mapped[list] = mapped_column(JSONB, default=list)
     request_body: Mapped[dict] = mapped_column(JSONB, default=dict)
     responses: Mapped[dict] = mapped_column(JSONB, default=dict)
+    base_url: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

@@ -19,6 +19,7 @@ export interface OpenApiSpec {
   openapi: string
   info: OpenApiInfo
   paths: Record<string, Partial<Record<HttpMethod, Operation>>>
+  servers?: { url: string }[]
 }
 
 export interface Operation {

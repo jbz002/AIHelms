@@ -1563,6 +1563,7 @@ CREATE TABLE IF NOT EXISTS aihelms.document_api_endpoints (
     parameters JSONB NOT NULL DEFAULT '[]',
     request_body JSONB NOT NULL DEFAULT '{}',
     responses JSONB NOT NULL DEFAULT '{}',
+    base_url TEXT NOT NULL DEFAULT '',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_document_api_endpoints_doc_method_path

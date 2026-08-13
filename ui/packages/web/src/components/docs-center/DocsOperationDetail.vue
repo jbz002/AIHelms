@@ -12,6 +12,7 @@ interface Props {
   operation: Operation
   docId: number
   libraryName: string
+  baseUrl?: string
 }
 const props = defineProps<Props>()
 const { t } = useI18n()
@@ -169,6 +170,7 @@ function statusClass(code: string): string {
           :operation="operation"
           :doc-id="docId"
           :library-name="libraryName"
+          :default-base-url="baseUrl"
         />
       </div>
     </div>

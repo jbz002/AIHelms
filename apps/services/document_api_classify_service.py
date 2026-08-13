@@ -303,6 +303,7 @@ def _serialize_endpoint_with_operation(ep: DocumentApiEndpoint) -> dict:
         "path": ep.path,
         "summary": ep.summary,
         "category": ep.category,
+        "base_url": ep.base_url or "",
         "operation": {
             "summary": ep.summary,
             "description": ep.description,

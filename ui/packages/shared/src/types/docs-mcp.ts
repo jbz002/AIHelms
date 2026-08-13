@@ -377,6 +377,7 @@ export interface LibraryEndpoint {
   path: string
   summary: string
   category: string
+  base_url: string
   operation: Operation
 }
 

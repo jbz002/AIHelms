@@ -40,6 +40,7 @@ const selectedOperation = computed<Operation | null>(() => {
   if (!selected.value) return null
   return props.spec.paths[selected.value.path]?.[selected.value.method] ?? null
 })
+const baseUrl = computed(() => props.spec.servers?.[0]?.url ?? '')
 
 watch(
   endpoints,
@@ -66,6 +67,7 @@ watch(
         :operation="selectedOperation"
         :doc-id="docId"
         :library-name="libraryName"
+        :base-url="baseUrl"
       />
       <div v-else class="flex h-full items-center justify-center text-sm text-slate-400">
         请从左侧选择接口

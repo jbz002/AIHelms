@@ -111,7 +111,7 @@ def _extract_json(text: str) -> dict | None:
 # ── Prompt ────────────────────────────────────────────────────────────────────
 
 _EXTRACTION_SCHEMA = (
-    '{"endpoints":['
+    '{"base_url":"https://api.example.com","endpoints":['
     '{"method":"POST","path":"/api/v1/users","summary":"创建用户",'
     '"description":"新建一个用户并返回。","operation_id":"createUser","tags":["用户"],'
     '"parameters":[{"name":"X-Trace-Id","in":"header","required":false,'
@@ -140,11 +140,13 @@ def _build_messages(title: str, content: str, retry: bool) -> list[dict]:
     user_text = (
         f"文档标题：{title}\n\n"
         f"文档内容：\n{content}\n\n"
-        "任务：从上述文档中提取所有 HTTP API 接口，输出 JSON，schema 如下：\n"
+        "任务：从上述文档中提取 API 公共根地址 base_url 与所有 HTTP 接口，输出 JSON，schema 如下：\n"
         f"{_EXTRACTION_SCHEMA}\n\n"
         "要求：\n"
         "- method 仅限 GET/POST/PUT/DELETE/PATCH，大写\n"
         "- path 以 / 开头\n"
+        "- base_url 为该文档所有接口的公共根地址（来自 OpenAPI servers / 示例请求域名 / "
+        "文档说明的访问前缀），以 http 或 https 开头、不带末尾斜杠；文档未给出则填空字符串\n"
         "- 每个 parameter 必须含中文 description 说明其含义\n"
         "- request_body 与每个响应的 schema 必须展开 properties：每个字段给出 type 与"
         "中文 description；嵌套对象继续递归展开其 properties；数组字段用 items 描述元素结构；"
@@ -152,7 +154,7 @@ def _build_messages(title: str, content: str, retry: bool) -> list[dict]:
         "- schema 用 inline 结构，禁止使用 $ref\n"
         "- 仅当文档确实未提及参数/请求体/响应结构时才填空"
         "（parameters=[]、request_body={}、responses={}）\n"
-        '- 找不到任何接口时返回 {"endpoints": []}'
+        '- 找不到任何接口时返回 {"base_url": "", "endpoints": []}'
         f"{retry_hint}"
     )
     return [
@@ -343,6 +345,7 @@ async def process_extraction(session: AsyncSession, spec_pk: int) -> dict:
             await _fail_spec(session, spec, "模型输出无法解析为合法 JSON")
             return _serialize_spec(spec)
 
+        base_url = str(data.get("base_url", "")).strip().rstrip("/")
         endpoints = [
             ep
             for ep in (
@@ -350,6 +353,8 @@ async def process_extraction(session: AsyncSession, spec_pk: int) -> dict:
             )
             if ep is not None
         ]
+        for ep in endpoints:
+            ep.base_url = base_url
         await document_api_repo.replace_for_document(
             session, spec.document_id, endpoints
         )
@@ -455,7 +460,8 @@ async def build_openapi_spec(session: AsyncSession, document_id: int) -> dict:
             operation["responses"] = ep.responses
         path_item[ep.method.lower()] = operation
 
-    return {
+    base_url = (endpoints[0].base_url if endpoints else "").strip().rstrip("/")
+    spec = {
         "openapi": "3.1.0",
         "info": {
             "title": doc.title or f"document-{document_id}",
@@ -463,3 +469,6 @@ async def build_openapi_spec(session: AsyncSession, document_id: int) -> dict:
         },
         "paths": paths,
     }
+    if base_url:
+        spec["servers"] = [{"url": base_url}]
+    return spec

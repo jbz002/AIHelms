@@ -19,14 +19,15 @@ interface Props {
   operation: Operation
   docId: number
   libraryName: string
+  defaultBaseUrl?: string
 }
 const props = defineProps<Props>()
 
 type AuthType = 'none' | 'bearer' | 'apikey'
 
 const libKey = encodeURIComponent(props.libraryName)
-const baseUrlKey = `debugger:baseurl:${libKey}`
-const baseUrlsKey = `debugger:baseurls:${libKey}`
+const baseUrlKey = `debugger:baseurl:doc-${props.docId}`
+const baseUrlsKey = `debugger:baseurls:doc-${props.docId}`
 const authKey = `debugger:auth:${libKey}`
 
 function readJson<T>(key: string, fallback: T): T {
@@ -38,7 +39,7 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
-const baseUrl = ref(localStorage.getItem(baseUrlKey) ?? '')
+const baseUrl = ref(localStorage.getItem(baseUrlKey) ?? props.defaultBaseUrl?.trim() ?? '')
 const baseUrls = ref<string[]>(readJson<string[]>(baseUrlsKey, []))
 watch(baseUrl, (v) => {
   localStorage.setItem(baseUrlKey, v)

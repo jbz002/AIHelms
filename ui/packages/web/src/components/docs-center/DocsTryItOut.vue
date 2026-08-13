@@ -19,6 +19,7 @@ interface Props {
   operation: Operation
   docId: number
   libraryName: string
+  defaultBaseUrl?: string
 }
 const props = defineProps<Props>()
 const { t } = useI18n()
@@ -26,8 +27,8 @@ const { t } = useI18n()
 type AuthType = 'none' | 'bearer' | 'apikey'
 
 const libKey = encodeURIComponent(props.libraryName)
-const baseUrlKey = `docs:baseurl:${libKey}`
-const baseUrlsKey = `docs:baseurls:${libKey}`
+const baseUrlKey = `docs:baseurl:doc-${props.docId}`
+const baseUrlsKey = `docs:baseurls:doc-${props.docId}`
 const authKey = `docs:auth:${libKey}`
 const tokensKey = `docs:tokens:${libKey}`
 
@@ -40,7 +41,7 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
-const baseUrl = ref(localStorage.getItem(baseUrlKey) ?? '')
+const baseUrl = ref(localStorage.getItem(baseUrlKey) ?? props.defaultBaseUrl?.trim() ?? '')
 const baseUrls = ref<string[]>(readJson<string[]>(baseUrlsKey, []))
 watch(baseUrl, (v) => {
   localStorage.setItem(baseUrlKey, v)

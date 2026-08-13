@@ -245,6 +245,7 @@ onUnmounted(() => {
           :operation="selected.operation"
           :doc-id="selected.document_id"
           :library-name="libraryName"
+          :base-url="selected.base_url"
         />
         <div v-else class="flex h-full items-center justify-center text-sm text-slate-400">
           请从左侧选择接口
