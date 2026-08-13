@@ -71,7 +71,7 @@ def _serialize_batch_job(job: DocumentApiBatchJob) -> dict:
 
 
 async def create_library_extraction(
-    session: AsyncSession, library_name: str, current_user: dict
+    session: AsyncSession, library_name: str, current_user: dict, force: bool = False
 ) -> dict:
     docs = await document_repo.list_by_ingest_status(
         session, ["ingested"], library=library_name
@@ -87,7 +87,7 @@ async def create_library_extraction(
         status="queued",
         total_documents=len(docs),
         created_by=int(current_user["id"]),
-        summary={"progress": _progress(0, 0, "排队中")},
+        summary={"progress": _progress(0, 0, "排队中"), "force": force},
     )
     job = await document_api_repo.create_batch_job(session, job)
     await session.commit()
@@ -106,6 +106,7 @@ async def process_library_extraction(session: AsyncSession, job_pk: int) -> dict
     job = await document_api_repo.find_batch_by_id(session, job_pk)
     if job is None or job.status not in ("queued", "running"):
         return {}
+    force = bool((job.summary or {}).get("force"))
 
     job.status = "running"
     job.started_at = _now()
@@ -146,25 +147,26 @@ async def process_library_extraction(session: AsyncSession, job_pk: int) -> dict
                 # 该文档已有单文档提取任务在进行中，跳过避免冲突
                 continue
 
-            existing = await document_api_repo.count_by_document(session, doc.id)
-            latest_done = (
-                await document_api_repo.find_latest_completed_by_document(
-                    session, doc.id
+            if not force:
+                existing = await document_api_repo.count_by_document(session, doc.id)
+                latest_done = (
+                    await document_api_repo.find_latest_completed_by_document(
+                        session, doc.id
+                    )
+                    if existing > 0
+                    else None
                 )
-                if existing > 0
-                else None
-            )
-            if _should_skip_incremental(doc.content_hash, existing, latest_done):
-                # 已成功提取且内容未变更，跳过重提
-                job.skipped_documents += 1
-                job.summary = {
-                    **job.summary,
-                    "progress": _progress(
-                        progress_value, 3, f"跳过未变更 {index}/{total}"
-                    ),
-                }
-                await session.commit()
-                continue
+                if _should_skip_incremental(doc.content_hash, existing, latest_done):
+                    # 已成功提取且内容未变更，跳过重提
+                    job.skipped_documents += 1
+                    job.summary = {
+                        **job.summary,
+                        "progress": _progress(
+                            progress_value, 3, f"跳过未变更 {index}/{total}"
+                        ),
+                    }
+                    await session.commit()
+                    continue
 
             spec = DocumentApiSpec(
                 spec_id=f"DAS-{uuid4().hex[:12]}",

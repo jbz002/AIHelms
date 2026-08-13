@@ -2,14 +2,19 @@
 import { ref, watch } from 'vue'
 import { getLibraryExtractPreview, toast } from '@aihelms/shared'
 import type { LibraryExtractPreview } from '@aihelms/shared'
-import { Loader2, X, Wand2 } from 'lucide-vue-next'
+import { Loader2, RefreshCw, X, Wand2 } from 'lucide-vue-next'
 
 interface Props {
   visible: boolean
   libraryName: string
 }
 const props = defineProps<Props>()
-const emit = defineEmits<{ close: []; confirm: [] }>()
+const emit = defineEmits<{ close: []; confirm: [force: boolean] }>()
+
+const canForce = () => {
+  const p = preview.value
+  return !!p && p.to_extract.length + p.skipped.length > 0
+}
 
 const loading = ref(false)
 const preview = ref<LibraryExtractPreview | null>(null)
@@ -101,21 +106,31 @@ const hasToDo = () => (preview.value?.to_extract?.length ?? 0) > 0
           </div>
         </div>
 
-        <div class="flex justify-end gap-3 border-t border-gray-200 p-4">
+        <div class="flex items-center justify-between border-t border-gray-200 p-4">
           <button
-            class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            @click="emit('close')"
+            v-if="!loading && canForce()"
+            class="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+            @click="emit('confirm', true)"
           >
-            取消
+            <RefreshCw class="h-4 w-4" />
+            强制重新提取全部
           </button>
-          <button
-            v-if="!loading && hasToDo()"
-            class="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
-            @click="emit('confirm')"
-          >
-            <Wand2 class="h-4 w-4" />
-            确认提取 ({{ preview?.to_extract.length ?? 0 }})
-          </button>
+          <div class="flex gap-3">
+            <button
+              class="rounded-md border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              @click="emit('close')"
+            >
+              取消
+            </button>
+            <button
+              v-if="!loading && hasToDo()"
+              class="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+              @click="emit('confirm', false)"
+            >
+              <Wand2 class="h-4 w-4" />
+              确认提取 ({{ preview?.to_extract.length ?? 0 }})
+            </button>
+          </div>
         </div>
       </div>
     </div>

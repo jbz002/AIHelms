@@ -167,16 +167,16 @@ function onUploaded(ver: string): void {
   startVersionPoll(ver)
 }
 
-async function onConfirmExtract(): Promise<void> {
+async function onConfirmExtract(force = false): Promise<void> {
   showExtractConfirm.value = false
-  await handleLibraryExtract()
+  await handleLibraryExtract(force)
 }
 
-async function handleLibraryExtract(): Promise<void> {
+async function handleLibraryExtract(force = false): Promise<void> {
   if (extractingLib.value) return
   extractingLib.value = true
   try {
-    await extractLibraryInterfaces(libraryName.value)
+    await extractLibraryInterfaces(libraryName.value, force)
     toast.success(t('docs.interfaces.batchSubmitted'))
     pollLibExtract()
   } catch (e) {

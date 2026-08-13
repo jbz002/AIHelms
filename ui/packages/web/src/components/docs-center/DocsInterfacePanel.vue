@@ -129,11 +129,11 @@ async function load(): Promise<void> {
   }
 }
 
-async function confirmBatchExtract(): Promise<void> {
+async function confirmBatchExtract(force = false): Promise<void> {
   if (submitting.value) return
   submitting.value = true
   try {
-    batchStatus.value = await extractLibraryInterfaces(props.libraryName)
+    batchStatus.value = await extractLibraryInterfaces(props.libraryName, force)
     startBatchPoll()
     toast.success(t('docs.interfaces.batchSubmitted'))
   } catch (e) {
@@ -143,9 +143,9 @@ async function confirmBatchExtract(): Promise<void> {
   }
 }
 
-async function onConfirmExtract(): Promise<void> {
+async function onConfirmExtract(force = false): Promise<void> {
   showExtractConfirm.value = false
-  await confirmBatchExtract()
+  await confirmBatchExtract(force)
 }
 
 function startBatchPoll(): void {

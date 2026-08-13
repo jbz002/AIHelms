@@ -45,6 +45,7 @@
   "docs.interfaces.previewChanged": "变更",
   "docs.interfaces.previewEmpty": "所有文档接口已是最新，无需提取",
   "docs.interfaces.confirmExtract": "确认提取",
+  "docs.interfaces.forceExtract": "强制重新提取全部",
   "docs.interfaces.unchanged": "未变更",
   "docs.interfaces.extracting": "提取中 {done}/{total}",
   "docs.interfaces.classifying": "分类中",

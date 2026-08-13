@@ -406,10 +406,10 @@ export function extractDocumentInterfaces(documentId: number) {
 
 // ── 库级接口提取与分类 ──
 
-export function extractLibraryInterfaces(libraryName: string) {
+export function extractLibraryInterfaces(libraryName: string, force = false) {
   return request<LibraryBatchExtractStatus>(
     `/api/v1/document-libraries/${encodeURIComponent(libraryName)}/extract-interfaces`,
-    { method: 'POST' },
+    { method: 'POST', params: force ? { force: true } : undefined },
   )
 }
 

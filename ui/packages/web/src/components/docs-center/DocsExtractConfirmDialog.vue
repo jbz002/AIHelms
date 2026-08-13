@@ -3,14 +3,19 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { getLibraryExtractPreview, toast } from '@aihelms/shared'
 import type { LibraryExtractPreview } from '@aihelms/shared'
-import { Loader2, X, Wand2 } from 'lucide-vue-next'
+import { Loader2, RefreshCw, X, Wand2 } from 'lucide-vue-next'
 
 interface Props {
   visible: boolean
   libraryName: string
 }
 const props = defineProps<Props>()
-const emit = defineEmits<{ close: []; confirm: [] }>()
+const emit = defineEmits<{ close: []; confirm: [force: boolean] }>()
+
+const canForce = () => {
+  const p = preview.value
+  return !!p && p.to_extract.length + p.skipped.length > 0
+}
 const { t } = useI18n()
 
 const loading = ref(false)
@@ -103,18 +108,28 @@ const hasToDo = () => (preview.value?.to_extract?.length ?? 0) > 0
           </div>
         </div>
 
-        <div class="flex justify-end gap-2 border-t border-slate-100 p-4">
-          <button class="rounded-md px-4 py-2 text-sm text-slate-600 hover:bg-slate-100" @click="emit('close')">
-            {{ t('docs.library.cancel') }}
-          </button>
+        <div class="flex items-center justify-between border-t border-slate-100 p-4">
           <button
-            v-if="!loading && hasToDo()"
-            class="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
-            @click="emit('confirm')"
+            v-if="!loading && canForce()"
+            class="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+            @click="emit('confirm', true)"
           >
-            <Wand2 class="h-4 w-4" />
-            {{ t('docs.interfaces.confirmExtract') }} ({{ preview?.to_extract.length ?? 0 }})
+            <RefreshCw class="h-4 w-4" />
+            {{ t('docs.interfaces.forceExtract') }}
           </button>
+          <div class="flex gap-2">
+            <button class="rounded-md px-4 py-2 text-sm text-slate-600 hover:bg-slate-100" @click="emit('close')">
+              {{ t('docs.library.cancel') }}
+            </button>
+            <button
+              v-if="!loading && hasToDo()"
+              class="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+              @click="emit('confirm', false)"
+            >
+              <Wand2 class="h-4 w-4" />
+              {{ t('docs.interfaces.confirmExtract') }} ({{ preview?.to_extract.length ?? 0 }})
+            </button>
+          </div>
         </div>
       </div>
     </div>

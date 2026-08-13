@@ -188,20 +188,25 @@ async def delete_library(
 @library_router.post("/{library_name}/extract-interfaces", summary="批量提取库接口")
 async def extract_library_interfaces(
     library_name: str,
+    force: bool = False,
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("document:batch_extract")),
 ):
-    """批量提取库内所有已入库文档的 API 接口，异步任务。"""
+    """批量提取库内所有已入库文档的 API 接口，异步任务。force=true 时忽略增量跳过，全量重新提取。"""
     await _assert_library_name_owned(session, library_name, current_user)
     try:
         result = await document_api_batch_service.create_library_extraction(
-            session, library_name, current_user
+            session, library_name, current_user, force=force
         )
     except ConflictError:
         raise HTTPException(status_code=409, detail="该库已有批量提取任务在进行中")
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"code": 200, "message": "批量提取任务已提交", "data": result}
+    return {
+        "code": 200,
+        "message": "批量提取任务已提交（强制全量）" if force else "批量提取任务已提交",
+        "data": result,
+    }
 
 
 @library_router.get("/{library_name}/extract-status")

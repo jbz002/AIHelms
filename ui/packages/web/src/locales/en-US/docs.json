@@ -45,6 +45,7 @@
   "docs.interfaces.previewChanged": "Changed",
   "docs.interfaces.previewEmpty": "All endpoints are up to date, nothing to extract",
   "docs.interfaces.confirmExtract": "Confirm",
+  "docs.interfaces.forceExtract": "Force re-extract all",
   "docs.interfaces.unchanged": "Unchanged",
   "docs.interfaces.extracting": "Extracting {done}/{total}",
   "docs.interfaces.classifying": "Classifying",
