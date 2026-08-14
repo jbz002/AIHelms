@@ -30,8 +30,13 @@ async def test_model_stream(
     messages: list[dict],
     max_tokens: int = 100,
     api_key: str = "",
+    protocol: str = "openai",
 ) -> AsyncGenerator[str, None]:
     """Stream chat completion from LiteLLM, yield SSE-formatted chunks."""
+    if protocol == "anthropic":
+        async for chunk in _stream_anthropic(model, messages, max_tokens, api_key):
+            yield chunk
+        return
     client = _get_client(api_key)
     try:
         stream = await client.chat.completions.create(
@@ -64,8 +69,11 @@ async def test_model_sync(
     messages: list[dict],
     max_tokens: int = 100,
     api_key: str = "",
+    protocol: str = "openai",
 ) -> dict:
     """Non-streaming chat completion from LiteLLM."""
+    if protocol == "anthropic":
+        return await _sync_anthropic(model, messages, max_tokens, api_key)
     client = _get_client(api_key)
     try:
         response = await client.chat.completions.create(
@@ -286,3 +294,160 @@ async def test_audio_transcription(
     except Exception as e:
         logger.error("audio transcription test error: %s", str(e))
         return build_failure(map_error(e))
+
+
+def _anthropic_headers(api_key: str) -> dict[str, str]:
+    return {
+        "x-api-key": api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+
+
+def _to_anthropic_image(url: str) -> dict:
+    """OpenAI image_url 块转 Anthropic image 块:data-URL 转 base64 source,http(s) 转 url source。"""
+    if url.startswith("data:"):
+        header, _, data = url.partition(",")
+        media_type = "image/png"
+        if ":" in header and ";" in header:
+            media_type = header.split(":", 1)[1].split(";", 1)[0]
+        return {
+            "type": "image",
+            "source": {"type": "base64", "media_type": media_type, "data": data},
+        }
+    return {"type": "image", "source": {"type": "url", "url": url}}
+
+
+def _to_anthropic_messages(messages: list[dict]) -> list[dict]:
+    """OpenAI messages 转 Anthropic messages:string content 原样,list content 按块映射。"""
+    result: list[dict] = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content")
+        if isinstance(content, str):
+            result.append({"role": role, "content": content})
+            continue
+        if isinstance(content, list):
+            blocks: list[dict] = []
+            for block in content:
+                btype = block.get("type")
+                if btype == "text":
+                    blocks.append({"type": "text", "text": block.get("text", "")})
+                elif btype == "image_url":
+                    url = (block.get("image_url") or {}).get("url", "")
+                    if url:
+                        blocks.append(_to_anthropic_image(url))
+            result.append({"role": role, "content": blocks})
+    return result
+
+
+async def _stream_anthropic(
+    model: str,
+    messages: list[dict],
+    max_tokens: int,
+    api_key: str,
+) -> AsyncGenerator[str, None]:
+    """流式调用 LiteLLM /v1/messages(Anthropic 协议),归一为 data: <text>。"""
+    try:
+        async with httpx.AsyncClient(timeout=60, trust_env=False) as http_client:
+            async with http_client.stream(
+                "POST",
+                f"{settings.litellm_url}/v1/messages",
+                headers=_anthropic_headers(api_key),
+                json={
+                    "model": model,
+                    "max_tokens": max_tokens,
+                    "messages": _to_anthropic_messages(messages),
+                    "stream": True,
+                },
+            ) as response:
+                if response.status_code != 200:
+                    await response.aread()
+                    error_detail = map_error(
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
+                    yield f"data: [ERROR] {json.dumps(error_detail, ensure_ascii=False)}\n\n"
+                    return
+                async for line in response.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    raw = line[6:]
+                    try:
+                        obj = json.loads(raw)
+                    except json.JSONDecodeError:
+                        continue
+                    etype = obj.get("type")
+                    if etype == "error":
+                        error_detail = map_error(
+                            response_text=json.dumps(
+                                obj.get("error") or {}, ensure_ascii=False
+                            )
+                        )
+                        yield f"data: [ERROR] {json.dumps(error_detail, ensure_ascii=False)}\n\n"
+                        return
+                    if etype == "content_block_delta":
+                        delta = obj.get("delta") or {}
+                        dtype = delta.get("type")
+                        if dtype == "text_delta":
+                            text = delta.get("text") or ""
+                        elif dtype == "thinking_delta":
+                            text = delta.get("thinking") or ""
+                        else:
+                            text = ""
+                        if text:
+                            yield f"data: {text}\n\n"
+                yield "data: [DONE]\n\n"
+    except Exception as e:
+        logger.error("access test anthropic stream error: %s", str(e))
+        yield f"data: [ERROR] {json.dumps(map_error(e), ensure_ascii=False)}\n\n"
+
+
+async def _sync_anthropic(
+    model: str,
+    messages: list[dict],
+    max_tokens: int,
+    api_key: str,
+) -> dict:
+    """非流式调用 LiteLLM /v1/messages(Anthropic 协议)。"""
+    try:
+        async with httpx.AsyncClient(timeout=60, trust_env=False) as http_client:
+            response = await http_client.post(
+                f"{settings.litellm_url}/v1/messages",
+                headers=_anthropic_headers(api_key),
+                json={
+                    "model": model,
+                    "max_tokens": max_tokens,
+                    "messages": _to_anthropic_messages(messages),
+                },
+            )
+            if response.status_code != 200:
+                return build_failure(
+                    map_error(
+                        status_code=response.status_code,
+                        response_text=response.text,
+                    )
+                )
+            data = response.json()
+            content_blocks = data.get("content") or []
+            text = "".join(
+                b.get("text", "") for b in content_blocks if b.get("type") == "text"
+            )
+            usage = data.get("usage") or {}
+            input_tokens = usage.get("input_tokens", 0)
+            output_tokens = usage.get("output_tokens", 0)
+            return {
+                "success": True,
+                "content": text,
+                "model": data.get("model"),
+                "usage": {
+                    "prompt_tokens": input_tokens,
+                    "completion_tokens": output_tokens,
+                    "total_tokens": input_tokens + output_tokens,
+                },
+            }
+    except Exception as e:
+        logger.error("access test anthropic sync error: %s", str(e))
+        result = build_failure(map_error(e))
+        result["content"] = ""
+        return result

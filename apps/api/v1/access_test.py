@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_current_user, get_db
@@ -26,6 +26,12 @@ class TestAccessRequest(BaseModel):
     )
     stream: bool = Field(default=True, description="是否流式输出")
     max_tokens: int = Field(default=100, ge=1, le=4096, description="最大输出 token 数")
+    protocol: str = Field(default="openai", description="接入协议:openai / anthropic")
+
+    @field_validator("protocol")
+    @classmethod
+    def _normalize_protocol(cls, v: str) -> str:
+        return v if v in {"openai", "anthropic"} else "openai"
 
 
 class TestEmbeddingRequest(BaseModel):
@@ -116,6 +122,7 @@ async def test_access(
                 messages=req.messages,
                 max_tokens=req.max_tokens,
                 api_key=user_api_key,
+                protocol=req.protocol,
             ),
             media_type="text/event-stream",
             headers=STREAM_HEADERS,
@@ -125,6 +132,7 @@ async def test_access(
         messages=req.messages,
         max_tokens=req.max_tokens,
         api_key=user_api_key,
+        protocol=req.protocol,
     )
     return {"code": 200, "message": "模型测试完成", "data": result}
 

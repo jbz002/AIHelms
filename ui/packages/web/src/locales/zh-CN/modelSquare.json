@@ -19,6 +19,8 @@
   "modelSquare.apply.submitting": "提交中...",
   "modelSquare.access.openaiProtocol": "OpenAI 协议",
   "modelSquare.access.anthropicProtocol": "Anthropic 协议",
+  "modelSquare.access.protocolTagOpenai": "OpenAI",
+  "modelSquare.access.protocolTagAnthropic": "Anthropic",
   "modelSquare.access.curlLabel": "curl 示例",
   "modelSquare.access.curlHint": "将 <your-api-key> 替换为你的 API Key 后执行",
   "modelSquare.access.testEndpoint": "测试连通性",

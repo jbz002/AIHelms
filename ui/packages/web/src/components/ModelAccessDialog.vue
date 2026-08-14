@@ -272,6 +272,7 @@ async function runChatStream(modelId: string, epoch: number): Promise<void> {
       messages: [{ role: 'user', content }],
       stream: true,
       max_tokens: 100,
+      protocol: activeCurlTab.value,
     }, controller.signal)
     if (!response.ok) {
       if (epoch === testEpoch) testError.value = `HTTP ${response.status}`
@@ -397,7 +398,12 @@ async function runChatStream(modelId: string, epoch: number): Promise<void> {
 
         <div class="rounded-lg border border-slate-200/60 p-4">
           <div class="flex items-center justify-between">
-            <span class="text-xs font-medium text-slate-500">{{ t('modelSquare.access.testResult') }}</span>
+            <div class="flex items-center gap-2">
+              <span class="text-xs font-medium text-slate-500">{{ t('modelSquare.access.testResult') }}</span>
+              <span v-if="showAnthropic" class="rounded px-1.5 py-0.5 text-[10px] font-semibold" :class="activeCurlTab === 'anthropic' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'">
+                {{ activeCurlTab === 'anthropic' ? t('modelSquare.access.protocolTagAnthropic') : t('modelSquare.access.protocolTagOpenai') }}
+              </span>
+            </div>
             <button :disabled="isTesting || !mainKeyValue || isVideoMode" class="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition-opacity disabled:opacity-50" @click="handleTest">
               <Zap class="h-3.5 w-3.5" />{{ isTesting ? t('modelSquare.access.testing') : t('modelSquare.access.testEndpoint') }}
             </button>

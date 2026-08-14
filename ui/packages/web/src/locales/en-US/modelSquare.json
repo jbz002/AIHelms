@@ -19,6 +19,8 @@
   "modelSquare.apply.submitting": "Submitting...",
   "modelSquare.access.openaiProtocol": "OpenAI API",
   "modelSquare.access.anthropicProtocol": "Anthropic API",
+  "modelSquare.access.protocolTagOpenai": "OpenAI",
+  "modelSquare.access.protocolTagAnthropic": "Anthropic",
   "modelSquare.access.curlLabel": "curl example",
   "modelSquare.access.curlHint": "Replace <your-api-key> with your API Key before running",
   "modelSquare.access.testEndpoint": "Test connection",

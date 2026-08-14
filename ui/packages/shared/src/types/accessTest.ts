@@ -12,6 +12,7 @@ export interface TestAccessParams {
   messages: ChatMessage[]
   stream?: boolean
   max_tokens?: number
+  protocol?: 'openai' | 'anthropic'
 }
 
 export interface AccessTestErrorDetail {
