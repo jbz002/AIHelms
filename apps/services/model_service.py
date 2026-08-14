@@ -1,5 +1,6 @@
 import logging
 from datetime import date
+from types import SimpleNamespace
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +16,7 @@ from models.db import (
     RouterSettings,
 )
 from repositories import ai_key_repo, credential_repo, model_repo
-from services import litellm_client
+from services import litellm_client, model_registry
 from services.icon_url import resolve_provider_icon_url
 from services.litellm_credential_payload import (
     build_litellm_credential_values_for_credential,
@@ -1264,8 +1265,14 @@ async def _resolve_prefix(
     session: AsyncSession,
     credential,
     category: str,
-) -> ProviderPrefixMap | None:
-    """Look up the correct LiteLLM prefix from provider_prefix_map table."""
+) -> ProviderPrefixMap | SimpleNamespace | None:
+    """Resolve LiteLLM routing prefix.
+
+    三层兜底（保证向后兼容）：
+    1. 覆盖表 provider_prefix_map（特殊供应商如 google→gemini / vllm→hosted_vllm）；
+    2. registry normalize 派生（仅 registry 原生 provider，legacy 抽象返回 None）；
+    3. _build_litellm_params_for_sync 内的 anthropic 硬编码兜底。
+    """
     if not credential or not credential.provider_id:
         return None
     provider_type = await session.scalar(
@@ -1281,7 +1288,49 @@ async def _resolve_prefix(
             ProviderPrefixMap.category == category,
         )
     )
-    return result.scalar_one_or_none()
+    override = result.scalar_one_or_none()
+    if override:
+        return override
+    # 覆盖表未命中：对 registry 原生 provider 派生前缀（needs_v1 默认 False）
+    derived = model_registry.normalize_litellm_prefix(provider_type)
+    if derived:
+        return SimpleNamespace(prefix=derived, needs_v1=False)
+    return None
+
+
+async def resolve_prefix_for_preview(
+    session: AsyncSession,
+    provider_id: int,
+    fmt: str,
+    category: str,
+) -> dict:
+    """供 GET /providers/{id}/resolved-prefix 展示用：返回最终前缀及来源。
+
+    source: override（覆盖表）/ derived（registry 派生）/ none。
+    """
+    provider_type = await session.scalar(
+        select(Provider.provider_type).where(Provider.id == provider_id)
+    )
+    if not provider_type:
+        return {"prefix": None, "needs_v1": False, "source": "none"}
+    result = await session.execute(
+        select(ProviderPrefixMap).where(
+            ProviderPrefixMap.provider_type == provider_type,
+            ProviderPrefixMap.format == (fmt or "openai"),
+            ProviderPrefixMap.category == category,
+        )
+    )
+    override = result.scalar_one_or_none()
+    if override:
+        return {
+            "prefix": override.prefix,
+            "needs_v1": override.needs_v1,
+            "source": "override",
+        }
+    derived = model_registry.normalize_litellm_prefix(provider_type)
+    if derived:
+        return {"prefix": derived, "needs_v1": False, "source": "derived"}
+    return {"prefix": None, "needs_v1": False, "source": "none"}
 
 
 def _ensure_v1_suffix(api_base: str) -> str:

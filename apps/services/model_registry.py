@@ -105,6 +105,154 @@ def search(keyword: str, limit: int = 20) -> list[str]:
     return [k for k in keys if kw in k.lower()][:limit]
 
 
+# ---------------------------------------------------------------------------
+# 聚合视图：从 registry 派生 provider / mode / capability 全集，驱动前端动态下拉
+# ---------------------------------------------------------------------------
+
+
+def _provider_keys() -> set[str]:
+    """registry 中出现的所有 litellm_provider 原始值（小写）。
+
+    normalize 用作成员关卡：仅对 registry 原生 provider 派生前缀，
+    legacy 平台抽象（google/volcengine/dashscope）不在集合内 → 返回 None，避免误派生。
+    """
+    keys: set[str] = set()
+    for entry in _models().values():
+        p = entry.get("litellm_provider")
+        if isinstance(p, str) and p:
+            keys.add(p.lower())
+    return keys
+
+
+def normalize_litellm_prefix(provider: str) -> str | None:
+    """把 registry 的 litellm_provider 折叠成 LiteLLM 路由前缀。
+
+    仅对 registry 原生 provider 生效；未知/legacy 返回 None（交由覆盖表或兜底处理）。
+    多数 provider 前缀 == litellm_provider（identity），少数子类需折叠：
+    vertex_ai-* / bedrock_* / amazon_nova / cohere_chat / fireworks_ai-* / text-completion-*
+    """
+    p = (provider or "").strip().lower()
+    if not p or p not in _provider_keys():
+        return None
+    if p.startswith("vertex_ai-"):
+        return "vertex_ai"
+    if p.startswith("bedrock_") or p == "amazon_nova":
+        return "bedrock"
+    if p == "cohere_chat":
+        return "cohere"
+    if p.startswith("fireworks_ai-"):
+        return "fireworks_ai"
+    if p.startswith("text-completion-"):
+        return p[len("text-completion-") :]
+    return p
+
+
+# 友好显示名（缺失则 value.replace("_"," ").title()）
+_PROVIDER_DISPLAY_NAMES: dict[str, str] = {
+    "openai": "OpenAI",
+    "anthropic": "Anthropic",
+    "azure": "Azure",
+    "vertex_ai": "Vertex AI",
+    "bedrock": "AWS Bedrock",
+    "gemini": "Google Gemini",
+    "deepseek": "DeepSeek",
+    "groq": "Groq",
+    "mistral": "Mistral",
+    "together_ai": "Together AI",
+    "fireworks_ai": "Fireworks AI",
+    "cohere": "Cohere",
+    "perplexity": "Perplexity",
+    "xai": "xAI",
+    "openrouter": "OpenRouter",
+    "ollama": "Ollama",
+    "dashscope": "百炼 DashScope",
+    "moonshot": "Moonshot",
+    "minimax": "MiniMax",
+    "zai": "Z.ai",
+    "volcengine": "火山引擎",
+    "tencent": "腾讯混元",
+    "novita": "Novita",
+    "deepinfra": "DeepInfra",
+    "nebius": "Nebius",
+    "cerebras": "Cerebras",
+    "sambanova": "SambaNova",
+    "watsonx": "Watsonx",
+    "databricks": "Databricks",
+    "github_copilot": "GitHub Copilot",
+    "voyage": "Voyage AI",
+    "jina_ai": "Jina AI",
+    "elevenlabs": "ElevenLabs",
+    "deepgram": "Deepgram",
+    "snowflake": "Snowflake",
+    "replicate": "Replicate",
+    "cloudflare": "Cloudflare",
+    "nvidia_nim": "NVIDIA NIM",
+    "ai21": "AI21",
+    "oci": "Oracle OCI",
+    "azure_ai": "Azure AI",
+    "vercel_ai_gateway": "Vercel AI Gateway",
+}
+
+
+def _display_name(value: str) -> str:
+    return _PROVIDER_DISPLAY_NAMES.get(value) or value.replace("_", " ").title()
+
+
+def providers() -> list[dict]:
+    """registry 派生的 provider 全集，按模型数降序。
+
+    返回 [{value(=折叠后前缀), count, label}]，驱动供应商下拉与 logo 选择器。
+    """
+    counter: dict[str, int] = {}
+    for entry in _models().values():
+        raw = entry.get("litellm_provider")
+        if not isinstance(raw, str) or not raw:
+            continue
+        prefix = normalize_litellm_prefix(raw)
+        if prefix:
+            counter[prefix] = counter.get(prefix, 0) + 1
+    items = [
+        {"value": k, "count": c, "label": _display_name(k)} for k, c in counter.items()
+    ]
+    items.sort(key=lambda x: (-x["count"], x["value"]))
+    return items
+
+
+def modes() -> list[dict]:
+    """registry 派生的 mode 全集，按模型数降序。"""
+    counter: dict[str, int] = {}
+    for entry in _models().values():
+        m = entry.get("mode")
+        if isinstance(m, str) and m:
+            counter[m] = counter.get(m, 0) + 1
+    items = [{"value": k, "count": c} for k, c in counter.items()]
+    items.sort(key=lambda x: (-x["count"], x["value"]))
+    return items
+
+
+def capabilities() -> list[dict]:
+    """registry 派生的能力位全集（去 supports_ 前缀），按命中模型数降序。"""
+    counter: dict[str, int] = {}
+    for entry in _models().values():
+        for k, v in entry.items():
+            if k.startswith("supports_") and v is True:
+                cap = k[len("supports_") :]
+                counter[cap] = counter.get(cap, 0) + 1
+    items = [{"key": k, "count": c} for k, c in counter.items()]
+    items.sort(key=lambda x: (-x["count"], x["key"]))
+    return items
+
+
+def meta() -> dict:
+    """registry 元数据聚合，供 GET /models/registry-meta 一次性返回。"""
+    return {
+        "providers": providers(),
+        "modes": modes(),
+        "capabilities": capabilities(),
+        "model_count": len(_models()),
+    }
+
+
 # 官方 cost map 中非模型元数据 key，校验 payload 时排除
 _REGISTRY_MIN_MODELS = 1000
 

@@ -57,6 +57,89 @@ def test_total_models_covered() -> None:
     assert len(all_keys) > 2000
 
 
+# --- normalize_litellm_prefix ----------------------------------------------
+
+
+def test_normalize_identity_providers() -> None:
+    """多数 registry provider 前缀 == litellm_provider（identity）。"""
+    for p in ("openai", "anthropic", "deepseek", "groq", "mistral", "gemini"):
+        assert model_registry.normalize_litellm_prefix(p) == p
+
+
+def test_normalize_folds_vertex_subclass() -> None:
+    assert (
+        model_registry.normalize_litellm_prefix("vertex_ai-language-models")
+        == "vertex_ai"
+    )
+    assert (
+        model_registry.normalize_litellm_prefix("vertex_ai-anthropic_models")
+        == "vertex_ai"
+    )
+
+
+def test_normalize_folds_bedrock() -> None:
+    assert model_registry.normalize_litellm_prefix("bedrock_converse") == "bedrock"
+    assert model_registry.normalize_litellm_prefix("bedrock_mantle") == "bedrock"
+    assert model_registry.normalize_litellm_prefix("amazon_nova") == "bedrock"
+
+
+def test_normalize_folds_cohere_and_fireworks() -> None:
+    assert model_registry.normalize_litellm_prefix("cohere_chat") == "cohere"
+    assert (
+        model_registry.normalize_litellm_prefix("fireworks_ai-embedding-models")
+        == "fireworks_ai"
+    )
+
+
+def test_normalize_strips_text_completion() -> None:
+    assert model_registry.normalize_litellm_prefix("text-completion-openai") == "openai"
+
+
+def test_normalize_unknown_returns_none() -> None:
+    """非 registry 原生 provider（legacy 抽象 / 全新厂商）返回 None，避免误派生。"""
+    assert model_registry.normalize_litellm_prefix("google") is None
+    assert (
+        model_registry.normalize_litellm_prefix("volcengine") == "volcengine"
+    )  # registry 原生
+    assert model_registry.normalize_litellm_prefix("totally_new_vendor") is None
+    assert model_registry.normalize_litellm_prefix("") is None
+    assert model_registry.normalize_litellm_prefix("   ") is None
+
+
+# --- meta 聚合 -------------------------------------------------------------
+
+
+def test_meta_providers_count() -> None:
+    providers = model_registry.providers()
+    assert 90 <= len(providers) <= 120
+    values = [p["value"] for p in providers]
+    assert "openai" in values
+    assert "vertex_ai" in values  # vertex_ai-* 子类折叠后出现
+    assert all(p["count"] > 0 for p in providers)
+
+
+def test_meta_modes_count() -> None:
+    modes = model_registry.modes()
+    assert 13 <= len(modes) <= 18
+    values = [m["value"] for m in modes]
+    assert "chat" in values
+    assert "embedding" in values
+
+
+def test_meta_capabilities_count() -> None:
+    caps = model_registry.capabilities()
+    assert len(caps) >= 30  # registry 实测 32 个 supports_*
+    keys = [c["key"] for c in caps]
+    assert "function_calling" in keys
+    assert all(c["count"] > 0 for c in caps)
+
+
+def test_meta_payload_shape() -> None:
+    m = model_registry.meta()
+    assert set(m.keys()) == {"providers", "modes", "capabilities", "model_count"}
+    assert m["model_count"] > 2000
+
+
 async def test_refresh_disabled_by_config(monkeypatch: pytest.MonkeyPatch) -> None:
     """auto_update=False 时不联网。"""
     monkeypatch.setattr(model_registry.settings, "model_registry_auto_update", False)

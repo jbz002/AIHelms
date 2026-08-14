@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_db, require_permission
 from exceptions import ConflictError, NotFoundError
-from services import provider_service
+from services import model_service, provider_service
 
 router = APIRouter(prefix="/providers", tags=["providers"])
 
@@ -37,6 +37,24 @@ async def list_providers(
 ):
     result = await provider_service.list_providers(session, page, page_size)
     return {"code": 200, "message": "ok", "data": result}
+
+
+@router.get("/{provider_id}/resolved-prefix", summary="查询供应商解析前缀")
+async def get_resolved_prefix(
+    provider_id: int,
+    format: str = Query("openai", max_length=20),
+    category: str = Query("chat", max_length=50),
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("user:read")),
+):
+    """返回 (provider_type, format, category) 解析出的最终 LiteLLM 前缀及来源。
+
+    source: override（覆盖表）/ derived（registry 派生）/ none。取代前端读 JSONB 副本。
+    """
+    resolved = await model_service.resolve_prefix_for_preview(
+        session, provider_id, format, category
+    )
+    return {"code": 200, "message": "ok", "data": resolved}
 
 
 @router.post("", summary="创建供应商")

@@ -154,6 +154,17 @@ async def registry_search(
     return {"code": 200, "message": "ok", "data": keys}
 
 
+@router.get("/registry-meta", summary="查询注册表元数据")
+async def registry_meta(
+    _: dict = Depends(require_permission("user:read")),
+):
+    """返回 registry 派生的 provider / mode / capability 全集，驱动前端动态下拉。
+
+    单次拉取约 30KB，前端 composable 缓存。
+    """
+    return {"code": 200, "message": "ok", "data": model_registry.meta()}
+
+
 @router.post("", summary="创建模型")
 async def create_model(
     req: CreateModelRequest,
