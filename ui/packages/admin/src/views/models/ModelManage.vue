@@ -31,9 +31,7 @@ import {
   type UpdateRouterSettingsParams,
   type ModelVisibility,
   type RegistryEntry,
-  CAPABILITY_LABELS,
-  CATEGORY_CAPABILITIES,
-  type ModelCapability,
+  capabilityLabel,
 } from '@aihelms/shared'
 import { usePermission } from '@aihelms/shared'
 import { getDepartmentTree, type DeptTreeNode } from '@aihelms/shared'
@@ -45,7 +43,7 @@ import HostedIcon from '@aihelms/shared/src/components/HostedIcon.vue'
 import ModelRegistryPicker from '../../components/ModelRegistryPicker.vue'
 import { useRegistryMeta } from '../../composables/useRegistryMeta'
 
-const { providerOptions } = useRegistryMeta()
+const { providerOptions, capabilityOptions } = useRegistryMeta()
 const { hasPermission } = usePermission()
 
 const models = ref<ModelInfo[]>([])
@@ -195,13 +193,22 @@ const categories = [
   { value: 'video', label: '文生视频', enabled: true },
 ]
 
-// 能力标签按分类联动（候选来自 shared 统一枚举）
-const categoryTags = computed(() => {
-  const caps = CATEGORY_CAPABILITIES[formCategory.value] || []
-  return caps.map(c => ({ value: c, label: CAPABILITY_LABELS[c] }))
+// 能力标签候选 = registry supports_* 位全集（去前缀），不随分类联动
+const capabilityTags = computed(() =>
+  capabilityOptions.value.map(c => ({ value: c.key, label: capabilityLabel(c.key) })),
+)
+// 候选默认折叠：显 count 前 N + 已选项，余「展开全部」（表单清爽，业界标准做法）
+const capabilityTagsExpanded = ref(false)
+const VISIBLE_CAPABILITY_COUNT = 10
+const visibleCapabilityTags = computed(() => {
+  const all = capabilityTags.value
+  if (capabilityTagsExpanded.value) return all
+  const top = all.slice(0, VISIBLE_CAPABILITY_COUNT)
+  const selectedExtra = all.filter(
+    t => formTags.value.includes(t.value) && !top.some(s => s.value === t.value),
+  )
+  return [...top, ...selectedExtra]
 })
-
-const modelTags = computed(() => categoryTags.value)
 
 // audio 分类下需二选一的 mode
 const audioModeOptions = [
@@ -236,22 +243,6 @@ const resolvedMode = computed(() => {
   if (formCategory.value === 'audio') return formMode.value
   return formMode.value || undefined
 })
-
-// 把注册表 supports_* 映射为 capabilities 枚举（用于回填）
-const SUPPORTS_TO_CAPABILITY: Record<string, ModelCapability> = {
-  vision: 'vision',
-  function_calling: 'tools',
-  reasoning: 'reasoning',
-  response_schema: 'response_schema',
-  parallel_function_calling: 'parallel_tool_calling',
-  tool_choice: 'tool_choice',
-  prompt_caching: 'prompt_caching',
-  pdf_input: 'pdf_input',
-  web_search: 'web_search',
-  system_messages: 'system_messages',
-  audio_input: 'audio_input',
-  audio_output: 'audio_output',
-}
 
 const formFilteredCredentials = computed(() => {
   if (!formProviderId.value) return []
@@ -545,29 +536,16 @@ async function handleRegistryFill(): Promise<void> {
       parallel_function_calling: !!entry.supports_parallel_function_calling,
       tool_choice: !!entry.supports_tool_choice,
     }
-    // 注册表能力位映射进能力标签（去重保序）
-    const entryFlags: Record<string, boolean | undefined> = {
-      vision: entry.supports_vision,
-      function_calling: entry.supports_function_calling,
-      reasoning: entry.supports_reasoning,
-      response_schema: entry.supports_response_schema,
-      parallel_function_calling: entry.supports_parallel_function_calling,
-      tool_choice: entry.supports_tool_choice,
-      prompt_caching: entry.supports_prompt_caching,
-      pdf_input: entry.supports_pdf_input,
-      web_search: entry.supports_web_search,
-      system_messages: entry.supports_system_messages,
-      audio_input: entry.supports_audio_input,
-      audio_output: entry.supports_audio_output,
-    }
-    const mapped: ModelCapability[] = []
-    for (const [k, cap] of Object.entries(SUPPORTS_TO_CAPABILITY)) {
-      if (entryFlags[k] && !formTags.value.includes(cap)) {
-        mapped.push(cap)
+    // registry supports_* 位动态映射进能力标签（去前缀，去重保序）；registry 新增位零改动自动回填
+    const caps: string[] = []
+    for (const [k, v] of Object.entries(entry)) {
+      if (k.startsWith('supports_') && v === true) {
+        const cap = k.slice('supports_'.length)
+        if (!formTags.value.includes(cap)) caps.push(cap)
       }
     }
-    if (mapped.length) {
-      formTags.value = [...formTags.value, ...mapped]
+    if (caps.length) {
+      formTags.value = [...formTags.value, ...caps]
     }
   } catch (e) {
     registryFillError.value = e instanceof Error ? e.message : '查询失败'
@@ -1181,7 +1159,7 @@ onMounted(() => {
                 v-for="cap in model.capabilities.slice(0, 2)"
                 :key="cap"
                 class="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-500"
-              >{{ CAPABILITY_LABELS[cap as ModelCapability] || cap }}</span>
+              >{{ capabilityLabel(cap) }}</span>
               <span v-if="model.capabilities.length > 2" class="text-[10px] text-slate-400">+{{ model.capabilities.length - 2 }}</span>
             </div>
           </div>
@@ -1246,7 +1224,7 @@ onMounted(() => {
               :key="cap"
               class="rounded bg-purple-50 px-2 py-0.5 text-xs text-purple-600"
             >
-              {{ CAPABILITY_LABELS[cap as ModelCapability] || cap }}
+              {{ capabilityLabel(cap) }}
             </span>
           </div>
 
@@ -1512,7 +1490,7 @@ onMounted(() => {
             <label class="mb-1.5 block text-sm font-medium text-slate-700">能力标签</label>
             <div class="flex flex-wrap gap-2">
               <label
-                v-for="tag in modelTags"
+                v-for="tag in visibleCapabilityTags"
                 :key="tag.value"
                 class="flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-sm transition-colors"
                 :class="formTags.includes(tag.value) ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'"
@@ -1525,6 +1503,18 @@ onMounted(() => {
                 />
                 {{ tag.label }}
               </label>
+              <button
+                v-if="capabilityTags.length > visibleCapabilityTags.length"
+                type="button"
+                class="rounded-lg border border-dashed border-slate-300 px-2.5 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
+                @click="capabilityTagsExpanded = true"
+              >+ 展开全部（{{ capabilityTags.length - visibleCapabilityTags.length }}）</button>
+              <button
+                v-else-if="capabilityTagsExpanded && capabilityTags.length > VISIBLE_CAPABILITY_COUNT"
+                type="button"
+                class="rounded-lg border border-dashed border-slate-300 px-2.5 py-1.5 text-sm text-slate-500 hover:bg-slate-50"
+                @click="capabilityTagsExpanded = false"
+              >收起</button>
             </div>
           </div>
           <div class="mb-3 grid grid-cols-2 gap-2">

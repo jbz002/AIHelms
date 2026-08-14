@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
-import { getMyKeys, CAPABILITY_LABELS, MODEL_CATEGORIES } from '@aihelms/shared'
+import { getMyKeys, MODEL_CATEGORIES, capabilityLabel } from '@aihelms/shared'
 import { request } from '@aihelms/shared/src/api/request'
 import { createResourceApplication } from '@aihelms/shared/src/api/resource-application'
 import type { AiKey } from '@aihelms/shared/src/types/ai-key'
@@ -49,11 +49,6 @@ const capabilities = computed(() => {
   const set = new Set(models.value.flatMap(m => m.capabilities || []))
   return Array.from(set).sort()
 })
-
-// 能力枚举值 → 中文展示（capabilities 入库为英文 snake_case，UI 显示中文）
-function capabilityLabel(cap: string): string {
-  return CAPABILITY_LABELS[cap as keyof typeof CAPABILITY_LABELS] || cap
-}
 
 // 模型分类枚举值 → 中文展示（category 入库为英文 chat/embedding…，UI 显示中文）
 function categoryLabel(cat: string): string {

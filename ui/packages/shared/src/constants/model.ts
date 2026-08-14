@@ -1,46 +1,11 @@
-/**
- * 模型能力统一枚举。
- *
- * 取代旧的两套并行能力描述：
- * - 旧 `capabilities` JSONB 自由文本（中文：图像/推理/工具调用/多语言/多模态/代码/长文本）
- * - 旧 6 个 `supports_*` 布尔列（vision/function_calling/reasoning/response_schema/parallel_function_calling/tool_choice）
- *
- * 现统一为英文 snake_case 枚举值入库，中文展示文案由消费方（admin 直用 CAPABILITY_LABELS，web 走 i18n）映射。
- * 模态本身由 `category`（粗分类）+ `mode`（LiteLLM 精确 mode）承担，这里只描述跨模态的能力点。
- */
-export type ModelCapability =
-  | 'vision'
-  | 'reasoning'
-  | 'tools'
-  | 'response_schema'
-  | 'parallel_tool_calling'
-  | 'tool_choice'
-  | 'multilingual'
-  | 'multimodal'
-  | 'code'
-  | 'long_context'
-  | 'image_gen'
-  | 'tts'
-  | 'stt'
-  | 'video_gen'
-  | 'prompt_caching'
-  | 'pdf_input'
-  | 'web_search'
-  | 'system_messages'
-  | 'audio_input'
-  | 'audio_output'
-
-/** admin 端展示文案（admin 未 i18n）。web 端不使用此映射，走 i18n key。
- *  放宽为 Record<string,string>：已知能力给中文，未知（registry 新增 supports_*）由 capabilityLabel() 兜底 prettify。 */
+/** 能力位展示文案（英文 registry key → 中文）。已知能力给中文，未知（registry 新增 supports_*）由 capabilityLabel() 兜底 prettify。admin/web 共用。 */
 export const CAPABILITY_LABELS: Record<string, string> = {
   vision: '视觉',
   reasoning: '推理',
-  tools: '工具调用',
   function_calling: '工具调用',
   response_schema: '结构化输出',
   native_structured_output: '原生结构化输出',
   parallel_function_calling: '并行工具调用',
-  parallel_tool_calling: '并行工具',
   tool_choice: '工具选择',
   tool_search: '工具搜索',
   multilingual: '多语言',
@@ -65,39 +30,13 @@ export const CAPABILITY_LABELS: Record<string, string> = {
   assistant_prefill: '助手预填',
   native_streaming: '原生流式',
   speed: '速度优化',
+  embedding_image_input: '向量图像输入',
+  nova_canvas_image_edit: 'Nova 图像编辑',
 }
 
 /** 取能力中文文案；未知 key（registry 新增 supports_*）兜底 prettify：computer_use→Computer Use */
 export function capabilityLabel(key: string): string {
   return CAPABILITY_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-}
-
-/** 按 category 联动的能力候选（含模态标记，便于在对应分类下直接勾选）。 */
-export const CATEGORY_CAPABILITIES: Record<string, ModelCapability[]> = {
-  chat: [
-    'vision',
-    'reasoning',
-    'tools',
-    'response_schema',
-    'parallel_tool_calling',
-    'tool_choice',
-    'multilingual',
-    'multimodal',
-    'code',
-    'long_context',
-    'prompt_caching',
-    'pdf_input',
-    'web_search',
-    'system_messages',
-    'audio_input',
-    'audio_output',
-  ],
-  embedding: ['multilingual', 'multimodal', 'code', 'long_context'],
-  rerank: ['multilingual', 'multimodal'],
-  completion: ['reasoning', 'long_context'],
-  image: ['image_gen', 'multilingual'],
-  audio: ['tts', 'stt', 'multilingual'],
-  video: ['video_gen', 'multilingual'],
 }
 
 /** 平台模型分类（模态粗分类）。audio 通过 mode 区分 TTS/STT，不再单列 tts。 */

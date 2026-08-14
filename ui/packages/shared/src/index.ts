@@ -8,8 +8,7 @@ export type { KeyScenario, CreateKeyScenarioParams, UpdateKeyScenarioParams, Key
 export type { Provider, CreateProviderParams, UpdateProviderParams, ProviderListResult } from './types/provider'
 export type { Credential, CreateCredentialParams, UpdateCredentialParams, CredentialListResult, ProviderFieldMetadata, ProviderFieldsInfo } from './types/credential'
 export type { ModelInfo, Deployment, CreateModelParams, UpdateModelParams, CreateDeploymentParams, UpdateDeploymentParams, ModelListResult, ActiveModel, AccessGroup, CreateAccessGroupParams, UpdateAccessGroupParams, RouterSettings, UpdateRouterSettingsParams, ModelVisibility, UpdateModelPublishParams, ResyncAnthropicResult, RegistryEntry, RegistryMeta, RegistryProviderItem, RegistryModeItem, RegistryCapabilityItem, ResolvedPrefix } from './types/model'
-export type { ModelCapability } from './constants/model'
-export { CAPABILITY_LABELS, CATEGORY_CAPABILITIES, MODEL_CATEGORIES, LITELLM_MODES, AUDIO_MODES, capabilityLabel } from './constants/model'
+export { CAPABILITY_LABELS, MODEL_CATEGORIES, LITELLM_MODES, AUDIO_MODES, capabilityLabel } from './constants/model'
 export type { ApiResponse } from './api/request'
 export type { ExportOptionItem, ExportTask, ExportTaskListResult, ExportTaskQuery, ExportTaskParams, CreateExportTaskParams, CleanupExportTaskResult } from './types/exportTask'
 

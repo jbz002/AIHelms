@@ -352,7 +352,7 @@ CREATE TABLE IF NOT EXISTS aihelms.models (
     model_id VARCHAR(128) UNIQUE,              -- 用户请求时用的名称 = LiteLLM model_name，首次添加凭证时设置
     category VARCHAR(50) DEFAULT 'chat',      -- 'chat' | 'embedding' | 'rerank' | 'completion' | 'image' | 'audio' | 'video'
     mode VARCHAR(32),                         -- LiteLLM 精确 mode（同步用），如 image_generation/audio_speech/audio_transcription/video_generation
-    capabilities JSONB DEFAULT '[]',          -- 统一结构化能力枚举（英文 snake_case），取代旧 supports_* 手填
+    capabilities JSONB DEFAULT '[]',          -- 能力位（registry supports_* 去前缀，如 function_calling/vision），模态由 category/mode 表达
     description TEXT DEFAULT '',
     logo_provider_type VARCHAR(50) DEFAULT '',
     business_scenario_id BIGINT REFERENCES aihelms.business_scenarios(id) ON DELETE SET NULL,

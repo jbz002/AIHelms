@@ -128,9 +128,11 @@ def test_meta_modes_count() -> None:
 
 def test_meta_capabilities_count() -> None:
     caps = model_registry.capabilities()
-    assert len(caps) >= 30  # registry 实测 32 个 supports_*
+    assert len(caps) >= 20  # registry 能力位（已排除 effort/config 配置位）
     keys = [c["key"] for c in caps]
     assert "function_calling" in keys
+    assert "max_reasoning_effort" not in keys  # 配置位应被过滤
+    assert "output_config" not in keys
     assert all(c["count"] > 0 for c in caps)
 
 

@@ -230,13 +230,30 @@ def modes() -> list[dict]:
     return items
 
 
+# registry supports_* 中非「能力」语义的位：推理强度档位 / 输出配置。
+# 它们表示「支持某配置值」而非「模型能做什么」，不作为能力标签暴露。
+_NON_CAPABILITY_SUPPORTS = frozenset(
+    {
+        "xhigh_reasoning_effort",
+        "max_reasoning_effort",
+        "minimal_reasoning_effort",
+        "none_reasoning_effort",
+        "adaptive_thinking",
+        "output_config",
+        "parallel_tool_use_config",
+    }
+)
+
+
 def capabilities() -> list[dict]:
-    """registry 派生的能力位全集（去 supports_ 前缀），按命中模型数降序。"""
+    """registry 派生的能力位全集（去 supports_ 前缀，排除 effort/config 配置位），按命中模型数降序。"""
     counter: dict[str, int] = {}
     for entry in _models().values():
         for k, v in entry.items():
             if k.startswith("supports_") and v is True:
                 cap = k[len("supports_") :]
+                if cap in _NON_CAPABILITY_SUPPORTS:
+                    continue
                 counter[cap] = counter.get(cap, 0) + 1
     items = [{"key": k, "count": c} for k, c in counter.items()]
     items.sort(key=lambda x: (-x["count"], x["key"]))
