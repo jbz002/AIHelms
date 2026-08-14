@@ -30,28 +30,46 @@ export type ModelCapability =
   | 'audio_input'
   | 'audio_output'
 
-/** admin 端展示文案（admin 未 i18n）。web 端不使用此映射，走 i18n key。 */
-export const CAPABILITY_LABELS: Record<ModelCapability, string> = {
+/** admin 端展示文案（admin 未 i18n）。web 端不使用此映射，走 i18n key。
+ *  放宽为 Record<string,string>：已知能力给中文，未知（registry 新增 supports_*）由 capabilityLabel() 兜底 prettify。 */
+export const CAPABILITY_LABELS: Record<string, string> = {
   vision: '视觉',
   reasoning: '推理',
   tools: '工具调用',
+  function_calling: '工具调用',
   response_schema: '结构化输出',
+  native_structured_output: '原生结构化输出',
+  parallel_function_calling: '并行工具调用',
   parallel_tool_calling: '并行工具',
   tool_choice: '工具选择',
+  tool_search: '工具搜索',
   multilingual: '多语言',
   multimodal: '多模态',
   code: '代码',
   long_context: '长文本',
   image_gen: '文生图',
+  image_input: '图像输入',
   tts: '语音合成',
   stt: '语音识别',
   video_gen: '文生视频',
+  video_input: '视频输入',
   prompt_caching: '提示缓存',
   pdf_input: 'PDF输入',
   web_search: '联网搜索',
+  url_context: 'URL上下文',
   system_messages: '系统消息',
+  mid_conversation_system: '中途系统消息',
   audio_input: '音频输入',
   audio_output: '音频输出',
+  computer_use: '计算机使用',
+  assistant_prefill: '助手预填',
+  native_streaming: '原生流式',
+  speed: '速度优化',
+}
+
+/** 取能力中文文案；未知 key（registry 新增 supports_*）兜底 prettify：computer_use→Computer Use */
+export function capabilityLabel(key: string): string {
+  return CAPABILITY_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
 
 /** 按 category 联动的能力候选（含模态标记，便于在对应分类下直接勾选）。 */

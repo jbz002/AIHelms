@@ -17,6 +17,7 @@ import type {
   UpdateModelPublishParams,
   ResyncAnthropicResult,
   RegistryEntry,
+  RegistryMeta,
 } from '../types/model'
 
 export function getModels(page: number = 1, pageSize: number = 50, category?: string): Promise<ModelListResult> {
@@ -55,6 +56,10 @@ export function registrySearch(keyword: string, limit: number = 20): Promise<str
   return request<string[]>('/api/v1/models/registry-search', {
     params: { keyword, limit },
   })
+}
+
+export function registryMeta(): Promise<RegistryMeta> {
+  return request<RegistryMeta>('/api/v1/models/registry-meta')
 }
 
 export function createDeployment(modelId: number, params: CreateDeploymentParams): Promise<Deployment> {

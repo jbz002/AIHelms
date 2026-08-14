@@ -43,7 +43,9 @@ import AccessTestDialog from '../../components/AccessTestDialog.vue'
 import ProviderIcon from '../../components/ProviderIcon.vue'
 import HostedIcon from '@aihelms/shared/src/components/HostedIcon.vue'
 import ModelRegistryPicker from '../../components/ModelRegistryPicker.vue'
+import { useRegistryMeta } from '../../composables/useRegistryMeta'
 
+const { providerOptions } = useRegistryMeta()
 const { hasPermission } = usePermission()
 
 const models = ref<ModelInfo[]>([])
@@ -282,66 +284,25 @@ function getCredentialFormat(credId: number | null): string {
   return (cred?.credential_info?.format as string) || 'openai'
 }
 
-function getProviderPrefixMap(credId: number | null): Record<string, string | null> | null {
-  if (!credId) return null
-  const cred = credentials.value.find(c => c.id === credId)
-  if (!cred) return null
-  const provider = providers.value.find(p => p.id === cred.provider_id)
-  if (!provider) return null
-  // 优先从供应商 config 中读取，fallback 到默认映射
-  const configMap = provider.config?.litellm_prefix_map as Record<string, string | null> | undefined
-  if (configMap) return configMap
-  return FALLBACK_PREFIX_MAP[provider.provider_type] || null
-}
-
-// 默认前缀映射 fallback（供应商未配置 litellm_prefix_map 时使用）
-const FALLBACK_PREFIX_MAP: Record<string, Record<string, string | null>> = {
-  openai: { chat: 'openai', embedding: 'openai', rerank: null },
-  anthropic: { chat: 'anthropic', embedding: null, rerank: null },
-  azure: { chat: 'azure', embedding: 'azure', rerank: null },
-  google: { chat: 'gemini', embedding: 'gemini', rerank: null },
-  deepseek: { chat: 'deepseek', embedding: null, rerank: null },
-  bedrock: { chat: 'bedrock', embedding: 'bedrock', rerank: null },
-  vertex_ai: { chat: 'vertex_ai', embedding: 'vertex_ai', rerank: null },
-  volcengine: { chat: 'openai', embedding: 'openai', rerank: null },
-  dashscope: { chat: 'openai', embedding: 'openai', rerank: null },
-  zhipu: { chat: 'openai', embedding: 'openai', rerank: null },
-  moonshot: { chat: 'openai', embedding: null, rerank: null },
-  minimax: { chat: 'openai', embedding: null, rerank: null },
-  tencent: { chat: 'tencent', embedding: null, rerank: null },
-  xai: { chat: 'xai', embedding: null, rerank: null },
-  vllm: { chat: 'openai', embedding: 'openai', rerank: 'hosted_vllm' },
-  sglang: { chat: 'openai', embedding: 'openai', rerank: null },
-  ollama: { chat: 'ollama', embedding: 'ollama', rerank: null },
-  lmstudio: { chat: 'openai', embedding: 'openai', rerank: null },
-}
-
 interface LogoOption { value: string; label: string }
 
-const BUILT_IN_LOGO_OPTIONS: LogoOption[] = [
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'azure', label: 'Azure' },
-  { value: 'google', label: 'Google' },
-  { value: 'deepseek', label: 'DeepSeek' },
-  { value: 'bedrock', label: 'Bedrock' },
-  { value: 'vertex_ai', label: 'Vertex AI' },
-  { value: 'volcengine', label: '火山引擎' },
-  { value: 'dashscope', label: '阿里百炼' },
-  { value: 'zhipu', label: 'Z.ai（GLM）' },
-  { value: 'moonshot', label: 'Moonshot' },
-  { value: 'minimax', label: 'MiniMax' },
-  { value: 'xiaomi_mimo', label: '小米MiMo' },
-  { value: 'tencent', label: '腾讯混元' },
-  { value: 'xai', label: 'xAI（Grok）' },
-  { value: 'xunfei', label: '讯飞星火' },
-  { value: 'vllm', label: 'vLLM' },
-  { value: 'sglang', label: 'SGLang' },
-  { value: 'ollama', label: 'Ollama' },
-  { value: 'lmstudio', label: 'LM Studio' },
-  { value: 'openai_compatible', label: 'OpenAI Compatible' },
-  { value: 'custom', label: '自定义' },
-]
+// Logo 候选 = registry 派生（~99）+ 平台遗留抽象 + logo 专用值（openai_compatible/custom）
+const logoProviderOptions = computed<LogoOption[]>(() => {
+  const items = providerOptions.value.map(p => ({ value: p.value, label: p.label }))
+  const present = new Set(items.map(i => i.value))
+  const extras: LogoOption[] = [
+    { value: 'google', label: 'Google' },
+    { value: 'zhipu', label: 'Z.ai（GLM）' },
+    { value: 'xiaomi_mimo', label: '小米MiMo' },
+    { value: 'xunfei', label: '讯飞星火' },
+    { value: 'vllm', label: 'vLLM' },
+    { value: 'sglang', label: 'SGLang' },
+    { value: 'lmstudio', label: 'LM Studio' },
+    { value: 'openai_compatible', label: 'OpenAI Compatible' },
+    { value: 'custom', label: '自定义' },
+  ]
+  return [...items, ...extras.filter(e => !present.has(e.value))]
+})
 
 const modelLogoOptions = computed<LogoOption[]>(() => {
   const options: LogoOption[] = [{ value: '', label: '默认' }]
@@ -357,7 +318,7 @@ const modelLogoOptions = computed<LogoOption[]>(() => {
     }
   }
 
-  for (const option of BUILT_IN_LOGO_OPTIONS) {
+  for (const option of logoProviderOptions.value) {
     if (!seen.has(option.value)) {
       options.push(option)
       seen.add(option.value)
@@ -385,7 +346,7 @@ const selectedLogoOption = computed<LogoOption>(() => {
 
 function getLogoProviderLabel(providerType: string): string {
   return providers.value.find(p => p.provider_type === providerType)?.name
-    || BUILT_IN_LOGO_OPTIONS.find(option => option.value === providerType)?.label
+    || logoProviderOptions.value.find(option => option.value === providerType)?.label
     || providerType
 }
 
@@ -413,20 +374,6 @@ const categoryLabels: Record<string, string> = {
   audio: '语音',
   tts: '语音合成',
   completion: '补全',
-}
-
-function buildLitellmModelId(credId: number | null, modelName: string, category?: string): string {
-  if (!modelName) return modelName
-  const prefixMap = getProviderPrefixMap(credId)
-  if (prefixMap && category) {
-    const prefix = prefixMap[category]
-    if (prefix === null) return modelName
-    if (prefix) return `${prefix}/${modelName}`
-  }
-  // fallback: 用凭证的 provider_type
-  const providerType = getCredentialProviderType(credId)
-  if (!providerType) return modelName
-  return `${providerType}/${modelName}`
 }
 
 async function fetchModels(): Promise<void> {

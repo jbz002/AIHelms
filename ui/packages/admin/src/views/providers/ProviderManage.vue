@@ -19,6 +19,9 @@ import { Eye, EyeOff } from 'lucide-vue-next'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import AccessTestDialog from '../../components/AccessTestDialog.vue'
 import ProviderIcon from '../../components/ProviderIcon.vue'
+import { useRegistryMeta } from '../../composables/useRegistryMeta'
+
+const { providerOptions } = useRegistryMeta()
 
 const { hasPermission } = usePermission()
 
@@ -59,55 +62,26 @@ const maskedApiKey = ref('')
 
 // 按模型定价（已移除，模型关联统一在模型管理操作）
 
-const providerTypes = [
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'azure', label: 'Azure' },
+// 平台遗留供应商抽象（不在 registry 中，需保留显示与可选）
+const LEGACY_PROVIDER_TYPES = [
   { value: 'google', label: 'Google' },
-  { value: 'deepseek', label: 'DeepSeek' },
-  { value: 'bedrock', label: 'AWS Bedrock' },
-  { value: 'vertex_ai', label: 'Vertex AI' },
-  { value: 'volcengine', label: '火山引擎' },
-  { value: 'dashscope', label: '百炼' },
   { value: 'zhipu', label: '智谱' },
-  { value: 'moonshot', label: 'Moonshot' },
-  { value: 'minimax', label: 'MiniMax' },
   { value: 'xiaomi_mimo', label: '小米MiMo' },
-  { value: 'tencent', label: '腾讯混元' },
-  { value: 'xai', label: 'xAI' },
   { value: 'xunfei', label: '讯飞星火' },
   { value: 'vllm', label: 'vLLM' },
   { value: 'sglang', label: 'SGLang' },
-  { value: 'ollama', label: 'Ollama' },
   { value: 'lmstudio', label: 'LM Studio' },
   { value: 'other', label: '其他' },
 ]
 
-// 供应商类型 → 各模型分类对应的 LiteLLM 内部路由前缀
-// null 表示不支持该类型
-const DEFAULT_PREFIX_MAP: Record<string, Record<string, string | null>> = {
-  openai: { chat: 'openai', embedding: 'openai', rerank: null, completion: 'openai', image: 'openai', audio: 'openai' },
-  anthropic: { chat: 'anthropic', embedding: null, rerank: null, completion: null },
-  azure: { chat: 'azure', embedding: 'azure', rerank: null, completion: 'azure' },
-  google: { chat: 'gemini', embedding: 'gemini', rerank: null },
-  deepseek: { chat: 'deepseek', embedding: null, rerank: null },
-  bedrock: { chat: 'bedrock', embedding: 'bedrock', rerank: null },
-  vertex_ai: { chat: 'vertex_ai', embedding: 'vertex_ai', rerank: null },
-  volcengine: { chat: 'openai', embedding: 'openai', rerank: null },
-  dashscope: { chat: 'openai', embedding: 'openai', rerank: null },
-  zhipu: { chat: 'openai', embedding: 'openai', rerank: null },
-  moonshot: { chat: 'openai', embedding: null, rerank: null },
-  minimax: { chat: 'openai', embedding: null, rerank: null },
-  xiaomi_mimo: { chat: 'xiaomi_mimo', embedding: null, rerank: null },
-  tencent: { chat: 'tencent', embedding: null, rerank: null },
-  xai: { chat: 'xai', embedding: null, rerank: null },
-  xunfei: { chat: 'openai', embedding: null, rerank: null },
-  vllm: { chat: 'openai', embedding: 'openai', rerank: 'hosted_vllm', completion: 'openai' },
-  sglang: { chat: 'openai', embedding: 'openai', rerank: null, completion: 'openai' },
-  ollama: { chat: 'ollama', embedding: 'ollama', rerank: null },
-  lmstudio: { chat: 'openai', embedding: 'openai', rerank: null },
-  other: { chat: 'openai', embedding: 'openai', rerank: null },
-}
+// 供应商选项 = registry 动态派生（~99）+ 遗留平台抽象（去重）。
+// 路由前缀由后端 provider_prefix_map 覆盖表 + registry normalize 派生，前端不再维护 prefix_map。
+const providerTypes = computed(() => {
+  const registryItems = providerOptions.value.map(p => ({ value: p.value, label: p.label }))
+  const present = new Set(registryItems.map(i => i.value))
+  const legacy = LEGACY_PROVIDER_TYPES.filter(l => !present.has(l.value))
+  return [...registryItems, ...legacy]
+})
 
 const accessFormats = [
   { value: 'openai', label: 'OpenAI', needsKey: true },
@@ -128,7 +102,7 @@ const selectedFormatNeedsKey = computed(() => {
 })
 
 function getProviderTypeLabel(type: string): string {
-  const item = providerTypes.find(t => t.value === type)
+  const item = providerTypes.value.find(t => t.value === type)
   return item?.label || type
 }
 
@@ -196,12 +170,11 @@ async function handleSubmitProvider(): Promise<void> {
     return
   }
   try {
-    const prefixMap = DEFAULT_PREFIX_MAP[formType.value] || DEFAULT_PREFIX_MAP['other']
     const params = {
       name: formName.value,
       provider_type: formType.value,
       description: formDescription.value || undefined,
-      config: { supported_formats: formFormats.value, litellm_prefix_map: prefixMap },
+      config: { supported_formats: formFormats.value },
     }
     if (isEditingProvider.value && editingProviderId.value) {
       await updateProvider(editingProviderId.value, params)

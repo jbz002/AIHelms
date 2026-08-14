@@ -28,3 +28,8 @@ export function getProviderIconUrl(providerType: string): string {
   const filename = PROVIDER_ICON_FILES[providerType] || PROVIDER_ICON_FILES.custom
   return `/icons/v1/providers/${filename}`
 }
+
+/** 是否有内置图标文件；false 时调用方应渲染首字母占位（registry 动态 provider 多数无图标） */
+export function hasProviderIcon(providerType: string): boolean {
+  return Boolean(providerType) && providerType in PROVIDER_ICON_FILES
+}

@@ -186,6 +186,38 @@ export interface RegistryEntry {
   output_cost_per_reasoning_token_per_million_tokens_cny?: number | null
 }
 
+/** registry 派生的供应商项（value=折叠后 LiteLLM 前缀，count=模型数） */
+export interface RegistryProviderItem {
+  value: string
+  count: number
+  label: string
+}
+
+export interface RegistryModeItem {
+  value: string
+  count: number
+}
+
+export interface RegistryCapabilityItem {
+  key: string
+  count: number
+}
+
+/** GET /models/registry-meta 返回的聚合元数据，驱动前端动态下拉 */
+export interface RegistryMeta {
+  providers: RegistryProviderItem[]
+  modes: RegistryModeItem[]
+  capabilities: RegistryCapabilityItem[]
+  model_count: number
+}
+
+/** GET /providers/{id}/resolved-prefix 返回，部署表单预览前缀用 */
+export interface ResolvedPrefix {
+  prefix: string | null
+  needs_v1: boolean
+  source: 'override' | 'derived' | 'none'
+}
+
 export interface AccessGroup {
   id: number
   group_name: string
