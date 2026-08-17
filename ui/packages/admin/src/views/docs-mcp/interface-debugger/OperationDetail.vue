@@ -30,7 +30,6 @@ const responses = computed(() => Object.entries(props.operation.responses ?? {})
 const tabs = computed(() => [
   { key: 'overview', label: '概览' },
   { key: 'params', label: `参数${paramCount.value ? ` (${paramCount.value})` : ''}` },
-  { key: 'body', label: '请求体' },
   { key: 'response', label: `响应 (${responses.value.length})` },
   { key: 'debug', label: '调试' },
 ])
@@ -118,23 +117,28 @@ function statusClass(code: string): string {
         </section>
       </div>
 
-      <!-- 参数 -->
-      <div v-else-if="activeTab === 'params'">
-        <ParamsTable :parameters="operation.parameters ?? []" />
-      </div>
+      <!-- 参数：参数 + 请求体 -->
+      <div v-else-if="activeTab === 'params'" class="space-y-4">
+        <section>
+          <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">参数</div>
+          <ParamsTable :parameters="operation.parameters ?? []" />
+        </section>
 
-      <!-- 请求体 -->
-      <div v-else-if="activeTab === 'body'" class="space-y-2">
-        <template v-if="operation.requestBody">
-          <div class="flex items-center gap-2 text-xs">
-            <span class="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-500">application/json</span>
-            <span v-if="operation.requestBody.required" class="text-red-500">必填</span>
+        <section>
+          <div class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">请求体</div>
+          <div class="space-y-2">
+            <template v-if="operation.requestBody">
+              <div class="flex items-center gap-2 text-xs">
+                <span class="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs text-slate-500">application/json</span>
+                <span v-if="operation.requestBody.required" class="text-red-500">必填</span>
+              </div>
+              <p v-if="operation.requestBody.description" class="text-sm text-slate-500">{{ operation.requestBody.description }}</p>
+              <SchemaTable v-if="jsonBody?.schema" :schema="jsonBody.schema" />
+              <p v-else class="py-4 text-center text-sm text-slate-300">请求体未定义结构</p>
+            </template>
+            <p v-else class="py-6 text-center text-sm text-slate-300">该接口无请求体</p>
           </div>
-          <p v-if="operation.requestBody.description" class="text-sm text-slate-500">{{ operation.requestBody.description }}</p>
-          <SchemaTable v-if="jsonBody?.schema" :schema="jsonBody.schema" />
-          <p v-else class="py-4 text-center text-sm text-slate-300">请求体未定义结构</p>
-        </template>
-        <p v-else class="py-6 text-center text-sm text-slate-300">该接口无请求体</p>
+        </section>
       </div>
 
       <!-- 响应 -->
