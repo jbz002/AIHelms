@@ -143,7 +143,17 @@ function _M.rewrite()
 
     ngx.req.read_body()
     local raw = ngx.req.get_body_data()
-    if not raw then return end
+    -- 兜底：body 超过 client_body_buffer_size 落盘临时文件时 get_body_data 为 nil，
+    -- 必须读文件，否则大请求改写静默失效、走错方言组
+    if not raw then
+        local body_file = ngx.req.get_body_file()
+        if not body_file then return end
+        local f = io.open(body_file, "rb")
+        if not f then return end
+        raw = f:read("*a")
+        f:close()
+    end
+    if not raw or raw == "" then return end
     local data = cjson.decode(raw)
     if not data or type(data.model) ~= "string" then return end
 
