@@ -91,6 +91,71 @@ async def test_no_credential_returns_none() -> None:
 
 
 @pytest.mark.asyncio
+async def test_registry_native_anthropic_credential_redirected_to_fallback() -> None:
+    """registry 原生 provider + anthropic 方言 chat 凭证 + 覆盖表无行：必须返 None
+    交还 anthropic 硬编码兜底，不得派生供应商前缀（2026-08-26 ollama 事故回归）。
+
+    派生 'ollama/' 会让 litellm 用 openai 方言 handler 调 anthropic 端点，
+    翻译路径丢 tool_use，Claude Code 调工具卡死。
+    """
+    anthropic_credential = SimpleNamespace(
+        provider_id=1, credential_info={"format": "anthropic"}
+    )
+    assert (
+        await _resolve_prefix(FakeSession("ollama", None), anthropic_credential, "chat")
+        is None
+    )
+
+
+@pytest.mark.asyncio
+async def test_registry_native_openai_credential_keeps_derived_prefix() -> None:
+    """openai 方言凭证不受加固影响：ollama 照常派生 'ollama' 前缀。"""
+    result = await _resolve_prefix(FakeSession("ollama", None), credential(), "chat")
+    assert result is not None
+    assert result.prefix == "ollama"
+
+
+@pytest.mark.asyncio
+async def test_anthropic_provider_native_derive_unchanged() -> None:
+    """provider=anthropic 自身派生即 'anthropic'，加固不拦截。"""
+    anthropic_credential = SimpleNamespace(
+        provider_id=1, credential_info={"format": "anthropic"}
+    )
+    result = await _resolve_prefix(
+        FakeSession("anthropic", None), anthropic_credential, "chat"
+    )
+    assert result is not None
+    assert result.prefix == "anthropic"
+
+
+def test_apply_credential_passthrough_extra_headers() -> None:
+    """凭证级 extra_headers 透传进 litellm_params（Bearer 认证风格差异的通用通道）。"""
+    from services.model_service import _apply_credential_to_litellm_params
+
+    cred = SimpleNamespace(
+        credential_name="ollama-anthropic",
+        credential_values={
+            "api_base": "https://ollama.com",
+            "extra_headers": {"Authorization": "Bearer sk-test"},
+        },
+        credential_info={"format": "anthropic"},
+    )
+    params = _apply_credential_to_litellm_params({"model": "x"}, cred)
+    assert params["extra_headers"] == {"Authorization": "Bearer sk-test"}
+
+    # 凭证未配置 extra_headers 时，部署行已有的副本必须保留（防 UI 覆写丢认证头）
+    cred_without = SimpleNamespace(
+        credential_name="ollama-anthropic",
+        credential_values={"api_base": "https://ollama.com"},
+        credential_info={"format": "anthropic"},
+    )
+    params_kept = _apply_credential_to_litellm_params(
+        {"model": "x", "extra_headers": {"Authorization": "Bearer old"}}, cred_without
+    )
+    assert params_kept["extra_headers"] == {"Authorization": "Bearer old"}
+
+
+@pytest.mark.asyncio
 async def test_resolve_prefix_for_preview_sources() -> None:
     assert (
         await resolve_prefix_for_preview(

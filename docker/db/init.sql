@@ -299,6 +299,9 @@ INSERT INTO aihelms.provider_prefix_map (provider_type, format, category, prefix
     ('sglang', 'openai', 'embedding', 'openai', true),
     ('ollama', 'ollama', 'chat', 'ollama', false),
     ('ollama', 'ollama', 'embedding', 'ollama', false),
+    -- ollama.com 官方 coding plan 双协议：anthropic 走 /v1/messages 原生直传，openai 走 openai 兼容端点
+    ('ollama', 'anthropic', 'chat', 'anthropic', false),
+    ('ollama', 'openai', 'chat', 'ollama', false),
     ('lmstudio', 'openai', 'chat', 'openai', true),
     -- 小米 MiMo
     ('xiaomi_mimo', 'openai', 'chat', 'xiaomi_mimo', false),

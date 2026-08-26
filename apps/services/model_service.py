@@ -970,13 +970,20 @@ def _apply_credential_to_litellm_params(litellm_params: dict, credential) -> dic
     # 部署已绑定平台凭证时，LiteLLM 路由必须引用平台凭证，避免历史 inline key/base 覆盖编辑后的凭证。
     litellm_params.pop("api_key", None)
     litellm_params["litellm_credential_name"] = credential.credential_name
-    cred_api_base = (credential.credential_values or {}).get("api_base") or (
+    cred_values = credential.credential_values or {}
+    cred_api_base = cred_values.get("api_base") or (
         credential.credential_info or {}
     ).get("api_base")
     if cred_api_base:
         litellm_params["api_base"] = cred_api_base
     else:
         litellm_params.pop("api_base", None)
+    # 上游端点认证风格差异（如 ollama.com anthropic 端点只认 Bearer 不认 x-api-key）
+    # 通过凭证级 extra_headers 透传；凭证缺失时保留部署行里已有的副本，避免 UI 整体
+    # 覆写 credential_values 后静默丢认证头
+    extra_headers = cred_values.get("extra_headers")
+    if isinstance(extra_headers, dict) and extra_headers:
+        litellm_params["extra_headers"] = dict(extra_headers)
     return litellm_params
 
 
@@ -1294,6 +1301,11 @@ async def _resolve_prefix(
     # 覆盖表未命中：对 registry 原生 provider 派生前缀（needs_v1 默认 False）
     derived = model_registry.normalize_litellm_prefix(provider_type)
     if derived:
+        # registry 派生不看凭证方言。anthropic 方言 chat 凭证的端点只说 anthropic 协议，
+        # 非 anthropic 前缀会让 litellm 走翻译路径丢工具调用（2026-08-26 生产事故，
+        # 见 dev/roadmap/模型接入去Anthropic后缀整改.md §八），一律交还硬编码兜底直传
+        if cred_format == "anthropic" and category == "chat" and derived != "anthropic":
+            return None
         return SimpleNamespace(prefix=derived, needs_v1=False)
     return None
 
