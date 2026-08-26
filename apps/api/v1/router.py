@@ -24,6 +24,7 @@ from api.v1.documents import document_router as document_crud_router
 from api.v1.documents import library_router as document_library_router
 from api.v1.efficiency import router as efficiency_router
 from api.v1.export_tasks import router as export_tasks_router
+from api.v1.integration import router as integration_router
 from api.v1.internal import router as internal_router
 from api.v1.key_scenarios import router as key_scenarios_router
 from api.v1.mcp import router as mcp_router
@@ -92,6 +93,7 @@ router.include_router(document_crud_router, tags=["AI实验室"])
 router.include_router(admin_mcp_router, tags=["系统"])
 router.include_router(web_mcp_router, tags=["系统"])
 router.include_router(dashboard_router, tags=["系统"])
+router.include_router(integration_router, tags=["服务集成"])
 router.include_router(internal_router, prefix="/internal", tags=["内部"])
 
 

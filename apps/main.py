@@ -69,6 +69,10 @@ app = FastAPI(
         {"name": "模型纳管", "description": "供应商、凭证、模型、部署管理"},
         {"name": "AI 效能", "description": "AI 总览、多维度分析、预算管控、分析报告"},
         {"name": "安全", "description": "API Key、管理员审计日志"},
+        {
+            "name": "服务集成",
+            "description": "AI Hub 服务间集成（RFC 7523 JWT 断言换令牌）",
+        },
         {"name": "系统", "description": "Dashboard、配置、健康检查"},
     ],
     lifespan=lifespan,

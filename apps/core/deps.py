@@ -13,7 +13,7 @@ from core.database import async_session
 from core.security import ALGORITHM
 from exceptions import UnauthorizedError
 from repositories import ai_key_repo, api_key_repo, user_repo
-from services import auth_service, cli_token_service
+from services import auth_service, cli_token_service, integration_service
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +43,9 @@ def _authenticate_jwt(token: str) -> dict:
         payload = jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
     except JWTError:
         raise HTTPException(status_code=401, detail="token 无效或已过期")
+    # 集成令牌只允许走 get_integration_identity，调普通接口一律拒绝（双向隔离）
+    if payload.get("token_use") == "integration":
+        raise HTTPException(status_code=401, detail="token 无效")
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="token 无效")
@@ -216,3 +219,14 @@ def require_cli_scope(code: str):
         raise HTTPException(status_code=403, detail="scope 不足")
 
     return checker
+
+
+def get_integration_identity(request: Request) -> dict:
+    """AI Hub 服务间集成的鉴权依赖：仅接受 token_use=integration 的集成令牌。"""
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="未提供认证 token")
+    token = auth_header.split(" ", 1)[1]
+    identity = integration_service.decode_integration_token(token)
+    request.state.current_user = identity
+    return identity
