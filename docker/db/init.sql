@@ -299,9 +299,11 @@ INSERT INTO aihelms.provider_prefix_map (provider_type, format, category, prefix
     ('sglang', 'openai', 'embedding', 'openai', true),
     ('ollama', 'ollama', 'chat', 'ollama', false),
     ('ollama', 'ollama', 'embedding', 'ollama', false),
-    -- ollama.com 官方 coding plan 双协议：anthropic 走 /v1/messages 原生直传，openai 走 openai 兼容端点
+    -- ollama.com 官方 coding plan 双协议：anthropic 走 /v1/messages 原生直传，openai 走 /v1 兼容端点
+    -- （openai 方言禁用 ollama 原生前缀：litellm ollama handler 走原生 /api/chat，
+    --   1.93 翻译层丢 tool_calls，2026-08-27 opencode 事故，见 078 迁移）
     ('ollama', 'anthropic', 'chat', 'anthropic', false),
-    ('ollama', 'openai', 'chat', 'ollama', false),
+    ('ollama', 'openai', 'chat', 'openai', true),
     ('lmstudio', 'openai', 'chat', 'openai', true),
     -- 小米 MiMo
     ('xiaomi_mimo', 'openai', 'chat', 'xiaomi_mimo', false),
