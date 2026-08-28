@@ -20,7 +20,9 @@ logger = logging.getLogger(__name__)
 
 PROBE_TOOL_NAME = "probe_echo"
 PROBE_INSTRUCTION = "调用 probe_echo 工具，参数 text=ok。不要用文字回答。"
-PROBE_MAX_TOKENS = 64
+# 推理模型的思考 token 先消耗预算（实测 deepseek-v4-flash 单次 reasoning 200+），
+# 64 会在工具调用生成前触发 finish_reason=length 误报，给足余量
+PROBE_MAX_TOKENS = 1024
 # litellm 翻译层丢工具后的典型指纹：工具调用以裸 JSON 文本流出
 FLATTENED_FINGERPRINT = "function_call"
 
