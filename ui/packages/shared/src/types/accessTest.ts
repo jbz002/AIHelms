@@ -106,3 +106,20 @@ export interface TestAudioTranscriptionResult {
   error?: string
   error_detail?: AccessTestErrorDetail
 }
+
+export interface ToolProbeVerdict {
+  mode: 'nonstream' | 'stream'
+  ok: boolean
+  detail: string
+}
+
+export interface ToolProbeResult {
+  success: boolean
+  protocol: 'openai' | 'anthropic'
+  verdicts: ToolProbeVerdict[]
+  error_detail?: AccessTestErrorDetail
+}
+
+export interface ToolProbeParams {
+  model: string
+}

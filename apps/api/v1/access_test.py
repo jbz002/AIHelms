@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.deps import get_current_user, get_db
 from models.db import Model
 from repositories import model_repo
-from services import access_test_service
+from services import access_test_service, access_tool_probe
 from services.access_test_error_mapper import build_error_detail, build_failure
 from services.access_test_precheck import precheck_access_test
 
@@ -37,6 +37,17 @@ class TestAccessRequest(BaseModel):
 class TestEmbeddingRequest(BaseModel):
     model: str = Field(..., min_length=1, description="Embedding 模型 ID")
     text: str = Field(default="你好世界", description="测试文本")
+
+
+class ToolProbeRequest(BaseModel):
+    model: str = Field(
+        ...,
+        min_length=1,
+        description="模型路由组名（openai 方言裸名或 anthropic 方言 裸名(Anthropic)）",
+    )
+
+
+ANTHROPIC_SUFFIX = "(Anthropic)"
 
 
 class TestRerankRequest(BaseModel):
@@ -153,6 +164,53 @@ def _build_error_response(
         "message": "模型测试完成",
         "data": build_failure(error_detail),
     }
+
+
+@router.post("/tool-probe", summary="工具调用探针")
+async def tool_probe(
+    req: ToolProbeRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """带 tools 的真实请求，校验响应含结构化工具调用（拦路由前缀错配导致的静默打平）。"""
+    group_name = req.model.strip()
+    if group_name.endswith(ANTHROPIC_SUFFIX):
+        bare_name = group_name[: -len(ANTHROPIC_SUFFIX)]
+        protocol = "anthropic"
+    else:
+        bare_name = group_name
+        protocol = "openai"
+    model_obj = await model_repo.find_by_model_id(session, bare_name)
+    if model_obj and model_obj.category != "chat":
+        return {
+            "code": 200,
+            "message": "该模型类型不适用工具探针",
+            "data": {"success": False, "protocol": protocol, "verdicts": []},
+        }
+    user_api_key, error_detail = await precheck_access_test(
+        session,
+        current_user["id"],
+        model_obj,
+        bare_name,
+        is_admin=current_user["is_admin"],
+    )
+    if error_detail:
+        return {
+            "code": 200,
+            "message": "工具探针完成",
+            "data": {
+                "success": False,
+                "protocol": protocol,
+                "verdicts": [],
+                "error_detail": error_detail,
+            },
+        }
+    result = await access_tool_probe.run_tool_probe(
+        model=group_name,
+        api_key=user_api_key or "",
+        protocol=protocol,
+    )
+    return {"code": 200, "message": "工具探针完成", "data": result}
 
 
 async def _resolve_model(

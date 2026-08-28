@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { TestAccessParams, TestAccessResult, TestAudioSpeechParams, TestAudioSpeechResult, TestAudioTranscriptionParams, TestAudioTranscriptionResult, TestEmbeddingParams, TestEmbeddingResult, TestImageGenParams, TestImageGenResult, TestRerankParams, TestRerankResult } from '../types/accessTest'
+import type { TestAccessParams, TestAccessResult, TestAudioSpeechParams, TestAudioSpeechResult, TestAudioTranscriptionParams, TestAudioTranscriptionResult, TestEmbeddingParams, TestEmbeddingResult, TestImageGenParams, TestImageGenResult, TestRerankParams, TestRerankResult, ToolProbeParams, ToolProbeResult } from '../types/accessTest'
 
 function getToken(): string | null {
   return localStorage.getItem('aihelms_token')
@@ -59,6 +59,13 @@ export function testAudioSpeech(params: TestAudioSpeechParams): Promise<TestAudi
 
 export function testAudioTranscription(params: TestAudioTranscriptionParams): Promise<TestAudioTranscriptionResult> {
   return request<TestAudioTranscriptionResult>('/api/v1/access-test/test-audio-transcription', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+export function toolProbe(params: ToolProbeParams): Promise<ToolProbeResult> {
+  return request<ToolProbeResult>('/api/v1/access-test/tool-probe', {
     method: 'POST',
     body: params,
   })

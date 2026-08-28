@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { resyncAnthropicDeployments, testModelAccessStream, toast, usePermission } from '@aihelms/shared'
-import type { AccessTestErrorDetail, ChatContentBlock } from '@aihelms/shared'
+import { resyncAnthropicDeployments, testModelAccessStream, toast, toolProbe, usePermission } from '@aihelms/shared'
+import type { AccessTestErrorDetail, ChatContentBlock, ToolProbeResult } from '@aihelms/shared'
 
 interface Props {
   visible: boolean
@@ -33,6 +33,10 @@ const imageName = ref('')
 const fileInput = ref<HTMLInputElement | null>(null)
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024
 
+const probeRunning = ref(false)
+const probeResult = ref<ToolProbeResult | null>(null)
+const probeErrorMsg = ref('')
+
 watch(() => props.visible, (val) => {
   if (val) {
     modelInput.value = props.defaultModel || ''
@@ -44,6 +48,9 @@ watch(() => props.visible, (val) => {
     isResyncingAnthropic.value = false
     attachedImage.value = null
     imageName.value = ''
+    probeRunning.value = false
+    probeResult.value = null
+    probeErrorMsg.value = ''
     if (fileInput.value) fileInput.value.value = ''
   }
 })
@@ -153,6 +160,25 @@ async function handleSend(): Promise<void> {
 
 function handleClose(): void {
   emit('close')
+}
+
+async function handleToolProbe(): Promise<void> {
+  const model = modelInput.value.trim()
+  if (!model || probeRunning.value) return
+  probeRunning.value = true
+  probeResult.value = null
+  probeErrorMsg.value = ''
+  try {
+    probeResult.value = await toolProbe({ model })
+  } catch (e) {
+    probeErrorMsg.value = e instanceof Error ? e.message : '探针请求失败'
+  } finally {
+    probeRunning.value = false
+  }
+}
+
+function verdictModeLabel(mode: string): string {
+  return mode === 'stream' ? '流式' : '非流式'
 }
 
 function handleFileChange(event: Event): void {
@@ -315,7 +341,7 @@ function setAccessErrorFromStream(payload: string): void {
         </div>
 
         <!-- Send button -->
-        <div class="mb-4">
+        <div class="mb-4 flex items-center gap-3">
           <button
             :disabled="!canSend"
             class="rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
@@ -330,6 +356,39 @@ function setAccessErrorFromStream(payload: string): void {
             </span>
             <span v-else>发送测试</span>
           </button>
+          <button
+            :disabled="!modelInput.trim() || probeRunning"
+            class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-blue-400 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+            @click="handleToolProbe"
+          >
+            <span v-if="probeRunning" class="flex items-center gap-2">
+              <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              探测中...
+            </span>
+            <span v-else>工具调用探针</span>
+          </button>
+        </div>
+
+        <!-- Tool probe result -->
+        <div v-if="probeResult || probeErrorMsg" class="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <label class="mb-2 block text-xs font-medium text-slate-500">工具调用探针（{{ probeResult?.protocol === 'anthropic' ? 'Anthropic' : 'OpenAI' }} 协议）</label>
+          <div v-if="probeErrorMsg" class="text-sm text-red-600">{{ probeErrorMsg }}</div>
+          <template v-else-if="probeResult">
+            <div v-if="probeResult.error_detail" class="text-sm text-red-600">{{ probeResult.error_detail.title || '探针无法执行' }}</div>
+            <ul v-else class="space-y-1">
+              <li v-for="v in probeResult.verdicts" :key="v.mode" class="flex items-start gap-2 text-sm">
+                <span :class="v.ok ? 'text-green-600' : 'text-red-600'">{{ v.ok ? '✓' : '✗' }}</span>
+                <span class="font-medium text-slate-700">{{ verdictModeLabel(v.mode) }}：</span>
+                <span :class="v.ok ? 'text-slate-600' : 'text-red-600'">{{ v.detail }}</span>
+              </li>
+            </ul>
+            <p v-if="!probeResult.success && !probeResult.error_detail" class="mt-2 text-xs leading-5 text-amber-700">
+              工具调用探针未通过：代理类客户端（Claude Code / opencode 等）在此模型上调工具会卡死。常见原因为路由前缀错配走了 litellm 翻译层（对照表 provider_prefix_map 缺行或凭证方言与前缀不符），请核对供应商类型与凭证格式。
+            </p>
+          </template>
         </div>
 
         <!-- Output area -->
