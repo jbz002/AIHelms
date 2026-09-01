@@ -21,6 +21,8 @@
   "identity.resources.emptyMarket": "No resources",
   "identity.overview.title": "This month",
   "identity.overview.monthBudget": "Monthly budget",
+  "identity.overview.todayBudget": "Daily budget",
+  "identity.overview.weekBudget": "Weekly budget",
   "identity.overview.spent": "Spent",
   "identity.overview.requests": "Requests",
   "identity.overview.dailyAvg": "Daily average",

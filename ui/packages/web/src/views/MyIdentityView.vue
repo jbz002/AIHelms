@@ -53,17 +53,27 @@ const budgetDisplay = computed(() => {
   if (!mainKey.value) return '无限制'
   const scope = mainKey.value.budget_scope
   if (scope === 'unified') {
-    return mainKey.value.budget_limit ? `¥${mainKey.value.budget_limit}` : '无限制'
+    return mainKey.value.budget_limit ? `¥${Number(mainKey.value.budget_limit)}` : '无限制'
   }
   if (scope === 'per_type') {
     const parts: string[] = []
-    if (mainKey.value.budget_models_total) parts.push(`模型 ¥${mainKey.value.budget_models_total}`)
-    if (mainKey.value.budget_mcps_total) parts.push(`MCP ¥${mainKey.value.budget_mcps_total}`)
+    if (mainKey.value.budget_models_total) parts.push(`模型 ¥${Number(mainKey.value.budget_models_total)}`)
+    if (mainKey.value.budget_mcps_total) parts.push(`MCP ¥${Number(mainKey.value.budget_mcps_total)}`)
     return parts.length ? parts.join(' / ') : '无限制'
   }
   if (scope === 'per_resource') return '按资源分配'
   return '无限制'
 })
+
+// 预算周期标签跟随 key 的 budget_duration，预算卡/进度条与平台预算管控同口径
+const budgetLabelKey = computed(() => {
+  const duration = mainKey.value?.budget_duration
+  if (duration === '1d') return 'identity.overview.todayBudget'
+  if (duration === '7d') return 'identity.overview.weekBudget'
+  return 'identity.overview.monthBudget'
+})
+
+const periodBudgetUsed = computed(() => Number(mainKey.value?.budget_used ?? 0) || 0)
 
 const totalBudget = computed(() => {
   if (!mainKey.value) return null
@@ -101,8 +111,8 @@ const dailyAvgCost = computed(() => {
 const budgetUsedPercent = computed(() => {
   const budget = totalBudget.value
   if (!budget) return null
-  const spent = kpi.value?.total_cost ?? 0
-  return Math.min((spent / budget) * 100, 100)
+  // 分子用 key 周期内已用（budget_used），与预算限额同周期口径；月度 kpi.total_cost 是自然月，不可混用
+  return (periodBudgetUsed.value / budget) * 100
 })
 
 function formatTokens(v: number): string {
@@ -417,13 +427,13 @@ onMounted(async () => {
         </div>
         <div class="grid grid-cols-2 gap-3" :class="isCurrentMonth ? 'sm:grid-cols-4' : 'sm:grid-cols-3'">
           <div v-if="isCurrentMonth" class="rounded-xl bg-slate-50/80 px-4 py-3">
-            <div class="text-xs text-slate-400">本月预算</div>
+            <div class="text-xs text-slate-400">{{ t(budgetLabelKey) }}</div>
             <div class="mt-1 text-lg font-semibold text-slate-900">{{ budgetDisplay }}</div>
+            <div v-if="totalBudget" class="mt-0.5 text-xs text-slate-400">¥{{ periodBudgetUsed.toFixed(2) }}</div>
           </div>
           <div class="rounded-xl bg-slate-50/80 px-4 py-3">
             <div class="text-xs text-slate-400">已花费</div>
             <div class="mt-1 text-lg font-semibold text-slate-900">¥{{ (kpi.total_cost ?? 0).toFixed(2) }}</div>
-            <div v-if="isCurrentMonth && budgetUsedPercent !== null" class="mt-0.5 text-xs text-slate-400">{{ budgetUsedPercent.toFixed(1) }}%</div>
           </div>
           <div class="rounded-xl bg-slate-50/80 px-4 py-3">
             <div class="text-xs text-slate-400">调用次数</div>

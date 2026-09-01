@@ -21,6 +21,8 @@
   "identity.resources.emptyMarket": "暂无，前往 AI 市场申请",
   "identity.overview.title": "本月概览",
   "identity.overview.monthBudget": "本月预算",
+  "identity.overview.todayBudget": "今日预算",
+  "identity.overview.weekBudget": "本周预算",
   "identity.overview.spent": "已花费",
   "identity.overview.requests": "调用次数",
   "identity.overview.dailyAvg": "日均花费",
