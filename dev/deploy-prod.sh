@@ -31,6 +31,7 @@ echo "== 1/3 同步代码（tar → ssh） =="
 tar czf - \
   --exclude='./.git' \
   --exclude='./.env' \
+  --exclude='./apps/.venv' \
   --exclude='node_modules' \
   --exclude='dist' \
   --exclude='__pycache__' \

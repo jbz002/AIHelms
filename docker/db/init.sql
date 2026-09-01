@@ -209,6 +209,7 @@ CREATE TABLE IF NOT EXISTS aihelms.ai_keys (
     budget_limit NUMERIC(12,4),
     budget_used NUMERIC(12,4) DEFAULT 0,
     budget_hard_limit BOOLEAN DEFAULT false,
+    budget_blocked_at TIMESTAMPTZ,              -- 硬阻断生效时间（NULL=未阻断）
     budget_duration VARCHAR(10) DEFAULT '30d',  -- '30d' | '7d' | '1d'
     budget_scope VARCHAR(20) DEFAULT 'unified',  -- 'unified' | 'per_type' | 'per_resource'
     budget_models_total NUMERIC(12,4),

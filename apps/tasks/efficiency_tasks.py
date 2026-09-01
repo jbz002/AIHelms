@@ -7,6 +7,7 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 from sqlalchemy import text
 
@@ -154,6 +155,130 @@ async def _aggregate() -> None:
             )
     except Exception:
         logger.error("efficiency aggregation failed", exc_info=True)
+
+    await _enforce_budget_hard_limits()
+
+
+def _should_block_budget(
+    hard_limit: bool,
+    used_total: Decimal,
+    limit: Decimal | None,
+    used_llm: Decimal,
+    models_total: Decimal | None,
+    used_mcp: Decimal,
+    mcps_total: Decimal | None,
+) -> bool:
+    """任一已配置的预算维度周期内花费达到上限即视为超限（used >= limit）。"""
+    if not hard_limit:
+        return False
+    if limit is not None and used_total >= limit:
+        return True
+    if models_total is not None and used_llm >= models_total:
+        return True
+    if mcps_total is not None and used_mcp >= mcps_total:
+        return True
+    return False
+
+
+async def _enforce_budget_hard_limits() -> None:
+    """硬阻断执行：超限 key 卡住 LiteLLM max_budget=0，恢复（未超限/周期滚动/
+    hard 关闭）自动解封。budget_blocked_at 记状态，LiteLLM 只在状态翻转时调用；
+    LiteLLM 调用失败不落状态，下轮聚合重试。
+    """
+    from services import litellm_client
+
+    blocked = 0
+    unblocked = 0
+    try:
+        async with get_worker_session_factory()() as session:
+            rows = await session.execute(text("""
+                    SELECT
+                        k.id, k.litellm_key_id, k.budget_blocked_at,
+                        k.budget_hard_limit, k.budget_limit, k.budget_used,
+                        k.budget_models_total, k.budget_mcps_total,
+                        COALESCE(llm.cost, 0) AS used_llm,
+                        COALESCE(mcp.cost, 0) AS used_mcp
+                    FROM aihelms.ai_keys k
+                    LEFT JOIN LATERAL (
+                        SELECT SUM(internal_cost) AS cost
+                        FROM aihelms.llm_call_logs
+                        WHERE ai_key_id = k.id
+                          AND started_at >= NOW() - (CASE k.budget_duration
+                                WHEN '1d' THEN INTERVAL '1 day'
+                                WHEN '7d' THEN INTERVAL '7 days'
+                                ELSE INTERVAL '30 days' END)
+                    ) llm ON TRUE
+                    LEFT JOIN LATERAL (
+                        SELECT SUM(internal_cost) AS cost
+                        FROM aihelms.mcp_call_logs
+                        WHERE ai_key_id = k.id
+                          AND called_at >= NOW() - (CASE k.budget_duration
+                                WHEN '1d' THEN INTERVAL '1 day'
+                                WHEN '7d' THEN INTERVAL '7 days'
+                                ELSE INTERVAL '30 days' END)
+                    ) mcp ON TRUE
+                    WHERE k.is_active = TRUE
+                      AND k.litellm_key_id IS NOT NULL
+                      AND (k.budget_hard_limit = TRUE OR k.budget_blocked_at IS NOT NULL)
+                """))
+            for row in rows:
+                should_block = _should_block_budget(
+                    hard_limit=row.budget_hard_limit,
+                    used_total=row.budget_used or Decimal("0"),
+                    limit=row.budget_limit,
+                    used_llm=row.used_llm or Decimal("0"),
+                    models_total=row.budget_models_total,
+                    used_mcp=row.used_mcp or Decimal("0"),
+                    mcps_total=row.budget_mcps_total,
+                )
+                is_blocked = row.budget_blocked_at is not None
+                if should_block == is_blocked:
+                    continue
+                try:
+                    if should_block:
+                        await litellm_client.update_key_budget(row.litellm_key_id, 0.0)
+                        await session.execute(
+                            text(
+                                "UPDATE aihelms.ai_keys SET budget_blocked_at = NOW()"
+                                " WHERE id = :id"
+                            ),
+                            {"id": row.id},
+                        )
+                        blocked += 1
+                        logger.warning(
+                            "budget hard limit enforced: key_id=%s litellm_key=%s",
+                            row.id,
+                            row.litellm_key_id,
+                        )
+                    else:
+                        await litellm_client.update_key_budget(row.litellm_key_id, None)
+                        await session.execute(
+                            text(
+                                "UPDATE aihelms.ai_keys SET budget_blocked_at = NULL"
+                                " WHERE id = :id"
+                            ),
+                            {"id": row.id},
+                        )
+                        unblocked += 1
+                        logger.info(
+                            "budget hard limit released: key_id=%s litellm_key=%s",
+                            row.id,
+                            row.litellm_key_id,
+                        )
+                    await session.commit()
+                except litellm_client.LiteLLMError:
+                    logger.error(
+                        "budget enforcement litellm sync failed: key_id=%s",
+                        row.id,
+                        exc_info=True,
+                    )
+                    await session.rollback()
+    except Exception:
+        logger.error("budget enforcement failed", exc_info=True)
+    if blocked or unblocked:
+        logger.info(
+            "budget enforcement done: blocked=%s unblocked=%s", blocked, unblocked
+        )
 
 
 async def _update_budget_used(session) -> None:

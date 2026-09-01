@@ -438,6 +438,8 @@ async def _sync_key_to_litellm(
         # Budgets are tracked by AIHelms. LiteLLM max_budget is kept clear
         # except when explicitly disabling a key.
         await litellm_client.update_key_budget(key.litellm_key_id, None)
+        # 预算改动视为管理员重置管控，清除阻断标记，下轮聚合重新判定
+        key.budget_blocked_at = None
 
 
 async def toggle_key(session: AsyncSession, key_id: int) -> dict:
@@ -451,6 +453,7 @@ async def toggle_key(session: AsyncSession, key_id: int) -> dict:
     if key.litellm_key_id:
         if key.is_active:
             max_budget = None
+            key.budget_blocked_at = None
         else:
             max_budget = 0.0
         await litellm_client.update_key_budget(key.litellm_key_id, max_budget)
@@ -477,6 +480,7 @@ async def sync_user_keys_active(
             continue
         if active:
             max_budget = None
+            key.budget_blocked_at = None
         else:
             max_budget = 0.0
         try:

@@ -220,6 +220,7 @@ class AiKey(Base):
     budget_limit: Mapped[Decimal | None] = mapped_column(Numeric(12, 4), nullable=True)
     budget_used: Mapped[Decimal] = mapped_column(Numeric(12, 4), default=0)
     budget_hard_limit: Mapped[bool] = mapped_column(Boolean, default=False)
+    budget_blocked_at: Mapped[datetime | None] = mapped_column(nullable=True)
     budget_duration: Mapped[str | None] = mapped_column(String(10), default="30d")
     budget_scope: Mapped[str] = mapped_column(String(20), default="unified")
     budget_models_total: Mapped[Decimal | None] = mapped_column(
