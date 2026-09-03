@@ -13,7 +13,8 @@ async def get_model_anthropic_map(session: AsyncSession = Depends(get_db)):
 
     无鉴权：靠 docker internal 网络隔离（openresty 直连 aihelms:8000）+ nginx 公网入口
     屏蔽 ``/api/v1/internal/*``。返回每个活跃模型（含未发布，因路由按部署不按发布）的
-    has_anthropic/has_openai 标志，lua 据此决定 body.model 是否加 (Anthropic) 后缀。
+    has_anthropic/has_openai/supports_vision 标志，lua 据此决定 body.model 是否加
+    (Anthropic) 后缀、以及是否剥掉非视觉模型的 image block。
     """
     models = await model_repo.find_all_active(session, published_only=False)
     model_ids = [m.model_id for m in models]
@@ -23,6 +24,7 @@ async def get_model_anthropic_map(session: AsyncSession = Depends(get_db)):
     openai_set = await model_repo.find_model_ids_with_openai_deployments(
         session, model_ids
     )
+    vision_map = {m.model_id: m.supports_vision for m in models}
     return {
         "code": 200,
         "message": "ok",
@@ -32,6 +34,7 @@ async def get_model_anthropic_map(session: AsyncSession = Depends(get_db)):
                     "model_id": mid,
                     "has_anthropic": mid in anthropic_set,
                     "has_openai": mid in openai_set,
+                    "supports_vision": bool(vision_map.get(mid, False)),
                 }
                 for mid in model_ids
             ]

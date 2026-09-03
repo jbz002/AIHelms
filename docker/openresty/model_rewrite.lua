@@ -16,7 +16,7 @@ local cjson = require "cjson.safe"
 local SUFFIX = "(Anthropic)"
 local REFRESH_INTERVAL = 30  -- 秒
 
--- 映射缓存：model_id -> { has_anthropic=bool, has_openai=bool }
+-- 映射缓存：model_id -> { has_anthropic=bool, has_openai=bool, supports_vision=bool }
 local map = {}
 
 
@@ -74,6 +74,7 @@ local function fetch_map(premature)
         new_map[mi.model_id] = {
             has_anthropic = mi.has_anthropic == true,
             has_openai = mi.has_openai == true,
+            supports_vision = mi.supports_vision == true,
         }
     end
     map = new_map
@@ -96,6 +97,36 @@ end
 
 local function ends_with(s, suffix)
     return #s >= #suffix and s:sub(-#suffix) == suffix
+end
+
+
+-- 剥掉请求 messages 里的 image block（非视觉模型不支持图片输入）。
+-- 兼容两种方言：OpenAI 的 {type="image_url"} 与 Anthropic 的 {type="image"}。
+-- 剥后 content 数组若为空，补一个占位 text，避免空 content 被上游拒绝。
+-- 返回是否发生了改动。
+local function strip_images(data)
+    local messages = data.messages
+    if type(messages) ~= "table" then return false end
+    local changed = false
+    for _, msg in ipairs(messages) do
+        local content = msg.content
+        if type(content) == "table" then
+            local kept = {}
+            for _, block in ipairs(content) do
+                local bt = type(block) == "table" and block.type or nil
+                if bt == "image_url" or bt == "image" then
+                    changed = true
+                else
+                    kept[#kept + 1] = block
+                end
+            end
+            if #kept == 0 then
+                kept = { { type = "text", text = "[image removed]" } }
+            end
+            msg.content = kept
+        end
+    end
+    return changed
 end
 
 
@@ -158,28 +189,42 @@ function _M.rewrite()
     if not data or type(data.model) ~= "string" then return end
 
     local orig = data.model
-    -- 已带后缀（用户/admin 直填组名）或裸名不在映射表，不改
-    if ends_with(orig, SUFFIX) then return end
     local info = map[orig]
-    if not info then return end
-
-    local new_model = orig
-    if is_messages then
-        if info.has_anthropic then
-            new_model = orig .. SUFFIX
-        end
-        -- 纯 openai：不改，让 litellm 自然 403
-    elseif is_chat then
-        if not info.has_openai and info.has_anthropic then
-            new_model = orig .. SUFFIX
-        end
-        -- 有 openai：走裸名原生；均无：不改让 litellm 处理
+    -- 带后缀的组名（用户直填）剥后缀查 map，拿 supports_vision 决定是否剥图
+    if not info and ends_with(orig, SUFFIX) then
+        info = map[orig:sub(1, -#SUFFIX - 1)]
     end
 
-    if new_model ~= orig then
-        data.model = new_model
+    local changed = false
+    if info then
+        -- ① model 方言改写（仅裸名，带后缀不改）
+        if not ends_with(orig, SUFFIX) then
+            local new_model = orig
+            if is_messages then
+                if info.has_anthropic then
+                    new_model = orig .. SUFFIX
+                end
+                -- 纯 openai：不改，让 litellm 自然 403
+            elseif is_chat then
+                if not info.has_openai and info.has_anthropic then
+                    new_model = orig .. SUFFIX
+                end
+                -- 有 openai：走裸名原生；均无：不改让 litellm 处理
+            end
+            if new_model ~= orig then
+                data.model = new_model
+                changed = true
+            end
+        end
+        -- ② 非视觉模型剥 image block
+        if not info.supports_vision and strip_images(data) then
+            changed = true
+        end
+    end
+
+    if changed then
         ngx.req.set_body_data(cjson.encode(data))
-        ngx.log(ngx.WARN, "C1REWRITE uri=" .. uri .. " orig=" .. orig .. " new=" .. new_model)
+        ngx.log(ngx.WARN, "C1REWRITE uri=" .. uri .. " orig=" .. orig)
     end
 end
 
