@@ -161,6 +161,10 @@ class Settings(BaseSettings):
 
     # LLM 调用日志同步与清理
     llm_log_sync_interval_minutes: int = 5
+
+    # 效能聚合（含预算硬阻断判定）间隔秒数。与日志同步间隔共同决定
+    # 预算拦截的穿透窗口（最坏 ≈ 两者之和）
+    efficiency_aggregate_interval_seconds: int = 300
     llm_log_retention_days: int = 0  # 0 = 不清理
 
     @model_validator(mode="after")

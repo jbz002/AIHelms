@@ -42,7 +42,7 @@ celery_app.conf.beat_schedule = {
     },
     "efficiency-aggregate": {
         "task": "efficiency.aggregate",
-        "schedule": 5 * 60,
+        "schedule": settings.efficiency_aggregate_interval_seconds,
     },
     "cleanup-export-tasks": {
         "task": "export_task.cleanup",
