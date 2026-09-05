@@ -1763,6 +1763,8 @@ class PlatformSettings(Base):
 
     default_model_id：平台 LLM 调用（文档搜索 AI 总结等）默认模型，被
     services/platform_settings_service.resolve_default_model 解析为 LiteLLM 模型名。
+    default_key_*：新用户自动创建个人主 Key 时的默认预算/限流，被
+    resolve_default_key_config 解析后应用于 create_personal_main_key。
     """
 
     __tablename__ = "platform_settings"
@@ -1773,6 +1775,23 @@ class PlatformSettings(Base):
         BigInteger,
         ForeignKey("aihelms.models.id", ondelete="SET NULL"),
         nullable=True,
+    )
+    default_key_budget_limit: Mapped[Decimal | None] = mapped_column(
+        Numeric(12, 4), nullable=True
+    )
+    default_key_budget_hard_limit: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    default_key_budget_duration: Mapped[str | None] = mapped_column(
+        String(10), nullable=True
+    )
+    default_key_rate_limit_mode: Mapped[str] = mapped_column(
+        String(10), nullable=False, default="none"
+    )
+    default_key_tpm_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    default_key_rpm_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    default_key_max_parallel_requests: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
     )
     updated_by: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True

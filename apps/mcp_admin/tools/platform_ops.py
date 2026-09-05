@@ -282,7 +282,7 @@ async def admin_update_default_model(params: UpdateDefaultModelInput) -> str:
     cu = _current_user()
     async with async_session() as session:
         try:
-            data = await platform_settings_service.update_default_model(
+            data = await platform_settings_service.update_default_model_only(
                 session, params.model_id, cu
             )
         except (NotFoundError, ConflictError, ValidationError) as e:

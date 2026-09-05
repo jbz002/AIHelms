@@ -1692,6 +1692,13 @@ ON CONFLICT (id) DO NOTHING;
 CREATE TABLE IF NOT EXISTS aihelms.platform_settings (
     id INTEGER PRIMARY KEY DEFAULT 1,
     default_model_id BIGINT REFERENCES aihelms.models(id) ON DELETE SET NULL,
+    default_key_budget_limit NUMERIC(12, 4),
+    default_key_budget_hard_limit BOOLEAN NOT NULL DEFAULT FALSE,
+    default_key_budget_duration VARCHAR(10),
+    default_key_rate_limit_mode VARCHAR(10) NOT NULL DEFAULT 'none',
+    default_key_tpm_limit INTEGER,
+    default_key_rpm_limit INTEGER,
+    default_key_max_parallel_requests INTEGER,
     updated_by BIGINT REFERENCES aihelms.users(id) ON DELETE SET NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT platform_settings_singleton CHECK (id = 1)
