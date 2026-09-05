@@ -42,6 +42,16 @@ const userItems = ref<IdentityUserItem[]>([])
 const selectedUserIds = ref<Set<number>>(new Set())
 const isLoadingUsers = ref(false)
 const showRateLimitConfirm = ref(false)
+const showClearConfirm = ref(false)
+
+type ResourceMode = 'keep' | 'replace' | 'delta'
+const resourceMode = ref<ResourceMode>('keep')
+const deltaAction = ref<'add' | 'remove'>('add')
+const resourceModeOptions: { value: ResourceMode; label: string; hint: string }[] = [
+  { value: 'keep', label: '不修改资源', hint: '各 Key 资源保持现状' },
+  { value: 'replace', label: '替换资源', hint: '选中即最终拥有，全不选 = 清空' },
+  { value: 'delta', label: '增量调整', hint: '在各 Key 现有资源基础上添加 / 移除' },
+]
 
 // Resource & budget state
 const activeModels = ref<ActiveModel[]>([])
@@ -53,6 +63,10 @@ const selectedMcps = ref<number[]>([])
 const selectedSkills = ref<number[]>([])
 const selectedAgents = ref<number[]>([])
 const budgetDuration = ref('30d')
+
+const updateHardLimit = ref(false)
+const hardLimitValue = ref(true)
+const updateBudgetSettings = ref(false)
 const budgetScope = ref<BudgetScope>('unified')
 const budgetLimit = ref<number | null>(null)
 const budgetModelsTotal = ref<number | null>(null)
@@ -90,11 +104,16 @@ watch(() => props.visible, (v) => {
 })
 
 function resetResourceState(): void {
+  resourceMode.value = 'keep'
+  deltaAction.value = 'add'
   selectedModels.value = []
   selectedMcps.value = []
   selectedSkills.value = []
   selectedAgents.value = []
   budgetDuration.value = '30d'
+  updateHardLimit.value = false
+  hardLimitValue.value = true
+  updateBudgetSettings.value = false
   budgetScope.value = 'unified'
   budgetLimit.value = null
   budgetModelsTotal.value = null
@@ -242,11 +261,26 @@ function handleSubmitClick(): void {
     showRateLimitConfirm.value = true
     return
   }
+  const replaceAllEmpty =
+    resourceMode.value === 'replace' &&
+    !selectedModels.value.length &&
+    !selectedMcps.value.length &&
+    !selectedSkills.value.length &&
+    !selectedAgents.value.length
+  if (replaceAllEmpty) {
+    showClearConfirm.value = true
+    return
+  }
   handleSubmit()
 }
 
 async function handleConfirmRateLimitSubmit(): Promise<void> {
   showRateLimitConfirm.value = false
+  await handleSubmit()
+}
+
+async function handleConfirmClearSubmit(): Promise<void> {
+  showClearConfirm.value = false
   await handleSubmit()
 }
 
@@ -261,22 +295,36 @@ async function handleSubmit(): Promise<void> {
     for (const [k, v] of Object.entries(mcpBudgets.value)) {
       if (v !== null && v !== undefined) mcBudgets[k] = Number(v)
     }
+    const useReplace = resourceMode.value === 'replace'
+    const useDelta = resourceMode.value === 'delta'
+    const pick = <T,>(values: T[]): T[] | null => (values.length ? values : null)
     const result = await batchUpdateResources({
       user_ids: Array.from(selectedUserIds.value),
-      models: selectedModels.value,
-      mcps: selectedMcps.value,
-      skills: selectedSkills.value,
-      agents: selectedAgents.value,
-      budget_limit: budgetLimit.value,
-      budget_hard_limit: false,
-      budget_duration: budgetDuration.value,
-      budget_scope: budgetScope.value,
-      budget_models_total: budgetModelsTotal.value,
-      budget_mcps_total: budgetMcpsTotal.value,
-      budget_models_per: budgetModelsPer.value,
-      budget_mcps_per: budgetMcpsPer.value,
-      model_budgets: Object.keys(mBudgets).length ? mBudgets : null,
-      mcp_budgets: Object.keys(mcBudgets).length ? mcBudgets : null,
+      // 替换模式：选中即最终状态（空数组 = 清空）；不修改 / 增量模式资源全量字段传 null
+      models: useReplace ? selectedModels.value : null,
+      mcps: useReplace ? selectedMcps.value : null,
+      skills: useReplace ? selectedSkills.value : null,
+      agents: useReplace ? selectedAgents.value : null,
+      // 增量模式：选中列表按方向发给后端，在每人现有资源上合并/剔除
+      models_add: useDelta && deltaAction.value === 'add' ? pick(selectedModels.value) : null,
+      models_remove: useDelta && deltaAction.value === 'remove' ? pick(selectedModels.value) : null,
+      mcps_add: useDelta && deltaAction.value === 'add' ? pick(selectedMcps.value) : null,
+      mcps_remove: useDelta && deltaAction.value === 'remove' ? pick(selectedMcps.value) : null,
+      skills_add: useDelta && deltaAction.value === 'add' ? pick(selectedSkills.value) : null,
+      skills_remove: useDelta && deltaAction.value === 'remove' ? pick(selectedSkills.value) : null,
+      agents_add: useDelta && deltaAction.value === 'add' ? pick(selectedAgents.value) : null,
+      agents_remove: useDelta && deltaAction.value === 'remove' ? pick(selectedAgents.value) : null,
+      // 预算字段有表单默认值（30d/unified），不勾「修改预算设置」时全部传 null 保持现状
+      budget_limit: updateBudgetSettings.value ? budgetLimit.value : null,
+      budget_hard_limit: updateHardLimit.value ? hardLimitValue.value : null,
+      budget_duration: updateBudgetSettings.value ? budgetDuration.value : null,
+      budget_scope: updateBudgetSettings.value ? budgetScope.value : null,
+      budget_models_total: updateBudgetSettings.value ? budgetModelsTotal.value : null,
+      budget_mcps_total: updateBudgetSettings.value ? budgetMcpsTotal.value : null,
+      budget_models_per: updateBudgetSettings.value ? budgetModelsPer.value : null,
+      budget_mcps_per: updateBudgetSettings.value ? budgetMcpsPer.value : null,
+      model_budgets: updateBudgetSettings.value && Object.keys(mBudgets).length ? mBudgets : null,
+      mcp_budgets: updateBudgetSettings.value && Object.keys(mcBudgets).length ? mcBudgets : null,
       update_rate_limit: updateRateLimit.value,
       rate_limit_mode: updateRateLimit.value ? rateLimitMode.value : null,
       tpm_limit: updateRateLimit.value ? totalTpmLimit.value : null,
@@ -385,7 +433,46 @@ async function handleSubmit(): Promise<void> {
 
         <!-- Step 2: Configure Resources -->
         <div v-if="step === 2">
+          <div class="mb-4 rounded-xl border border-slate-200/60 bg-white/80 p-4">
+            <div class="mb-2 text-sm font-medium text-slate-700">资源修改方式</div>
+            <div class="grid grid-cols-3 gap-2">
+              <button
+                v-for="option in resourceModeOptions"
+                :key="option.value"
+                type="button"
+                :class="[resourceMode === option.value ? 'border-purple-400 bg-purple-50 text-purple-700' : 'border-slate-200/60 bg-white text-slate-600', 'rounded-lg border px-3 py-2 text-sm transition']"
+                @click="resourceMode = option.value"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+            <p class="mt-2 text-xs text-slate-400">
+              {{ resourceModeOptions.find((o) => o.value === resourceMode)?.hint }}
+            </p>
+            <div v-if="resourceMode === 'delta'" class="mt-3 flex items-center gap-3">
+              <span class="text-sm text-slate-600">本次操作：</span>
+              <div class="flex">
+                <button
+                  type="button"
+                  class="rounded-l-lg px-3 py-1 text-sm transition"
+                  :class="deltaAction === 'add' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600'"
+                  @click="deltaAction = 'add'"
+                >
+                  添加选中资源
+                </button>
+                <button
+                  type="button"
+                  class="rounded-r-lg px-3 py-1 text-sm transition"
+                  :class="deltaAction === 'remove' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600'"
+                  @click="deltaAction = 'remove'"
+                >
+                  移除选中资源
+                </button>
+              </div>
+            </div>
+          </div>
           <KeyResourceBudget
+            :hide-resources="resourceMode === 'keep'"
             :models="activeModels"
             :mcp-servers="mcpServers"
             :skills="skillList"
@@ -425,6 +512,38 @@ async function handleSubmit(): Promise<void> {
             @update-model-budget="handleUpdateModelBudget"
             @update-mcp-budget="handleUpdateMcpBudget"
           />
+          <div class="mt-3 flex items-center gap-3 text-sm text-slate-600">
+            <label class="flex items-center gap-2">
+              <input v-model="updateBudgetSettings" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-400/50" />
+              修改预算设置（金额 / 周期 / 模式）
+            </label>
+            <span v-if="!updateBudgetSettings" class="text-xs text-slate-400">不勾选则保持各 Key 现状</span>
+          </div>
+          <div class="mt-3 flex items-center gap-3 text-sm text-slate-600">
+            <label class="flex items-center gap-2">
+              <input v-model="updateHardLimit" type="checkbox" class="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-400/50" />
+              修改超预算硬阻断
+            </label>
+            <div v-if="updateHardLimit" class="flex">
+              <button
+                type="button"
+                class="rounded-l-lg px-3 py-1 text-sm transition"
+                :class="hardLimitValue ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600'"
+                @click="hardLimitValue = true"
+              >
+                开启
+              </button>
+              <button
+                type="button"
+                class="rounded-r-lg px-3 py-1 text-sm transition"
+                :class="!hardLimitValue ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-600'"
+                @click="hardLimitValue = false"
+              >
+                关闭
+              </button>
+            </div>
+            <span v-else class="text-xs text-slate-400">不勾选则保持各 Key 现状</span>
+          </div>
           <div class="mt-5 rounded-xl border border-slate-200/60 bg-white/80 p-4">
             <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
               <input v-model="updateRateLimit" type="checkbox" class="rounded text-purple-600" />
@@ -499,6 +618,16 @@ async function handleSubmit(): Promise<void> {
       cancel-text="取消"
       @confirm="handleConfirmRateLimitSubmit"
       @cancel="showRateLimitConfirm = false"
+    />
+
+    <ConfirmDialog
+      :visible="showClearConfirm"
+      title="确认清空资源"
+      :message="`替换模式下未选中任何资源，将清空 ${selectedCount} 个 AI 身份的全部模型 / MCP / Skill / 智能体，确认继续？`"
+      confirm-text="确认清空"
+      cancel-text="取消"
+      @confirm="handleConfirmClearSubmit"
+      @cancel="showClearConfirm = false"
     />
   </div>
 </template>

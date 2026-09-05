@@ -14,6 +14,9 @@ interface Props {
   budgetDuration: string
   budgetScope: BudgetScope
   budgetLimit: number | null
+  /** 硬阻断开关值；showHardLimit 未传（批量场景）时不显示该开关 */
+  budgetHardLimit?: boolean
+  showHardLimit?: boolean
   budgetModelsTotal: number | null
   budgetMcpsTotal: number | null
   budgetModelsPer: BudgetSubScope
@@ -24,6 +27,8 @@ interface Props {
   mcpSearch: string
   skillSearch: string
   agentSearch: string
+  /** 批量场景选「不修改资源」时隐藏资源选择区，仅保留预算设置 */
+  hideResources?: boolean
 }
 
 const props = defineProps<Props>()
@@ -35,6 +40,7 @@ const emit = defineEmits<{
   'update:budgetDuration': [v: string]
   'update:budgetScope': [v: BudgetScope]
   'update:budgetLimit': [v: number | null]
+  'update:budgetHardLimit': [v: boolean]
   'update:budgetModelsTotal': [v: number | null]
   'update:budgetMcpsTotal': [v: number | null]
   'update:budgetModelsPer': [v: BudgetSubScope]
@@ -169,7 +175,10 @@ watch(
     <!-- 资源选择 -->
     <div>
       <label class="mb-1 block text-sm font-medium text-slate-700">可用 AI 资源</label>
-      <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div v-if="hideResources" class="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-500">
+        已选择「不修改资源」，各 Key 的资源保持现状
+      </div>
+      <div v-else class="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <!-- 模型 -->
         <div class="rounded-lg border border-slate-200/60 bg-white/80 p-3">
           <div class="mb-2 flex items-center justify-between">
@@ -503,6 +512,16 @@ watch(
             />
           </div>
         </div>
+
+        <label v-if="showHardLimit" class="flex items-center gap-2 text-sm text-slate-600">
+          <input
+            :checked="budgetHardLimit"
+            type="checkbox"
+            class="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-400/50"
+            @change="emit('update:budgetHardLimit', ($event.target as HTMLInputElement).checked)"
+          />
+          超预算硬阻断（周期内花费达到上限后自动封禁，直至周期滚动或预算上调）
+        </label>
       </div>
     </div>
   </div>

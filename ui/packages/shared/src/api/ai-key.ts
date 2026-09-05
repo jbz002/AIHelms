@@ -118,18 +118,18 @@ export function deleteModelLimit(keyId: number, modelId: number): Promise<null> 
 export interface BatchUpdateResourcesParams {
   key_ids?: number[]
   user_ids?: number[]
-  models?: string[]
-  mcps?: number[]
-  skills?: number[]
-  agents?: number[]
+  models?: string[] | null
+  mcps?: number[] | null
+  skills?: number[] | null
+  agents?: number[] | null
   budget_limit?: number | null
-  budget_hard_limit?: boolean
+  budget_hard_limit?: boolean | null
   budget_duration?: string | null
-  budget_scope?: string
+  budget_scope?: string | null
   budget_models_total?: number | null
   budget_mcps_total?: number | null
-  budget_models_per?: string
-  budget_mcps_per?: string
+  budget_models_per?: string | null
+  budget_mcps_per?: string | null
   model_budgets?: Record<string, number> | null
   mcp_budgets?: Record<string, number> | null
   update_rate_limit?: boolean
@@ -138,6 +138,14 @@ export interface BatchUpdateResourcesParams {
   rpm_limit?: number | null
   max_parallel_requests?: number | null
   rate_limits?: SetModelLimitItem[] | null
+  models_add?: string[] | null
+  models_remove?: string[] | null
+  mcps_add?: number[] | null
+  mcps_remove?: number[] | null
+  skills_add?: number[] | null
+  skills_remove?: number[] | null
+  agents_add?: number[] | null
+  agents_remove?: number[] | null
 }
 
 export interface BatchUpdateResult {

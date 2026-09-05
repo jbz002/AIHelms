@@ -2,7 +2,7 @@ import logging
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_current_user, get_db, require_permission
@@ -93,6 +93,28 @@ class BatchUpdateRequest(BaseModel):
     rpm_limit: int | None = Field(None, ge=1)
     max_parallel_requests: int | None = Field(None, ge=1)
     rate_limits: list[dict] | None = None
+    models_add: list[str] | None = None
+    models_remove: list[str] | None = None
+    mcps_add: list[int] | None = None
+    mcps_remove: list[int] | None = None
+    skills_add: list[int] | None = None
+    skills_remove: list[int] | None = None
+    agents_add: list[int] | None = None
+    agents_remove: list[int] | None = None
+
+    @model_validator(mode="after")
+    def check_replace_delta_conflict(self) -> "BatchUpdateRequest":
+        for full, add, remove in (
+            ("models", "models_add", "models_remove"),
+            ("mcps", "mcps_add", "mcps_remove"),
+            ("skills", "skills_add", "skills_remove"),
+            ("agents", "agents_add", "agents_remove"),
+        ):
+            if getattr(self, full) is not None and (
+                getattr(self, add) is not None or getattr(self, remove) is not None
+            ):
+                raise ValueError(f"{full} 与 {add}/{remove} 不可同时提供")
+        return self
 
 
 class BatchCreateRequest(BaseModel):
@@ -372,6 +394,14 @@ async def batch_update_keys(
                 rpm_limit=req.rpm_limit,
                 max_parallel_requests=req.max_parallel_requests,
                 rate_limits=req.rate_limits,
+                models_add=req.models_add,
+                models_remove=req.models_remove,
+                mcps_add=req.mcps_add,
+                mcps_remove=req.mcps_remove,
+                skills_add=req.skills_add,
+                skills_remove=req.skills_remove,
+                agents_add=req.agents_add,
+                agents_remove=req.agents_remove,
             )
             successes.append(key_id)
         except NotFoundError:

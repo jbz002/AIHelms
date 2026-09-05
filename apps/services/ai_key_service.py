@@ -14,7 +14,7 @@ from repositories import (
     project_repo,
     user_repo,
 )
-from services import litellm_client
+from services import litellm_client, platform_settings_service
 from services.model_service import ANTHROPIC_MODEL_SUFFIX
 
 logger = logging.getLogger(__name__)
@@ -225,6 +225,14 @@ async def update_key(
     rpm_limit: int | None = None,
     max_parallel_requests: int | None = None,
     rate_limits: list[dict] | None = None,
+    models_add: list[str] | None = None,
+    models_remove: list[str] | None = None,
+    mcps_add: list[int] | None = None,
+    mcps_remove: list[int] | None = None,
+    skills_add: list[int] | None = None,
+    skills_remove: list[int] | None = None,
+    agents_add: list[int] | None = None,
+    agents_remove: list[int] | None = None,
 ) -> dict:
     key = await ai_key_repo.find_by_id(session, key_id)
     if not key:
@@ -236,6 +244,15 @@ async def update_key(
         key.description = description
     if tags is not None:
         key.tags = tags
+    # 增量调整：在 Key 现有资源基础上合并/剔除，换算成全量列表走下方统一赋值
+    if models_add is not None or models_remove is not None:
+        models = _merge_delta(key.models, models_add, models_remove)
+    if mcps_add is not None or mcps_remove is not None:
+        mcps = _merge_delta(key.mcps, mcps_add, mcps_remove)
+    if skills_add is not None or skills_remove is not None:
+        skills = _merge_delta(key.skills, skills_add, skills_remove)
+    if agents_add is not None or agents_remove is not None:
+        agents = _merge_delta(key.agents, agents_add, agents_remove)
     if models is not None:
         key.models = _dedupe_preserve_order(models)
     if mcps is not None:
@@ -344,6 +361,18 @@ def _dedupe_preserve_order(values: list) -> list:
             seen.add(v)
             result.append(v)
     return result
+
+
+def _merge_delta(current: list, add: list | None, remove: list | None) -> list:
+    """批量增量语义：现有列表 + add 去重追加 - remove，返回全量结果。"""
+    merged = list(current or [])
+    if add:
+        existing = set(merged)
+        merged = merged + [v for v in add if v not in existing]
+    if remove:
+        remove_set = set(remove)
+        merged = [v for v in merged if v not in remove_set]
+    return merged
 
 
 async def _resolve_mcp_server_names(
@@ -608,6 +637,19 @@ async def get_my_keys(session: AsyncSession, user_id: int) -> dict:
     }
 
 
+async def _load_default_key_config(
+    session: AsyncSession,
+) -> platform_settings_service.DefaultKeyConfig | None:
+    """读平台默认 Key 配置；读失败降级为无默认值（建 Key 是登录关键路径，不阻断）。"""
+    try:
+        return await platform_settings_service.resolve_default_key_config(session)
+    except Exception:
+        logger.warning(
+            "读取平台默认 Key 配置失败，按无默认配置创建主 Key", exc_info=True
+        )
+        return None
+
+
 async def create_personal_main_key(
     session: AsyncSession, user_id: int, username: str
 ) -> AiKey | None:
@@ -617,6 +659,7 @@ async def create_personal_main_key(
         return existing
 
     public_resources = await get_public_resources(session)
+    defaults = await _load_default_key_config(session)
 
     key_alias = f"user:{username}/main"
     ai_key = AiKey(
@@ -632,6 +675,13 @@ async def create_personal_main_key(
         agents=public_resources["agents"],
         is_active=True,
         created_by=user_id,
+        budget_limit=defaults.budget_limit if defaults else None,
+        budget_hard_limit=defaults.budget_hard_limit if defaults else False,
+        budget_duration=defaults.budget_duration if defaults else "30d",
+        rate_limit_mode=defaults.rate_limit_mode if defaults else RATE_LIMIT_MODE_NONE,
+        tpm_limit=defaults.tpm_limit if defaults else None,
+        rpm_limit=defaults.rpm_limit if defaults else None,
+        max_parallel_requests=defaults.max_parallel_requests if defaults else None,
     )
     ai_key = await ai_key_repo.create(session, ai_key)
 
@@ -643,11 +693,15 @@ async def create_personal_main_key(
         session, public_resources["models"], None
     )
 
+    # 预算不传 LiteLLM（平台聚合任务管硬阻断），限流需同步 LiteLLM 实时生效
     result = await litellm_client.create_key(
         key_alias=key_alias,
         user_id=litellm_user_id,
         models=litellm_models,
         metadata={"aihelms_key_id": ai_key.id, "key_type": KEY_TYPE_PERSONAL_MAIN},
+        tpm_limit=defaults.tpm_limit if defaults else None,
+        rpm_limit=defaults.rpm_limit if defaults else None,
+        max_parallel_requests=defaults.max_parallel_requests if defaults else None,
     )
     ai_key.litellm_key_id = result.get("key")
     ai_key.litellm_key_alias = key_alias
