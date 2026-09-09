@@ -322,7 +322,7 @@ watch(
             @change="emit('update:budgetDuration', ($event.target as HTMLSelectElement).value)"
           >
             <option value="30d">月 (30天)</option>
-            <option value="7d">周 (7天)</option>
+            <option value="7d">周 (周一清零)</option>
             <option value="1d">日 (1天)</option>
           </select>
           <div class="flex">
@@ -520,7 +520,7 @@ watch(
             class="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-400/50"
             @change="emit('update:budgetHardLimit', ($event.target as HTMLInputElement).checked)"
           />
-          超预算硬阻断（周期内花费达到上限后自动封禁，直至周期滚动或预算上调）
+          超预算硬阻断（周期内花费达到上限后自动封禁，7d 周期每周一 00:00 清零，或预算上调后自动解封）
         </label>
       </div>
     </div>

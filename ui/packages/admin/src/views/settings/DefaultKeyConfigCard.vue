@@ -112,7 +112,7 @@ function handleSave(): void {
           </label>
           <label class="col-span-2 flex items-center gap-2 text-xs text-slate-600">
             <input v-model="budget.hardLimit" type="checkbox" class="h-4 w-4 rounded border-slate-300" />
-            超预算硬阻断（周期内花费达到上限后自动封禁，直至周期滚动或预算上调）
+            超预算硬阻断（周期内花费达到上限后自动封禁，7d 周期每周一 00:00 清零，或预算上调后自动解封）
           </label>
         </div>
         <p v-else class="mt-2 text-xs text-slate-400">关闭后新用户主 Key 不设预算</p>

@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 SYNC_KEY = "cost_summary_daily"
 ROLLING_REBUILD_DAYS = 60
 
+# 自然周窗口起点:北京时间周一 00:00。prod DB 会话时区为 UTC,须显式转换
+WEEK_WINDOW_START_SQL = "date_trunc('week', NOW() AT TIME ZONE 'Asia/Shanghai') AT TIME ZONE 'Asia/Shanghai'"
+
 
 def _run_async(coro):
     loop = asyncio.new_event_loop()
@@ -191,7 +194,7 @@ async def _enforce_budget_hard_limits() -> None:
     unblocked = 0
     try:
         async with get_worker_session_factory()() as session:
-            rows = await session.execute(text("""
+            rows = await session.execute(text(f"""
                     SELECT
                         k.id, k.litellm_key_id, k.budget_blocked_at,
                         k.budget_hard_limit, k.budget_limit, k.budget_used,
@@ -203,19 +206,19 @@ async def _enforce_budget_hard_limits() -> None:
                         SELECT SUM(internal_cost) AS cost
                         FROM aihelms.llm_call_logs
                         WHERE ai_key_id = k.id
-                          AND started_at >= NOW() - (CASE k.budget_duration
-                                WHEN '1d' THEN INTERVAL '1 day'
-                                WHEN '7d' THEN INTERVAL '7 days'
-                                ELSE INTERVAL '30 days' END)
+                          AND started_at >= (CASE k.budget_duration
+                                WHEN '1d' THEN NOW() - INTERVAL '1 day'
+                                WHEN '7d' THEN {WEEK_WINDOW_START_SQL}
+                                ELSE NOW() - INTERVAL '30 days' END)
                     ) llm ON TRUE
                     LEFT JOIN LATERAL (
                         SELECT SUM(internal_cost) AS cost
                         FROM aihelms.mcp_call_logs
                         WHERE ai_key_id = k.id
-                          AND called_at >= NOW() - (CASE k.budget_duration
-                                WHEN '1d' THEN INTERVAL '1 day'
-                                WHEN '7d' THEN INTERVAL '7 days'
-                                ELSE INTERVAL '30 days' END)
+                          AND called_at >= (CASE k.budget_duration
+                                WHEN '1d' THEN NOW() - INTERVAL '1 day'
+                                WHEN '7d' THEN {WEEK_WINDOW_START_SQL}
+                                ELSE NOW() - INTERVAL '30 days' END)
                     ) mcp ON TRUE
                     WHERE k.is_active = TRUE
                       AND k.litellm_key_id IS NOT NULL
@@ -283,7 +286,11 @@ async def _enforce_budget_hard_limits() -> None:
 
 async def _update_budget_used(session) -> None:
     """批量更新每个 ai_key 在其 budget_duration 周期内的累计成本。"""
-    for duration, interval in [("30d", "30 days"), ("7d", "7 days"), ("1d", "1 day")]:
+    for duration, window_sql in [
+        ("30d", "NOW() - INTERVAL '30 days'"),
+        ("7d", WEEK_WINDOW_START_SQL),
+        ("1d", "NOW() - INTERVAL '1 day'"),
+    ]:
         await session.execute(
             text(f"""
                 WITH key_costs AS (
@@ -292,12 +299,12 @@ async def _update_budget_used(session) -> None:
                         SELECT ai_key_id, internal_cost AS cost
                         FROM aihelms.llm_call_logs
                         WHERE ai_key_id IS NOT NULL
-                          AND started_at >= NOW() - INTERVAL '{interval}'
+                          AND started_at >= {window_sql}
                         UNION ALL
                         SELECT ai_key_id, internal_cost AS cost
                         FROM aihelms.mcp_call_logs
                         WHERE ai_key_id IS NOT NULL
-                          AND called_at >= NOW() - INTERVAL '{interval}'
+                          AND called_at >= {window_sql}
                     ) combined
                     GROUP BY ai_key_id
                 )

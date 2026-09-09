@@ -56,7 +56,7 @@ const periodLabel = computed(() => {
   if (!m) return dur
   const days = Number(m[1])
   if (days === 1) return '/天'
-  if (days === 7) return '/7天'
+  if (days === 7) return '/周'
   if (days === 30) return '/月'
   return `/${days}天`
 })
