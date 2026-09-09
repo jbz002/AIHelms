@@ -319,18 +319,24 @@ async def _update_budget_used(session) -> None:
             """),
             {"duration": duration},
         )
-    # 没有调用记录的 Key，归零
-    await session.execute(text("""
-            UPDATE aihelms.ai_keys
-            SET budget_used = 0
-            WHERE (budget_limit IS NOT NULL
-                   OR budget_models_total IS NOT NULL
-                   OR budget_mcps_total IS NOT NULL)
-              AND id NOT IN (
-                  SELECT DISTINCT ai_key_id FROM aihelms.llm_call_logs
-                  WHERE ai_key_id IS NOT NULL
-                  UNION
-                  SELECT DISTINCT ai_key_id FROM aihelms.mcp_call_logs
-                  WHERE ai_key_id IS NOT NULL
-              )
-        """))
+        # 窗口内无消费（含从无日志）的 Key，归零——自然周周一清零依赖此分支
+        await session.execute(
+            text(f"""
+                UPDATE aihelms.ai_keys k
+                SET budget_used = 0
+                WHERE k.budget_duration = :duration
+                  AND (k.budget_limit IS NOT NULL
+                       OR k.budget_models_total IS NOT NULL
+                       OR k.budget_mcps_total IS NOT NULL)
+                  AND k.id NOT IN (
+                      SELECT DISTINCT ai_key_id FROM aihelms.llm_call_logs
+                      WHERE ai_key_id IS NOT NULL
+                        AND started_at >= {window_sql}
+                      UNION
+                      SELECT DISTINCT ai_key_id FROM aihelms.mcp_call_logs
+                      WHERE ai_key_id IS NOT NULL
+                        AND called_at >= {window_sql}
+                  )
+            """),
+            {"duration": duration},
+        )
