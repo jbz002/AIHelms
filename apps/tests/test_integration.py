@@ -1,80 +1,97 @@
-"""AI Hub 服务间集成（RFC 7523 JWT Bearer Assertion）测试（依赖 dev 中间件真实 DB+Redis 不可用走 fake）。
+"""AI Hub 服务间集成（方式六 HMAC 验签）测试（依赖 dev 中间件真实 DB 不可用部分走 stub）。
 
-- 验签链：RS256 签名 / iss / aud / exp / iat 容差 / 寿命上限 / jti 防重放
-- 算法混淆（HS256 拿公钥当 HMAC 密钥）必须被拒
-- 用户映射：已知用户复用本地行，未知用户占位 upsert + provision
-- 令牌双向隔离：集成 token 过普通认证被拒；普通 token 过集成解码被拒
+- 验签链：时间戳存在/±300s 容差 / 签名串各字段（v1/时间戳/METHOD/path/query/body hash/on_behalf_of）任一篡改被拒
+- 签名头缺失 / 非 ASCII / 错密钥 / 密钥未配置被拒
+- 用户映射：已知用户复用本地行，未知用户占位 upsert + provision，禁用用户拒
 - identity 返回 get_my_keys 全量结构并落审计
 """
 
 import asyncio
+import hashlib
+import hmac
 import time
-from uuid import uuid4
 
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi import HTTPException
-from jose import jwt
 from sqlalchemy import delete, select, update
+from starlette.requests import Request
 
 from core.config import settings
 from core.database import get_worker_session_factory
-from core.security import create_access_token
-from exceptions import ForbiddenError, UnauthorizedError
+from exceptions import UnauthorizedError
 from models.db import AdminAuditLog, AiKey, User
 from services import integration_service
 
+SECRET_MAIN = "sk-conn-test-main-secret"
+SECRET_WRONG = "sk-conn-test-wrong-secret"
 
-def _gen_keypair() -> tuple[str, str]:
-    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    priv_pem = key.private_bytes(
-        serialization.Encoding.PEM,
-        serialization.PrivateFormat.PKCS8,
-        serialization.NoEncryption(),
-    ).decode()
-    pub_pem = (
-        key.public_key()
-        .public_bytes(
-            serialization.Encoding.PEM,
-            serialization.PublicFormat.SubjectPublicKeyInfo,
-        )
-        .decode()
-    )
-    return priv_pem, pub_pem
+PATH = "/api/v1/integration/identity"
 
 
-PRIV_MAIN, PUB_MAIN = _gen_keypair()
-PRIV_SECOND, PUB_SECOND = _gen_keypair()
-PRIV_WRONG, _PUB_WRONG = _gen_keypair()
+def _sign(
+    secret: str,
+    ts: str,
+    method: str,
+    path_with_query: str,
+    body: bytes = b"",
+    on_behalf_of: str | None = None,
+) -> str:
+    """测试侧按协议同构拼签名串（与 core/aihub_verify 验签算法互为镜像）。"""
+    message = "\n".join(
+        [
+            "v1",
+            ts,
+            method.upper(),
+            path_with_query,
+            hashlib.sha256(body or b"").hexdigest(),
+            on_behalf_of or "",
+        ]
+    ).encode()
+    return "v1=" + hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
 
 
-class _FakeRedis:
-    """手写 redis stub：仅实现 service 用到的 set(nx)/incr/expire。"""
+def _make_request(
+    *,
+    method: str = "GET",
+    path: str = PATH,
+    query: str = "",
+    body: bytes = b"",
+    on_behalf_of: str | None = None,
+    headers: dict[str, str] | None = None,
+) -> Request:
+    """构造按协议签好名的请求；headers 中的同名头可覆盖默认值（用于篡改用例）。"""
+    ts = str(int(time.time()))
+    path_with_query = path + ("?" + query if query else "")
+    final_headers: dict[str, str] = {
+        "x-aihub-timestamp": ts,
+        "x-aihub-signature": _sign(
+            SECRET_MAIN, ts, method, path_with_query, body, on_behalf_of
+        ),
+        **(headers or {}),
+    }
+    if on_behalf_of is not None:
+        final_headers.setdefault("x-aihub-on-behalf-of", on_behalf_of)
+    scope = {
+        "type": "http",
+        "method": method,
+        "path": path,
+        "raw_path": (path + ("?" + query if query else "")).encode("ascii"),
+        "query_string": query.encode("ascii"),
+        "headers": [(k.encode(), v.encode()) for k, v in final_headers.items()],
+        "client": ("127.0.0.1", 12345),
+        "server": ("127.0.0.1", 80),
+    }
 
-    def __init__(self) -> None:
-        self.store: dict[str, str] = {}
-        self.counters: dict[str, int] = {}
+    async def receive():
+        return {"type": "http.request", "body": body, "more_body": False}
 
-    async def set(self, key: str, value: str, nx: bool = False, ex: int | None = None):
-        if nx and key in self.store:
-            return None
-        self.store[key] = value
-        return True
-
-    async def incr(self, key: str) -> int:
-        self.counters[key] = self.counters.get(key, 0) + 1
-        return self.counters[key]
-
-    async def expire(self, key: str, seconds: int) -> bool:
-        return key in self.counters
+    return Request(scope, receive)
 
 
-@pytest.fixture(autouse=True)
-def _fake_redis(monkeypatch):
-    fake = _FakeRedis()
-    monkeypatch.setattr(integration_service, "get_redis", lambda: fake)
-    return fake
+async def _verify(request: Request) -> str | None:
+    from core.aihub_verify import verify_aihub
+
+    return await verify_aihub(request)
 
 
 @pytest.fixture(autouse=True)
@@ -87,6 +104,11 @@ def _stub_provision(monkeypatch):
         "services.integration_service.user_service.provision_user_resources", mock
     )
     return mock
+
+
+@pytest.fixture(autouse=True)
+def _configure_secret(monkeypatch):
+    monkeypatch.setattr(settings, "aihub_integration_hmac_secret", SECRET_MAIN)
 
 
 @pytest.fixture(autouse=True)
@@ -124,101 +146,179 @@ async def _cleanup_all() -> None:
         await s.commit()
 
 
-def _configure(monkeypatch, *, public_keys: str | None = None) -> None:
-    monkeypatch.setattr(settings, "aihub_integration_enabled", True)
-    monkeypatch.setattr(
-        settings, "aihub_integration_public_keys", public_keys or PUB_MAIN
-    )
-    monkeypatch.setattr(settings, "aihub_integration_iss", "aihub")
-    monkeypatch.setattr(settings, "aihub_integration_aud", "aihelms")
-    monkeypatch.setattr(settings, "aihub_integration_token_expire_minutes", 30)
-    monkeypatch.setattr(settings, "aihub_integration_max_assertion_seconds", 300)
-    monkeypatch.setattr(settings, "aihub_integration_iat_leeway_seconds", 60)
-    monkeypatch.setattr(settings, "aihub_integration_rate_limit_per_minute", 60)
-    monkeypatch.setattr(settings, "secret_key", "test-secret-integration")
-
-
-def _make_assertion(
-    overrides: dict | None = None,
-    priv: str | None = None,
-    sub: str = "aihub-int-test-uid",
-) -> str:
-    now = int(time.time())
-    claims: dict = {
-        "iss": "aihub",
-        "aud": "aihelms",
-        "sub": sub,
-        "jti": uuid4().hex,
-        "iat": now,
-        "exp": now + 120,
-    }
-    claims.update(overrides or {})
-    return jwt.encode(claims, priv or PRIV_MAIN, algorithm="RS256")
+# --- 验签链 ---
 
 
 @pytest.mark.asyncio
-async def test_valid_assertion_issues_token_with_integration_use(monkeypatch):
-    _configure(monkeypatch)
-    session = _session()
-    try:
-        data = await integration_service.issue_integration_token(
-            session, _make_assertion()
-        )
-    finally:
-        await session.close()
-
-    assert data["token_type"] == "Bearer"
-    assert data["expires_in"] == 30 * 60
-    payload = jwt.decode(
-        data["access_token"], settings.secret_key, algorithms=["HS256"]
-    )
-    assert payload["token_use"] == "integration"
-    assert payload["aihub_user_id"] == "aihub-int-test-uid"
-    assert payload["sub"]  # 本地 user_id
+async def test_valid_signature_with_on_behalf_of():
+    request = _make_request(on_behalf_of="aihub-int-test-uid")
+    assert await _verify(request) == "aihub-int-test-uid"
 
 
 @pytest.mark.asyncio
-async def test_known_user_reuses_local_row(monkeypatch):
-    _configure(monkeypatch)
-    session = _session()
-    try:
-        user = await integration_service._upsert_integration_user(
-            session, "aihub-int-test-known"
-        )
-        known_id = user.id
-        data = await integration_service.issue_integration_token(
-            session, _make_assertion(sub="aihub-int-test-known")
-        )
-    finally:
-        await session.close()
+async def test_valid_signature_without_on_behalf_of_returns_none():
+    request = _make_request()
+    assert await _verify(request) is None
 
-    payload = jwt.decode(
-        data["access_token"], settings.secret_key, algorithms=["HS256"]
+
+@pytest.mark.asyncio
+async def test_valid_signature_with_body_and_query():
+    request = _make_request(
+        method="POST",
+        query="a=1&b=%2Fx",
+        body=b'{"k": 1}',
+        on_behalf_of="aihub-int-test-uid",
     )
-    assert payload["sub"] == str(known_id)
+    assert await _verify(request) == "aihub-int-test-uid"
 
-    async with _session() as s:
-        rows = (
-            (
-                await s.execute(
-                    select(User).where(User.aihub_user_id == "aihub-int-test-known")
-                )
+
+@pytest.mark.asyncio
+async def test_wrong_secret_rejected():
+    ts = str(int(time.time()))
+    request = _make_request(
+        on_behalf_of="aihub-int-test-uid",
+        headers={
+            "x-aihub-signature": _sign(
+                SECRET_WRONG, ts, "GET", PATH, b"", "aihub-int-test-uid"
             )
-            .scalars()
-            .all()
-        )
-        assert len(rows) == 1
+        },
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await _verify(request)
+    assert exc_info.value.status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_unknown_user_upserts_placeholder_and_provisions(
-    monkeypatch, _stub_provision
-):
-    _configure(monkeypatch)
+async def test_missing_secret_closes_channel(monkeypatch):
+    monkeypatch.setattr(settings, "aihub_integration_hmac_secret", "")
+    request = _make_request()
+    with pytest.raises(HTTPException) as exc_info:
+        await _verify(request)
+    assert exc_info.value.status_code == 401
+    assert "集成通道未启用" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_expired_timestamp_rejected():
+    ts = str(int(time.time()) - 301)
+    request = _make_request(headers={"x-aihub-timestamp": ts})
+    with pytest.raises(HTTPException) as exc_info:
+        await _verify(request)
+    assert exc_info.value.status_code == 401
+    assert "请求已过期" in exc_info.value.detail
+
+
+@pytest.mark.asyncio
+async def test_future_timestamp_beyond_tolerance_rejected():
+    request = _make_request(headers={"x-aihub-timestamp": str(int(time.time()) + 301)})
+    with pytest.raises(HTTPException) as exc_info:
+        await _verify(request)
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_missing_or_bad_timestamp_rejected():
+    for ts_value in ("", "not-a-number"):
+        request = _make_request(headers={"x-aihub-timestamp": ts_value})
+        with pytest.raises(HTTPException) as exc_info:
+            await _verify(request)
+        assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_missing_signature_header_rejected():
+    request = _make_request(headers={"x-aihub-signature": ""})
+    with pytest.raises(HTTPException) as exc_info:
+        await _verify(request)
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_non_ascii_signature_rejected():
+    """compare_digest 收非 ASCII str 会抛 TypeError（500），必须先校验拦成 401。"""
+    request = _make_request(headers={"x-aihub-signature": "v1=签名"})
+    with pytest.raises(HTTPException) as exc_info:
+        await _verify(request)
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_tampered_method_rejected():
+    request = _make_request(
+        method="POST",
+        headers={"x-aihub-signature": _sign(SECRET_MAIN, _ts(), "GET", PATH)},
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await _verify(request)
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_tampered_path_rejected():
+    request = _make_request(
+        path="/api/v1/integration/other",
+        headers={"x-aihub-signature": _sign(SECRET_MAIN, _ts(), "GET", PATH)},
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await _verify(request)
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_tampered_query_rejected():
+    request = _make_request(
+        query="a=2",
+        headers={"x-aihub-signature": _sign(SECRET_MAIN, _ts(), "GET", PATH + "?a=1")},
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await _verify(request)
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_tampered_body_rejected():
+    request = _make_request(
+        method="POST",
+        body=b'{"k": 2}',
+        headers={
+            "x-aihub-signature": _sign(
+                SECRET_MAIN, _ts(), "POST", PATH, body=b'{"k": 1}'
+            )
+        },
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await _verify(request)
+    assert exc_info.value.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_tampered_on_behalf_of_rejected():
+    request = _make_request(
+        on_behalf_of="aihub-int-test-other",
+        headers={
+            "x-aihub-signature": _sign(
+                SECRET_MAIN, _ts(), "GET", PATH, b"", "aihub-int-test-uid"
+            )
+        },
+    )
+    with pytest.raises(HTTPException) as exc_info:
+        await _verify(request)
+    assert exc_info.value.status_code == 401
+
+
+def _ts() -> str:
+    return str(int(time.time()))
+
+
+# --- 用户定位与身份拉取 ---
+
+
+@pytest.mark.asyncio
+async def test_unknown_user_upserts_placeholder_and_provisions(_stub_provision):
     session = _session()
     try:
-        await integration_service.issue_integration_token(
-            session, _make_assertion(sub="aihub-int-test-newcomer")
+        user = await integration_service.get_user_by_aihub_id(
+            session, "aihub-int-test-newcomer"
         )
     finally:
         await session.close()
@@ -226,19 +326,36 @@ async def test_unknown_user_upserts_placeholder_and_provisions(
     assert _stub_provision.await_count == 1
 
     async with _session() as s:
-        user = (
+        row = (
             await s.execute(
                 select(User).where(User.aihub_user_id == "aihub-int-test-newcomer")
             )
         ).scalar_one_or_none()
-        assert user is not None
-        assert user.username == "aihub_aihub-in"
-        assert user.email == "aihub-int-test-newcomer@aihub.local"
+        assert row is not None
+        assert row.id == user.id
+        assert row.username == "aihub_aihub-in"
+        assert row.email == "aihub-int-test-newcomer@aihub.local"
 
 
 @pytest.mark.asyncio
-async def test_inactive_user_rejected(monkeypatch):
-    _configure(monkeypatch)
+async def test_known_user_reuses_local_row(_stub_provision):
+    session = _session()
+    try:
+        first = await integration_service.get_user_by_aihub_id(
+            session, "aihub-int-test-known"
+        )
+        second = await integration_service.get_user_by_aihub_id(
+            session, "aihub-int-test-known"
+        )
+    finally:
+        await session.close()
+
+    assert first.id == second.id
+    assert _stub_provision.await_count == 1  # 幂等，第二次不再 provision
+
+
+@pytest.mark.asyncio
+async def test_inactive_user_rejected():
     session = _session()
     try:
         await integration_service._upsert_integration_user(
@@ -251,169 +368,15 @@ async def test_inactive_user_rejected(monkeypatch):
         )
         await session.commit()
         with pytest.raises(UnauthorizedError, match="用户已禁用"):
-            await integration_service.issue_integration_token(
-                session, _make_assertion(sub="aihub-int-test-off")
+            await integration_service.get_integration_identity_data(
+                session, "aihub-int-test-off", ip="test-ip-integration"
             )
     finally:
         await session.close()
 
 
 @pytest.mark.asyncio
-async def test_wrong_signature_rejected(monkeypatch):
-    _configure(monkeypatch)
-    assertion = _make_assertion(priv=PRIV_WRONG)
-    session = _session()
-    try:
-        with pytest.raises(UnauthorizedError, match="断言无效"):
-            await integration_service.issue_integration_token(session, assertion)
-    finally:
-        await session.close()
-
-
-def _hs256_confusion_token(claims: dict, hmac_secret: str) -> str:
-    """手工构造 alg=HS256 的 JWT（绕开 jose 对 PEM 做 HMAC 的防护），模拟真实攻击者。"""
-    import base64
-    import hashlib
-    import hmac as hmac_mod
-    import json
-
-    def b64url(data: bytes) -> str:
-        return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
-
-    header = b64url(json.dumps({"alg": "HS256", "typ": "JWT"}).encode())
-    payload = b64url(json.dumps(claims).encode())
-    signing_input = f"{header}.{payload}".encode()
-    signature = b64url(
-        hmac_mod.new(hmac_secret.encode(), signing_input, hashlib.sha256).digest()
-    )
-    return f"{header}.{payload}.{signature}"
-
-
-@pytest.mark.asyncio
-async def test_hs256_algorithm_confusion_rejected(monkeypatch):
-    """攻击者拿我方公钥 PEM 当 HS256 密钥签名，必须被 RS256 算法白名单拒绝。"""
-    _configure(monkeypatch)
-    now = int(time.time())
-    claims = {
-        "iss": "aihub",
-        "aud": "aihelms",
-        "sub": "aihub-int-test-uid",
-        "jti": uuid4().hex,
-        "iat": now,
-        "exp": now + 120,
-    }
-    assertion = _hs256_confusion_token(claims, PUB_MAIN)
-    session = _session()
-    try:
-        with pytest.raises(UnauthorizedError, match="断言无效"):
-            await integration_service.issue_integration_token(session, assertion)
-    finally:
-        await session.close()
-
-
-@pytest.mark.asyncio
-async def test_expired_assertion_rejected(monkeypatch):
-    _configure(monkeypatch)
-    now = int(time.time())
-    assertion = _make_assertion({"iat": now - 300, "exp": now - 60})
-    session = _session()
-    try:
-        with pytest.raises(UnauthorizedError, match="断言无效"):
-            await integration_service.issue_integration_token(session, assertion)
-    finally:
-        await session.close()
-
-
-@pytest.mark.asyncio
-async def test_wrong_iss_rejected(monkeypatch):
-    _configure(monkeypatch)
-    assertion = _make_assertion({"iss": "someone-else"})
-    session = _session()
-    try:
-        with pytest.raises(UnauthorizedError, match="断言无效"):
-            await integration_service.issue_integration_token(session, assertion)
-    finally:
-        await session.close()
-
-
-@pytest.mark.asyncio
-async def test_wrong_aud_rejected(monkeypatch):
-    _configure(monkeypatch)
-    assertion = _make_assertion({"aud": "not-aihelms"})
-    session = _session()
-    try:
-        with pytest.raises(UnauthorizedError, match="断言无效"):
-            await integration_service.issue_integration_token(session, assertion)
-    finally:
-        await session.close()
-
-
-@pytest.mark.asyncio
-async def test_future_iat_beyond_leeway_rejected(monkeypatch):
-    _configure(monkeypatch)
-    now = int(time.time())
-    assertion = _make_assertion({"iat": now + 120, "exp": now + 240})
-    session = _session()
-    try:
-        with pytest.raises(UnauthorizedError, match="断言无效"):
-            await integration_service.issue_integration_token(session, assertion)
-    finally:
-        await session.close()
-
-
-@pytest.mark.asyncio
-async def test_overlong_assertion_lifetime_rejected(monkeypatch):
-    _configure(monkeypatch)
-    now = int(time.time())
-    assertion = _make_assertion({"iat": now, "exp": now + 600})
-    session = _session()
-    try:
-        with pytest.raises(UnauthorizedError, match="断言无效"):
-            await integration_service.issue_integration_token(session, assertion)
-    finally:
-        await session.close()
-
-
-@pytest.mark.asyncio
-async def test_jti_replay_rejected(monkeypatch, _fake_redis):
-    _configure(monkeypatch)
-    assertion = _make_assertion(sub="aihub-int-test-replay")
-    session = _session()
-    try:
-        await integration_service.issue_integration_token(session, assertion)
-        with pytest.raises(UnauthorizedError, match="断言无效"):
-            await integration_service.issue_integration_token(session, assertion)
-    finally:
-        await session.close()
-
-
-@pytest.mark.asyncio
-async def test_token_isolation_both_directions(monkeypatch):
-    _configure(monkeypatch)
-    session = _session()
-    try:
-        data = await integration_service.issue_integration_token(
-            session, _make_assertion()
-        )
-    finally:
-        await session.close()
-
-    # 集成 token 调普通认证接口：被拒
-    with pytest.raises(HTTPException) as exc_info:
-        from core.deps import _authenticate_jwt
-
-        _authenticate_jwt(data["access_token"])
-    assert exc_info.value.status_code == 401
-
-    # 普通登录 token（无 token_use）过集成解码：被拒
-    normal_token = create_access_token({"sub": "1", "username": "normal-user"})
-    with pytest.raises(UnauthorizedError):
-        integration_service.decode_integration_token(normal_token)
-
-
-@pytest.mark.asyncio
 async def test_identity_returns_full_key_structure_and_audits(monkeypatch):
-    _configure(monkeypatch)
     # 捕获 fire-and-forget 审计 task 并显式 await：asyncpg 连接绑 event loop，
     # 测试结束 loop 销毁若 task 未完，滞留连接会污染下一测试（InterfaceError）
     spawned: list[asyncio.Task] = []
@@ -424,14 +387,15 @@ async def test_identity_returns_full_key_structure_and_audits(monkeypatch):
         spawned.append(task)
         return task
 
-    monkeypatch.setattr(integration_service.asyncio, "create_task", _capture_create_task)
+    monkeypatch.setattr(
+        integration_service.asyncio, "create_task", _capture_create_task
+    )
 
     session = _session()
     try:
-        data = await integration_service.issue_integration_token(
-            session, _make_assertion(sub="aihub-int-test-identity")
+        user = await integration_service._upsert_integration_user(
+            session, "aihub-int-test-identity"
         )
-        identity = integration_service.decode_integration_token(data["access_token"])
 
         # 手动放一条个人主 key（绕开 litellm 真实调用）
         session.add(
@@ -439,7 +403,7 @@ async def test_identity_returns_full_key_structure_and_audits(monkeypatch):
                 name="integration-test-key",
                 key_type="personal_main",
                 owner_type="user",
-                owner_id=identity["user_id"],
+                owner_id=user.id,
                 litellm_key_id="sk-int-test-plaintext",
                 is_active=True,
             )
@@ -447,7 +411,7 @@ async def test_identity_returns_full_key_structure_and_audits(monkeypatch):
         await session.commit()
 
         result = await integration_service.get_integration_identity_data(
-            session, identity, ip="test-ip-integration"
+            session, "aihub-int-test-identity", ip="test-ip-integration"
         )
     finally:
         await session.close()
@@ -467,40 +431,15 @@ async def test_identity_returns_full_key_structure_and_audits(monkeypatch):
         assert audit_row is not None
         assert audit_row.identity_type == "integration"
         assert audit_row.detail["aihub_user_id"] == "aihub-int-test-identity"
+        assert "sk-int-test-plaintext" not in str(audit_row.detail)
 
 
 @pytest.mark.asyncio
-async def test_rate_limit_blocks_after_threshold(monkeypatch):
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "aihub_integration_rate_limit_per_minute", 2)
-    await integration_service.check_token_endpoint_rate_limit("1.2.3.4")
-    await integration_service.check_token_endpoint_rate_limit("1.2.3.4")
-    with pytest.raises(ForbiddenError, match="请求过于频繁"):
-        await integration_service.check_token_endpoint_rate_limit("1.2.3.4")
+async def test_router_rejects_missing_on_behalf_of():
+    """identity 必须用户维度：on_behalf_of 为 None（服务身份调用）时路由应拒绝。"""
+    from api.v1.integration import get_integration_identity_keys
 
-
-@pytest.mark.asyncio
-async def test_disabled_integration_forbidden(monkeypatch):
-    _configure(monkeypatch)
-    monkeypatch.setattr(settings, "aihub_integration_enabled", False)
-    session = _session()
-    try:
-        with pytest.raises(ForbiddenError, match="集成通道未启用"):
-            await integration_service.issue_integration_token(
-                session, _make_assertion()
-            )
-    finally:
-        await session.close()
-
-
-@pytest.mark.asyncio
-async def test_secondary_public_key_verifies(monkeypatch):
-    """轮换期：两把公钥同时登记，第二把私钥签的断言可通过。"""
-    _configure(monkeypatch, public_keys=PUB_MAIN + PUB_SECOND)
-    assertion = _make_assertion(priv=PRIV_SECOND)
-    session = _session()
-    try:
-        data = await integration_service.issue_integration_token(session, assertion)
-        assert data["access_token"]
-    finally:
-        await session.close()
+    request = _make_request(headers={"x-forwarded-for": "test-ip-integration"})
+    with pytest.raises(HTTPException) as exc_info:
+        await get_integration_identity_keys(request, on_behalf_of=None, session=None)
+    assert exc_info.value.status_code == 400

@@ -55,19 +55,10 @@ class Settings(BaseSettings):
     ai_hub_app_code: str = ""  # 应用管理里注册的 app_code（= aihelms）
     ai_hub_admin_role: str = "aihelms-admin"  # 拥有此 app_roles 标签 = AIHelms 管理员
 
-    # AI Hub 服务间集成（RFC 7523 JWT Bearer Assertion，AI Hub 拉取用户 AI 身份）
-    aihub_integration_enabled: bool = False  # 总开关，未配置公钥时保持 False
-    aihub_integration_public_keys: str = (
-        ""  # AI Hub 侧公钥 PEM（一到多个块拼接，\n 可字面量转义）
+    # AI Hub 服务间集成（方式六 HMAC 验签，AI Hub 拉取用户 AI 身份）
+    aihub_integration_hmac_secret: str = (
+        ""  # 共享密钥（AI Hub 应用管理「API 连接」生成），空 = 通道关闭
     )
-    aihub_integration_iss: str = "aihub"  # 断言预期 issuer
-    aihub_integration_aud: str = "aihelms"  # 断言预期 audience
-    aihub_integration_token_expire_minutes: int = 30  # 集成访问令牌有效期（分钟）
-    aihub_integration_max_assertion_seconds: int = (
-        300  # 断言最大寿命（exp-iat 上界，秒）
-    )
-    aihub_integration_iat_leeway_seconds: int = 60  # iat 时钟容差（秒）
-    aihub_integration_rate_limit_per_minute: int = 60  # token 端点每 IP 限速，0 = 关闭
 
     # 成本计算
     usd_to_cny_rate: float = 7.0  # LiteLLM spend(美元) → 人民币汇率
