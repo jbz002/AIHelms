@@ -1,8 +1,8 @@
-"""AI Hub 服务间集成（HMAC 验签，方式六）。
+"""AI Hub 服务间集成（方式七自省验证）。
 
-AI Hub 后端每次请求带 HMAC-SHA256 签名头（X-AIHub-Timestamp/Signature/On-Behalf-Of），
-core/aihub_verify.verify_aihub 验签后按 On-Behalf-Of 的 aihub_user_id
-定位用户，供其拉取用户 AI 身份。
+子应用持 AI Hub 签发凭证（用户 access_token）直连调用，
+core/aihub_verify.verify_aihub_credential 向 AI Hub introspect 验证后
+拿到 caller.user_id（= aihub_user_id），据此定位用户，供其拉取 AI 身份。
 """
 
 import asyncio
@@ -55,7 +55,7 @@ async def get_integration_identity_data(
 ) -> dict:
     """按 aihub_user_id 返回用户全量 AI 身份（复用 web 端 get_my_keys），并异步落审计。
 
-    验签已在 core/aihub_verify 完成，此处只负责用户定位与建档。
+    凭证自省已在 core/aihub_verify 完成，此处只负责用户定位与建档。
     """
     user = await get_user_by_aihub_id(session, aihub_user_id)
     if not user.is_active:

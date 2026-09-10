@@ -1,24 +1,26 @@
 ---
 name: aihub-integration
-description: AI Hub 服务间集成对接指南。AI Hub 后端每次请求带 HMAC-SHA256 签名头（X-AIHub-Timestamp/Signature/On-Behalf-Of）直接调 AIHelms，拉取用户的 AI 身份（主 key、场景 key、绑定资源）。当用户需要"登录 AI Hub 后自动获取该用户在 AIHelms 的 AI key"、开发 AIHub→AIHelms 服务间身份供给、排查签名 401 报错、办理密钥轮换时使用此 skill。
+description: AI Hub 服务间集成对接指南（方式七自省验证）。子应用持 AI Hub 签发凭证（用户 access_token）直连调 AIHelms /integration/identity，AIHelms 透传凭证向 AI Hub /auth/introspect 验证后返回该用户 AI 身份（主 key、场景 key）。当用户需要"登录 AI Hub 后自动获取该用户在 AIHelms 的 AI key"、开发 AIHub→AIHelms 身份供给、排查 identity 401/403、了解凭证续期时使用此 skill。
 ---
 
-# AIHelms 服务间集成对接（HMAC 验签，方式六）
+# AIHelms 服务间集成对接（方式七：自省验证）
 
 ## 适用场景
 
-用户登录 AI Hub 后，AI Hub 的应用（如员工 ai chat）需要拿到该用户在 AIHelms 的 AI 身份（key 等），用于绑定个人模型调用。本通道提供"登录即拉取"的自动供给，**无需用户手动复制 key，也不使用长期 API Key**。
+用户登录 AI Hub 后，AI Hub 侧应用（如员工 ai chat）需要拿到该用户在 AIHelms 的 AI 身份（key 等），用于绑定个人模型调用。本通道提供"登录即拉取"的自动供给，**无需用户手动复制 key**。
 
-鉴权采用 HMAC 签名直连：AI Hub 每次请求自带签名头，AIHelms 验签放行。**无令牌交换、无令牌缓存、无密钥对**，每请求一次 HMAC 计算。
+鉴权采用「直连 + 自省」：调用方持 **AI Hub 签发的凭证**（用户 access_token），AIHelms 收到后原样转发给 AI Hub 验证，凭 AI Hub 返回的调用方身份放行。**无共享密钥、无私有令牌、验证与授权全部由 AI Hub 集中完成**。
+
+> 历史方案：方式六 HMAC 验签（共享密钥）已废弃 — AI Hub 方确认「API 连接」走代理方式将删除，改走本方式。
 
 ## 环境信息
 
-| 环境 | AIHelms API 地址 | LiteLLM 调用地址（key 的实际使用端点） | 集成通道状态 |
-|------|-----------------|--------------------------------------|-------------|
-| 公司内网（生产） | `http://131.131.2.10:30700/api/v1` | `http://131.131.2.10:30710/v1` | 按本方案联调 |
-| 本地开发（联调） | `http://localhost/api/v1` | `http://localhost:4000/v1` | 按本地 `.env` 配置 |
+| 环境 | AIHelms API 地址 | AI Hub 地址 | LiteLLM 调用地址（key 的实际使用端点） |
+|------|-----------------|-------------|--------------------------------------|
+| 公司内网（生产） | `http://131.131.2.10:30700/api/v1` | `http://131.131.2.10:30080` | `http://131.131.2.10:30710/v1` |
+| 本地开发（联调） | `http://localhost/api/v1` | `http://111.229.103.94:30080` | `http://localhost:4000/v1` |
 
-> 端点全 URL = 上表地址 + 下文路径，如 `http://131.131.2.10:30700/api/v1/integration/identity`。
+> AIHelms 侧所需配置：`AI_HUB_URL` + `AI_HUB_APP_CODE=aihelms`（SSO 已有，无新增配置）。
 
 ## 整体流程
 
@@ -26,66 +28,28 @@ description: AI Hub 服务间集成对接指南。AI Hub 后端每次请求带 H
 用户登录 AI Hub
    │
    ▼
-AI Hub 后端：为请求计算 HMAC 签名（共享密钥 sk-conn-...）
-   每次请求带三头：
-     X-AIHub-Timestamp:    Unix 秒
-     X-AIHub-Signature:    v1=<hex(HMAC-SHA256)>
-     X-AIHub-On-Behalf-Of: 该用户在 AI Hub 的 user_id
+AI Hub 侧应用（B）拿到该用户的 access_token
+（OAuth2 /token 换取，30 分钟过期，按「无感续期」刷新）
    │
    ▼
-GET /integration/identity
-   │  AIHelms 验签（时间戳 ±300s + 签名比对）
-   │  按 On-Behalf-Of 定位用户（首次出现自动建档并开通个人主 key）
+GET /api/v1/integration/identity        ← 直连 AIHelms
+Authorization: Bearer <access_token>
+   │
+   ▼
+AIHelms（A）：把 Bearer 原样转发 AI Hub 自省
+GET {AI_HUB_URL}/api/v1/auth/introspect?app_code=aihelms&target_path=/api/v1/integration/identity&method=GET
+   │  AI Hub 验证凭证 + 应用间授权 + 落调用日志
+   ▼
+200 {valid, caller_type:"user", user_id, app_roles}
+   │  AIHelms 按 user_id（= AI Hub 用户 ID）定位本地用户
+   │  首次出现自动建档并开通个人主 key
    ▼
 返回该用户全量 AI 身份：personal / department / project 三组 key
    │
    ▼
-AI Hub 缓存身份，给下游应用绑定 key；
+AI Hub 侧缓存身份，给下游应用绑定 key；
 用户实际调模型 = 拿 key 打 LiteLLM 调用地址
 ```
-
-## 准备工作
-
-### 1. 拿到共享密钥（sk-conn-...）
-
-| 项 | 说明 |
-|------|------|
-| 来源 | AI Hub 应用管理「编辑应用 → API 连接」生成的共享密钥（sk-conn-...），或双方协商生成一个等长随机串 |
-| AI Hub 侧 | 存后端配置（环境变量/密钥管理器），**不进仓库/前端/日志** |
-| AIHelms 侧 | 配置到 `.env` 的 `AIHUB_INTEGRATION_HMAC_SECRET` |
-
-> 密钥通过私密渠道交付（内网共享/加密压缩/密码另途），**不走群聊/邮件明文附件**。密钥为对称密钥，两侧须完全一致。
-
-### 2. AIHelms 侧配置清单
-
-| 配置项 | 值 | 说明 |
-|--------|-----|------|
-| `AIHUB_INTEGRATION_HMAC_SECRET` | `sk-conn-...` | 空 = 集成通道关闭（所有集成请求 401） |
-| 时间容差 | ±300 秒 | 双方服务器 NTP 需同步，偏差 ≤ 300 秒 |
-
-## 签名规范
-
-每次请求构造签名串（`\n` 连接六个字段）：
-
-```
-v1\n{timestamp}\n{METHOD}\n{path_with_query}\n{sha256_hex(body)}\n{on_behalf_of 或空}
-```
-
-| 字段 | 规则 |
-|------|------|
-| `v1` | 固定版本串 |
-| `timestamp` | Unix 秒，与 AIHelms 服务器时钟偏差 ≤ 300 秒 |
-| `METHOD` | HTTP 方法大写（GET/POST/...） |
-| `path_with_query` | 请求路径（URL 解码后）+ `"?" + query`（query 保持原始编码，Starlette `request.url` 语义） |
-| `sha256_hex(body)` | 请求体 SHA256 十六进制；空 body 用 `sha256(b"")` 固定值 |
-| `on_behalf_of` | `X-AIHub-On-Behalf-Of` 头的值，无该头则空串 |
-
-签名 = `v1=` + HMAC-SHA256(共享密钥, 签名串) 的十六进制。
-
-**要点**：
-- 签名覆盖 on_behalf_of：第三方无法伪造用户维度请求
-- 无 nonce：同一时间戳+签名的请求在 300 秒窗口内可重放（identity 为只读拉取，风险可接受；AI Hub 侧重试时用原签名头原样重发即可，无需重签）
-- 签名头必须 ASCII；`hmac.compare_digest` 前已做 isascii 校验
 
 ## 端点详情
 
@@ -93,9 +57,7 @@ v1\n{timestamp}\n{METHOD}\n{path_with_query}\n{sha256_hex(body)}\n{on_behalf_of 
 
 ```
 GET /api/v1/integration/identity
-X-AIHub-Timestamp: 1780000000
-X-AIHub-Signature: v1=a3f5...
-X-AIHub-On-Behalf-Of: 6650a1b2c3d4e5f6
+Authorization: Bearer <用户的 AI Hub access_token>
 ```
 
 成功（200），`data` 为三组 key（该用户可用的全部身份）：
@@ -127,140 +89,67 @@ X-AIHub-On-Behalf-Of: 6650a1b2c3d4e5f6
 
 | code | message | 含义 |
 |------|---------|------|
-| 401 | 签名无效 / 请求已过期 / 缺少有效时间戳 / 集成通道未启用 | 验签失败（细分原因只在 AIHelms 日志） |
-| 400 | 缺少 X-AIHub-On-Behalf-Of 头 | identity 必须用户维度，服务身份（无 on_behalf_of）调用被拒 |
-| 401 | 用户已禁用 | On-Behalf-Of 对应用户在 AIHelms 被禁用 |
+| 401 | 缺少 AI Hub 凭证 | 未带 Bearer 头 |
+| 401 | 凭证无效或无权限 | AI Hub 自省不通过（token 过期/无效/应用未授权） |
+| 401 | 凭证验证服务不可用 | AI Hub 不可达（fail-closed） |
+| 403 | 个人数据需用户凭证 | 用了应用服务态凭证（AppAPIKey）调个人接口 |
+| 401 | 用户已禁用 | 凭证对应的用户在 AIHelms 被禁用 |
 
 > **重要**：用户实际使用 key 时，由最终客户端拿 `litellm_key_id` 调 LiteLLM 调用地址（见环境信息表），与 AIHelms API 无关。Key 启停/预算/限流均在 AIHelms/LiteLLM 层生效，AI Hub 只是分发通道——吊销在 AIHelms 一按即停。
 
-## 代码骨架
-
-### Python（httpx）
+## 调用方代码骨架（AI Hub 侧应用）
 
 ```python
-import hashlib, hmac, time, httpx
+import httpx
 
-SHARED_SECRET = "sk-conn-..."                # 与 AIHelms 配置一致
 AIHELMS_BASE = "http://131.131.2.10:30700/api/v1"
 
-def _signed_headers(method: str, path_with_query: str, body: bytes = b"",
-                    on_behalf_of: str | None = None) -> dict[str, str]:
-    ts = str(int(time.time()))
-    message = "\n".join([
-        "v1", ts, method.upper(), path_with_query,
-        hashlib.sha256(body).hexdigest(), on_behalf_of or "",
-    ]).encode()
-    return {
-        "X-AIHub-Timestamp": ts,
-        "X-AIHub-Signature": "v1=" + hmac.new(
-            SHARED_SECRET.encode(), message, hashlib.sha256).hexdigest(),
-        "X-AIHub-On-Behalf-Of": on_behalf_of or "",
-    }
-
-def fetch_identity(aihub_user_id: str) -> dict:
-    path = "/integration/identity"
+def fetch_identity(user_access_token: str) -> dict:
+    """user_access_token: 该用户登录 AI Hub 后签发的 access_token（30min，注意续期）。"""
     resp = httpx.get(
-        f"{AIHELMS_BASE}{path}",
-        headers=_signed_headers("GET", path, b"", aihub_user_id),
+        f"{AIHELMS_BASE}/integration/identity",
+        headers={"Authorization": f"Bearer {user_access_token}"},
         timeout=10,
     )
     resp.raise_for_status()
     return resp.json()["data"]
 ```
 
-### Node（fetch + crypto）
-
-```js
-const crypto = require("crypto");
-
-const SHARED_SECRET = "sk-conn-...";           // 与 AIHelms 配置一致
-const AIHELMS_BASE = "http://131.131.2.10:30700/api/v1";
-
-function signedHeaders(method, pathWithQuery, body = Buffer.alloc(0),
-                       onBehalfOf = "") {
-  const ts = String(Math.floor(Date.now() / 1000));
-  const message = ["v1", ts, method.toUpperCase(), pathWithQuery,
-    crypto.createHash("sha256").update(body).digest("hex"), onBehalfOf,
-  ].join("\n");
-  const sig = "v1=" + crypto.createHmac("sha256", SHARED_SECRET)
-    .update(message).digest("hex");
-  return {
-    "X-AIHub-Timestamp": ts,
-    "X-AIHub-Signature": sig,
-    "X-AIHub-On-Behalf-Of": onBehalfOf,
-  };
-}
-
-async function fetchIdentity(aihubUserId) {
-  const resp = await fetch(`${AIHELMS_BASE}/integration/identity`, {
-    headers: signedHeaders("GET", "/integration/identity", Buffer.alloc(0),
-                           aihubUserId),
-  });
-  return (await resp.json()).data;
-}
-```
+要点：
+- **凭证是用户维度**：必须用用户 access_token（`caller_type=user`）。用应用 AppAPIKey 调会被 403 拒（个人数据防服务态查任意用户）
+- **access_token 30 分钟过期**：调用方按 AI Hub「无感续期」机制刷新；过期后 identity 返回 401，刷新后重试即可
+- identity 结果可按用户短 TTL 缓存（如 5 分钟），key 变更频率低
 
 ## 联调自验 checklist
 
-拿到共享密钥后按序自验，三步全过 = 通道可用：
-
 ```bash
-BASE=http://131.131.2.10:30700/api/v1
-SECRET=sk-conn-...
-UID=<要拉取的用户在 AI Hub 的真实 user_id>
+# ① 拿一个真实用户的 AI Hub access_token（OAuth2 /token 换取，或登录接口返回）
+TOKEN=<access_token>
 
-# ① 生成三头（签名串 = v1\n$TS\nGET\n/integration/identity\nsha256(b"")\n$UID）
-read -r TS SIG <<< $(python3 -c "
-import hashlib, hmac, time, os
-ts = str(int(time.time()))
-msg = '\n'.join(['v1', ts, 'GET', '/integration/identity',
-                 hashlib.sha256(b'').hexdigest(), os.environ['UID']]).encode()
-sig = 'v1=' + hmac.new(b'$SECRET', msg, hashlib.sha256).hexdigest()
-print(ts, sig)")
+# ② 拉身份 —— 期望 200，data 含 personal/department/project 三组
+curl -s "http://131.131.2.10:30700/api/v1/integration/identity" \
+  -H "Authorization: Bearer $TOKEN"
 
-# ② 拉身份 —— 期望 data 含 personal/department/project 三组
-curl -s "$BASE/integration/identity" \
-  -H "X-AIHub-Timestamp: $TS" \
-  -H "X-AIHub-Signature: $SIG" \
-  -H "X-AIHub-On-Behalf-Of: $UID"
-
-# ③ 错签自查 —— 改动任一字段后应 401「签名无效」
-curl -s "$BASE/integration/identity" \
-  -H "X-AIHub-Timestamp: $TS" \
-  -H "X-AIHub-Signature: v1=deadbeef" \
-  -H "X-AIHub-On-Behalf-Of: $UID"
+# ③ 错凭证自查 —— 期望 401「凭证无效或无权限」
+curl -s "http://131.131.2.10:30700/api/v1/integration/identity" \
+  -H "Authorization: Bearer garbage"
 ```
 
-> ② 401 = 签名/时间戳问题，查下文排查决策树；401「集成通道未启用」= AIHelms 侧 `AIHUB_INTEGRATION_HMAC_SECRET` 未配置，找其运维。
-> 用真实 user_id（AI Hub 里已存在的用户）：AIHelms 会为首次出现的 id 自动建档（占位档案，该用户首次 SSO 登录 AIHelms 时补全），自验时别用编造 id 往生产灌脏数据。
+> ② 401「凭证验证服务不可用」= AIHelms 到 AI Hub 网络不通，找 AIHelms 运维。
+> 401「凭证无效」多为 token 过期（30min）或跨实例 token（测试服/生产 AI Hub 不互认）。
 
 ## 错误排查决策树
 
-**401「签名无效」按序自查：**
+**401「凭证无效或无权限」按序自查：**
+1. token 是否过期（30 分钟）— 重新获取或续期
+2. token 是否与 AI Hub 实例匹配 — 测试服（111.229.103.94）与生产（131.131.2.10）token 不互认
+3. AI Hub introspect 403「该应用未被授权调用目标应用」— 调用方应用需在 AI Hub「应用管理 → 可调用的应用」勾选 aihelms
+4. AI Hub introspect 403「无访问该应用的权限」— 用户不满足 aihelms 访问白名单
 
-1. **时钟**：两台服务器 NTP 是否同步，偏差须 ≤ 300 秒
-2. **密钥一致**：AI Hub 侧密钥与 AIHelms `AIHUB_INTEGRATION_HMAC_SECRET` 是否同一个（含前后空格）
-3. **签名串构造**：六个字段是否按 `\n` 连接、METHOD 大写、`path_with_query` 是否含 query、空 body 是否用 `sha256(b"")`
-4. **query 编码**：query 必须保持原始编码（不要先解码再拼签名）
-5. **on_behalf_of**：签名末字段须与 `X-AIHub-On-Behalf-Of` 头完全一致（无头时空串）
-6. 还不行 → 联系 AIHelms 运维查日志（日志含拒绝路径）
+**403「个人数据需用户凭证」**：用了 AppAPIKey（应用服务态），改用用户 access_token。
 
-**401「请求已过期」**：时钟偏差超 300 秒，校时后重试。
-**401「集成通道未启用」**：AIHelms 侧密钥未配置。
-**400「缺少 X-AIHub-On-Behalf-Of 头」**：拉用户身份必须带头。
+## 安全红线
 
-## 密钥轮换
-
-对称密钥无法并存验证（单密钥比对），轮换 = 双方协调同切，存在短暂不可用窗口（分钟级）：
-
-1. AI Hub 应用管理重新生成（或协商生成）新密钥
-2. 双方约定切换时刻，各自配置新密钥并重启
-3. 失败请求按重试处理即可
-
-疑似泄露应急：立即换密钥，期间旧密钥请求一律 401。
-
-### 安全红线
-
-- **共享密钥保管**：两侧均只存后端（密钥管理器/受控文件），不进代码仓库、不进前端、不落日志、不进群聊
-- **密钥泄露面比非对称大**：任一侧泄露即全失守，须立即轮换
 - **身份数据是敏感数据**：拉到的 `litellm_key_id` 是明文可用 key，AI Hub 侧按密钥同级保管，不落前端代码/日志，泄露立即联系 AIHelms 作废重发
+- **凭证传递链**：用户 token 只在 AI Hub 侧应用后端与 AIHelms 之间流转，不透传给前端第三方
+- AIHelms 侧每次 identity 拉取落管理员审计日志（不记 key 明文），AI Hub 侧每次 introspect 落调用日志，两侧可对账

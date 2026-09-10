@@ -1,9 +1,9 @@
-"""AI Hub 服务间集成端点（方式六 HMAC 验签，AI Hub 直接签名调用拉取身份）。"""
+"""AI Hub 服务间集成端点（方式七自省验证，子应用持 AI Hub 凭证直连拉取身份）。"""
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.aihub_verify import verify_aihub
+from core.aihub_verify import verify_aihub_credential
 from core.deps import get_db
 from services import integration_service
 
@@ -20,12 +20,15 @@ def _client_ip(request: Request) -> str:
 @router.get("/identity", summary="拉取用户 AI 身份")
 async def get_integration_identity_keys(
     request: Request,
-    on_behalf_of: str | None = Depends(verify_aihub),
+    caller: dict = Depends(verify_aihub_credential),
     session: AsyncSession = Depends(get_db),
 ):
-    if not on_behalf_of:
-        raise HTTPException(status_code=400, detail="缺少 X-AIHub-On-Behalf-Of 头")
+    if caller.get("caller_type") != "user":
+        raise HTTPException(status_code=403, detail="个人数据需用户凭证")
+    aihub_user_id = caller.get("user_id")
+    if not aihub_user_id:
+        raise HTTPException(status_code=401, detail="凭证未携带用户身份")
     data = await integration_service.get_integration_identity_data(
-        session, on_behalf_of, ip=_client_ip(request)
+        session, aihub_user_id, ip=_client_ip(request)
     )
     return {"code": 200, "message": "ok", "data": data}
