@@ -37,6 +37,23 @@ def test_access_test_mapper_plain_404_returns_base_url_help() -> None:
     assert "/v1/chat/completions" in str(detail["message"])
 
 
+def test_access_test_mapper_unregistered_api_route_returns_route_help() -> None:
+    """2026-09-11 prod 事故真实指纹：litellm 把 anthropic 请求桥接到上游
+    /responses、聚合网关无该路由的 404。不是模型名错误，不得误导用户改模型名。"""
+    raw = (
+        'litellm.NotFoundError: NotFoundError: OpenAIException - {"success":false,'
+        '"status":404,"message":"404 Not found. Check the docs for available routes.",'
+        '"cause":"POST https://api.commandcode.ai/provider/v1/responses is not a '
+        'registered API route","docs":"https://commandcode.ai/docs"}. '
+        "Received Model Group=deepseek-v4.1-flash"
+    )
+    detail = map_error(FakeProviderError(raw, status_code=404))
+
+    assert detail["category"] == "upstream_api_route_unsupported"
+    assert "接口路由" in str(detail["message"])
+    assert "上游模型名" not in str(detail["message"])
+
+
 def test_access_test_mapper_permission_error_returns_supplier_permission_help() -> None:
     detail = map_error(
         FakeProviderError(

@@ -69,6 +69,14 @@ ERROR_TEMPLATES: dict[str, AccessTestErrorTemplate] = {
             "或中文名称。"
         ),
     ),
+    "upstream_api_route_unsupported": AccessTestErrorTemplate(
+        title="测试失败：上游供应商不支持该 API 接口",
+        message=(
+            "上游服务没有当前请求的接口路由（具体路径见技术详情）。该供应商可能"
+            "不支持此调用形态，请核对供应商 API 文档；配置均正确时，联系平台"
+            "管理员检查接口转换配置。"
+        ),
+    ),
     "upstream_connection_failed": AccessTestErrorTemplate(
         title="测试失败：平台无法连接上游模型服务",
         message=(
@@ -225,6 +233,8 @@ def _classify_error(
         return "upstream_permission_denied"
     if _is_auth_error(text, class_name, status_code):
         return "upstream_credential_invalid"
+    if _is_unsupported_route_error(text):
+        return "upstream_api_route_unsupported"
     if _is_model_type_error(text):
         return "model_type_mismatch"
     if _is_model_name_error(text, status_code):
@@ -313,6 +323,19 @@ def _is_model_name_error(text: str, status_code: int | None) -> bool:
         ],
     )
     return model_error or (status_code == 404 and "model" in text)
+
+
+def _is_unsupported_route_error(text: str) -> bool:
+    """上游端点无此 API 路由（litellm 对 openai provider 桥接 /v1/messages 到
+    /responses、上游聚合网关无该路由的 404 形态）。
+
+    这不是模型名错误：旧逻辑 `404 and "model" in text` 会把它误归因为
+    「上游供应商模型名称填写错误」（2026-09-11 prod 事故），用户照提示改模型
+    名只会越改越错。
+    """
+    return _contains_any(
+        text, ["is not a registered api route", "not a registered api route"]
+    )
 
 
 def _is_base_url_error(text: str) -> bool:
