@@ -8,6 +8,11 @@ general_settings:
 litellm_settings:
   drop_params: true
   set_verbose: false
+  # v1.93 起对 openai provider 的 /v1/messages 默认走 Responses API 桥接；
+  # 聚合网关（如 commandcode.ai）无 /responses 路由，404。
+  # 退回 chat/completions 翻译，恢复「openai-only 上游自动支持 anthropic 双格式」。
+  # anthropic 方言凭证（真 anthropic 端点）不受影响，仍原生直传。
+  use_chat_completions_url_for_anthropic_messages: true
 
 # 模型配置通过管理界面添加，无需在此文件中配置
 # 添加后会持久化到数据库中
