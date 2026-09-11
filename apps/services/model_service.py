@@ -1261,8 +1261,16 @@ async def _build_litellm_params_for_sync(
 
     if prefix:
         raw_model = params.get("model", "")
-        model_name_raw = raw_model.split("/")[-1] if "/" in raw_model else raw_model
-        params["model"] = f"{prefix}/{model_name_raw or model.model_id}"
+        if "/" in raw_model:
+            first_segment, remainder = raw_model.split("/", 1)
+            # 首段 == 解析前缀 → 用户手写/存量数据里的 LiteLLM provider 前缀，剥掉重拼；
+            # 否则首段是上游模型名的一部分（聚合网关 vendor/model 命名空间，如
+            # commandcode.ai 要求 deepseek/deepseek-v4.1-flash），整串原样保留，
+            # 仅在外层加 provider 前缀（2026-09-11 prod 事故：split("/")[-1] 把
+            # 上游命名空间剥成裸名，上游 400 not supported on this endpoint）。
+            if first_segment == prefix:
+                raw_model = remainder
+        params["model"] = f"{prefix}/{raw_model or model.model_id}"
         if needs_v1 and params.get("api_base"):
             params["api_base"] = _ensure_v1_suffix(params["api_base"])
     return params
