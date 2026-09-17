@@ -76,7 +76,7 @@ describe('ProviderManage deletion feedback', () => {
 
   afterEach(() => app.unmount())
 
-  it('should close the credential dialog and show the exact conflict reason', async () => {
+  it('should keep the credential dialog open and show the exact conflict reason', async () => {
     await clickNode(getNode(node => node.props['data-testid'] === 'delete-credential-button'))
     expect(dialog()).toBeDefined()
     vi.mocked(deleteCredential).mockRejectedValueOnce(new Error(credentialConflict))
@@ -87,7 +87,7 @@ describe('ProviderManage deletion feedback', () => {
     expect(getCredentials).toHaveBeenCalledTimes(1)
   })
 
-  it('should close the provider dialog and show its conflict reason', async () => {
+  it('should keep the provider dialog open and show its conflict reason', async () => {
     await clickNode(getNode(node => node.props['data-testid'] === 'delete-provider-button'))
     expect(dialog()).toBeDefined()
     vi.mocked(deleteProvider).mockRejectedValueOnce(new Error(providerConflict))
