@@ -315,6 +315,11 @@ INSERT INTO aihelms.provider_prefix_map (provider_type, format, category, prefix
     -- 腾讯混元与 xAI
     ('tencent', 'openai', 'chat', 'tencent', true),
     ('xai', 'openai', 'chat', 'xai', false),
+    -- SiliconFlow（OpenAI 兼容端点；litellm v1.93 无 siliconflow provider，
+    --  chat/embedding 走 openai 前缀，rerank 只能走 hosted_vllm 前缀，见 081 迁移）
+    ('siliconflow', 'openai', 'chat', 'openai', false),
+    ('siliconflow', 'openai', 'embedding', 'openai', false),
+    ('siliconflow', 'openai', 'rerank', 'hosted_vllm', false),
     -- 其他
     ('other', 'openai', 'chat', 'openai', true),
     ('other', 'openai', 'embedding', 'openai', true),

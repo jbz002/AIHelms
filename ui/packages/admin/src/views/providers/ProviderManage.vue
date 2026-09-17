@@ -62,7 +62,7 @@ const maskedApiKey = ref('')
 
 // 按模型定价（已移除，模型关联统一在模型管理操作）
 
-// 平台遗留供应商抽象（不在 registry 中，需保留显示与可选）
+// 平台手工维护的供应商类型（registry 中不存在，需显式列出才可选）
 const LEGACY_PROVIDER_TYPES = [
   { value: 'google', label: 'Google' },
   { value: 'zhipu', label: '智谱' },
@@ -71,10 +71,11 @@ const LEGACY_PROVIDER_TYPES = [
   { value: 'vllm', label: 'vLLM' },
   { value: 'sglang', label: 'SGLang' },
   { value: 'lmstudio', label: 'LM Studio' },
+  { value: 'siliconflow', label: 'SiliconFlow' },
   { value: 'other', label: '其他' },
 ]
 
-// 供应商选项 = registry 动态派生（~99）+ 遗留平台抽象（去重）。
+// 供应商选项 = registry 动态派生（~99）+ 手工维护类型（去重）。
 // 路由前缀由后端 provider_prefix_map 覆盖表 + registry normalize 派生，前端不再维护 prefix_map。
 const providerTypes = computed(() => {
   const registryItems = providerOptions.value.map(p => ({ value: p.value, label: p.label }))

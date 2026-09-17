@@ -101,3 +101,35 @@ async def test_user_written_matching_prefix_stripped_and_rebuilt() -> None:
     )
 
     assert result["model"] == "openai/gpt-4o"
+
+
+@pytest.mark.asyncio
+async def test_siliconflow_embedding_uses_openai_prefix_and_keeps_v1() -> None:
+    """SiliconFlow 向量模型：openai 前缀 + 模型名自带 Qwen vendor 命名空间，api_base 已含 /v1 不补。"""
+    result = await _build_litellm_params_for_sync(
+        {"model": "Qwen/Qwen3-Embedding-4B"},
+        SimpleNamespace(model_id="Qwen/Qwen3-Embedding-4B", category="embedding"),
+        build_credential("https://api.siliconflow.cn/v1"),
+        FakeSession("siliconflow", "openai", False),
+    )
+
+    assert result["model"] == "openai/Qwen/Qwen3-Embedding-4B"
+    assert result["api_base"] == "https://api.siliconflow.cn/v1"
+
+
+@pytest.mark.asyncio
+async def test_siliconflow_rerank_uses_hosted_vllm_prefix() -> None:
+    """SiliconFlow 重排模型：litellm v1.93 的 /rerank 不支持 openai 前缀，必须落 hosted_vllm。
+
+    hosted_vllm 的 rerank transform 把 api_base 规范成 {api_base}/rerank，
+    api_base 已含 /v1 时得到 .../v1/rerank，即 SiliconFlow rerank 端点。
+    """
+    result = await _build_litellm_params_for_sync(
+        {"model": "Qwen/Qwen3-Reranker-4B"},
+        SimpleNamespace(model_id="Qwen/Qwen3-Reranker-4B", category="rerank"),
+        build_credential("https://api.siliconflow.cn/v1"),
+        FakeSession("siliconflow", "hosted_vllm", False),
+    )
+
+    assert result["model"] == "hosted_vllm/Qwen/Qwen3-Reranker-4B"
+    assert result["api_base"] == "https://api.siliconflow.cn/v1"

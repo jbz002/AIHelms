@@ -182,6 +182,9 @@ const deployInternalCostPerCall = ref('')
 // 高级
 const deployUseInPassThrough = ref(false)
 const deployDropParams = ref(false)
+// LiteLLM 未声明支持的参数会被静默丢弃（如 openai embedding 的 dimensions，
+// v1.93 OpenAI handler 无此字段），走 extra_body 透传进上游请求体
+const deployExtraBody = ref('')
 
 const categories = [
   { value: 'chat', label: '对话', enabled: true },
@@ -289,6 +292,7 @@ const logoProviderOptions = computed<LogoOption[]>(() => {
     { value: 'vllm', label: 'vLLM' },
     { value: 'sglang', label: 'SGLang' },
     { value: 'lmstudio', label: 'LM Studio' },
+    { value: 'siliconflow', label: 'SiliconFlow' },
     { value: 'openai_compatible', label: 'OpenAI Compatible' },
     { value: 'custom', label: '自定义' },
   ]
@@ -696,6 +700,7 @@ function resetDeployForm(): void {
   deployInternalCostPerCall.value = ''
   deployUseInPassThrough.value = false
   deployDropParams.value = false
+  deployExtraBody.value = ''
 }
 
 function handleTestDeployment(d: Deployment): void {
@@ -755,13 +760,27 @@ function handleEditDeployment(d: Deployment): void {
   deployInternalCostPerCall.value = mInfo.internal_cost_per_call ? String(mInfo.internal_cost_per_call) : ''
   deployUseInPassThrough.value = params.use_in_pass_through === true
   deployDropParams.value = params.drop_params === true
-  showAdvanced.value = !!(deployWeight.value || deployOrder.value || deployDeployTags.value || deployTimeout.value || deployInputCostPerToken.value || deployInternalInputCost.value)
+  deployExtraBody.value = params.extra_body ? JSON.stringify(params.extra_body, null, 2) : ''
+  showAdvanced.value = !!(deployWeight.value || deployOrder.value || deployDeployTags.value || deployTimeout.value || deployInputCostPerToken.value || deployInternalInputCost.value || deployExtraBody.value)
   errorMessage.value = ''
   pricingFetchError.value = ''
   showDeployForm.value = true
 }
 
-function buildLitellmParams(): Record<string, unknown> {
+/** 解析额外请求体；空串视为无，非法 JSON 或非对象返回 null 供调用方报错 */
+function parseExtraBody(): Record<string, unknown> | null {
+  const raw = deployExtraBody.value.trim()
+  if (!raw) return {}
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
+    return parsed as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
+
+function buildLitellmParams(extraBody: Record<string, unknown>): Record<string, unknown> {
   const litellmParams: Record<string, unknown> = { model: deployModelName.value }
   if (deployWeight.value) litellmParams.weight = Number(deployWeight.value)
   if (deployOrder.value) litellmParams.order = Number(deployOrder.value)
@@ -774,6 +793,7 @@ function buildLitellmParams(): Record<string, unknown> {
   if (deployCacheReadCostPerToken.value) litellmParams.cache_read_input_token_cost = Number(deployCacheReadCostPerToken.value)
   if (deployCacheCreationCostPerToken.value) litellmParams.cache_creation_input_token_cost = Number(deployCacheCreationCostPerToken.value)
   if (deployReasoningCostPerToken.value) litellmParams.output_cost_per_reasoning_token = Number(deployReasoningCostPerToken.value)
+  if (Object.keys(extraBody).length > 0) litellmParams.extra_body = extraBody
   litellmParams.use_in_pass_through = deployUseInPassThrough.value
   if (deployDropParams.value) litellmParams.drop_params = true
   return litellmParams
@@ -793,8 +813,13 @@ async function handleSubmitDeployment(): Promise<void> {
     errorMessage.value = '请填写厂商模型名称'
     return
   }
+  const extraBody = parseExtraBody()
+  if (extraBody === null) {
+    errorMessage.value = '额外请求体必须是合法的 JSON 对象'
+    return
+  }
   errorMessage.value = ''
-  const litellmParams = buildLitellmParams()
+  const litellmParams = buildLitellmParams(extraBody)
   const modelInfo: Record<string, unknown> = {}
   if (deployBillingType.value === 'token') {
     if (deployInternalInputCost.value) modelInfo.internal_input_cost = Number(deployInternalInputCost.value)
@@ -1780,6 +1805,18 @@ onMounted(() => {
                 </label>
                 </div>
                 <p v-if="deployUseInPassThrough" class="mt-1.5 text-xs text-amber-600">开启透传后 RPM/TPM 等限流将不生效</p>
+              </div>
+
+              <!-- 额外请求体 -->
+              <div>
+                <label class="mb-1 block text-xs text-slate-500">额外请求体（extra_body）</label>
+                <textarea
+                  v-model="deployExtraBody"
+                  rows="3"
+                  placeholder='{"dimensions": 1024}'
+                  class="flex w-full rounded-lg border border-slate-200 bg-white px-3 py-2 font-mono text-xs text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                />
+                <p class="mt-1 text-xs text-slate-400">JSON 对象，透传进上游请求体；LiteLLM 未声明支持的参数会被静默丢弃，须由这里补（如向量模型的 dimensions）</p>
               </div>
             </div>
           </div>
