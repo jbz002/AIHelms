@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from exceptions import ConflictError, NotFoundError
 from models.db import Permission, Role, RolePermission
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,7 +109,7 @@ def _serialize_role(role: Role) -> dict:
         "display_name": role.display_name,
         "description": role.description,
         "is_system": role.is_system,
-        "created_at": role.created_at.isoformat() if role.created_at else None,
+        "created_at": fmt_local_time(role.created_at),
         "permissions": [
             {
                 "id": rp.permission.id,

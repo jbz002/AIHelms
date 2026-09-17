@@ -17,6 +17,8 @@ from repositories import (
 from services import ai_key_service
 from services.icon_url import resolve_icon_url
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -362,15 +364,13 @@ async def _serialize(session: AsyncSession, app: ResourceApplication) -> dict:
         "request_config": app.request_config,
         "status": app.status,
         "reviewed_by": app.reviewed_by,
-        "reviewed_at": app.reviewed_at.isoformat() if app.reviewed_at else None,
+        "reviewed_at": fmt_local_time(app.reviewed_at),
         "review_notes": app.review_notes,
         "approval_config": app.approval_config,
-        "invalidated_at": (
-            app.invalidated_at.isoformat() if app.invalidated_at else None
-        ),
+        "invalidated_at": (fmt_local_time(app.invalidated_at)),
         "invalidation_reason": app.invalidation_reason,
-        "created_at": app.created_at.isoformat() if app.created_at else None,
-        "updated_at": app.updated_at.isoformat() if app.updated_at else None,
+        "created_at": fmt_local_time(app.created_at),
+        "updated_at": fmt_local_time(app.updated_at),
         "user": (
             {
                 "id": app.user.id,

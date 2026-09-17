@@ -19,6 +19,8 @@ from repositories import (
 from services import litellm_client, platform_settings_service
 from services.model_service import ANTHROPIC_MODEL_SUFFIX
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 KEY_TYPE_PERSONAL_MAIN = "personal_main"
@@ -1303,10 +1305,10 @@ def _serialize_key(key: AiKey) -> dict:
         "scenario_id": key.scenario_id,
         "is_active": key.is_active,
         "created_by": key.created_by,
-        "created_at": key.created_at.isoformat() if key.created_at else None,
-        "updated_at": key.updated_at.isoformat() if key.updated_at else None,
-        "expires_at": key.expires_at.isoformat() if key.expires_at else None,
-        "last_used_at": key.last_used_at.isoformat() if key.last_used_at else None,
+        "created_at": fmt_local_time(key.created_at),
+        "updated_at": fmt_local_time(key.updated_at),
+        "expires_at": fmt_local_time(key.expires_at),
+        "last_used_at": fmt_local_time(key.last_used_at),
     }
 
 

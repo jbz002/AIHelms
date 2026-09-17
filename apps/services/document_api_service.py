@@ -26,6 +26,8 @@ from repositories import (
 )
 from services import litellm_client, platform_llm, platform_settings_service
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 VALID_METHODS = {"GET", "POST", "PUT", "DELETE", "PATCH"}
@@ -56,10 +58,10 @@ def _serialize_spec(spec: DocumentApiSpec) -> dict:
         "summary": spec.summary or {},
         "error_message": spec.error_message,
         "created_by": spec.created_by,
-        "started_at": spec.started_at.isoformat() if spec.started_at else None,
-        "finished_at": spec.finished_at.isoformat() if spec.finished_at else None,
-        "created_at": spec.created_at.isoformat() if spec.created_at else None,
-        "updated_at": spec.updated_at.isoformat() if spec.updated_at else None,
+        "started_at": fmt_local_time(spec.started_at),
+        "finished_at": fmt_local_time(spec.finished_at),
+        "created_at": fmt_local_time(spec.created_at),
+        "updated_at": fmt_local_time(spec.updated_at),
     }
 
 

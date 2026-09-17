@@ -19,6 +19,8 @@ from models.db import DocumentApiBatchJob, DocumentApiSpec
 from repositories import document_api_repo, document_repo
 from services import document_api_service, platform_llm, platform_settings_service
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -60,10 +62,10 @@ def _serialize_batch_job(job: DocumentApiBatchJob) -> dict:
         "summary": job.summary or {},
         "error_message": job.error_message,
         "created_by": job.created_by,
-        "started_at": job.started_at.isoformat() if job.started_at else None,
-        "finished_at": job.finished_at.isoformat() if job.finished_at else None,
-        "created_at": job.created_at.isoformat() if job.created_at else None,
-        "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+        "started_at": fmt_local_time(job.started_at),
+        "finished_at": fmt_local_time(job.finished_at),
+        "created_at": fmt_local_time(job.created_at),
+        "updated_at": fmt_local_time(job.updated_at),
     }
 
 

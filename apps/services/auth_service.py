@@ -11,6 +11,8 @@ from models.db import Permission, RolePermission, User, UserRole
 from repositories import department_repo, user_repo
 from services import litellm_client, user_service
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -178,7 +180,7 @@ async def get_current_user_info(session: AsyncSession, user_id: int) -> dict:
         "position": user.position,
         "is_active": user.is_active,
         "is_admin": user.is_admin,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "created_at": fmt_local_time(user.created_at),
         "permissions": permissions,
         "roles": [
             {

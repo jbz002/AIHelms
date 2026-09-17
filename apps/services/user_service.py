@@ -8,6 +8,8 @@ from models.db import User
 from repositories import model_repo, user_repo
 from services import ai_key_service, litellm_client
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -230,7 +232,7 @@ def _serialize_user(user: User) -> dict:
         "position": user.position,
         "is_active": user.is_active,
         "is_admin": user.is_admin,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "created_at": fmt_local_time(user.created_at),
         "roles": [
             {
                 "id": ur.role.id,
@@ -257,7 +259,7 @@ def _serialize_user_detail(user: User) -> dict:
     data = _serialize_user(user)
     data["avatar"] = user.avatar
     data["litellm_user_id"] = user.litellm_user_id
-    data["updated_at"] = user.updated_at.isoformat() if user.updated_at else None
+    data["updated_at"] = fmt_local_time(user.updated_at)
     return data
 
 

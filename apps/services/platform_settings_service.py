@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings as app_settings
 from exceptions import NotFoundError
 from repositories import model_repo, platform_settings_repo
+from core.time_utils import fmt_local_time
 
 
 @dataclass
@@ -54,7 +55,7 @@ async def get_settings(session: AsyncSession) -> dict:
         "default_key_rpm_limit": s.default_key_rpm_limit,
         "default_key_max_parallel_requests": s.default_key_max_parallel_requests,
         "updated_by": s.updated_by,
-        "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+        "updated_at": fmt_local_time(s.updated_at),
     }
 
 

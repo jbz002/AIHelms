@@ -23,6 +23,7 @@ from services import (
     ai_policies_scanner_client,
     ai_policies_verdict,
 )
+from core.time_utils import fmt_local_time
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,7 @@ def _now() -> datetime:
 
 
 def _fmt_time(value: datetime | None) -> str | None:
-    return value.isoformat() if value else None
+    return fmt_local_time(value)
 
 
 def _sha256_file(path: str) -> str:

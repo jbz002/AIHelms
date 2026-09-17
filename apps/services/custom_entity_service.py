@@ -12,6 +12,8 @@ from models.db import CustomEntity, CustomEntityType
 from repositories import custom_entity_repo
 from services.custom_entity_validator import check_schema_compatibility, validate
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -382,8 +384,8 @@ def _serialize_type(type_def: CustomEntityType) -> Dict[str, Any]:
         "is_active": type_def.is_active,
         "is_published": type_def.is_published,
         "created_by": type_def.created_by,
-        "created_at": type_def.created_at.isoformat() if type_def.created_at else None,
-        "updated_at": type_def.updated_at.isoformat() if type_def.updated_at else None,
+        "created_at": fmt_local_time(type_def.created_at),
+        "updated_at": fmt_local_time(type_def.updated_at),
     }
 
 
@@ -402,6 +404,6 @@ def _serialize_entity(entity: CustomEntity) -> Dict[str, Any]:
         "visibility_type": entity.visibility_type,
         "requires_approval": entity.requires_approval,
         "created_by": entity.created_by,
-        "created_at": entity.created_at.isoformat() if entity.created_at else None,
-        "updated_at": entity.updated_at.isoformat() if entity.updated_at else None,
+        "created_at": fmt_local_time(entity.created_at),
+        "updated_at": fmt_local_time(entity.updated_at),
     }

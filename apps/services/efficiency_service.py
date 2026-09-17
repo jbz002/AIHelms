@@ -1,5 +1,7 @@
 """AI 效能 Service 层。"""
 
+from core.time_utils import fmt_local_time
+
 import logging
 from datetime import date, datetime, timedelta
 
@@ -69,7 +71,7 @@ def _task_update_status(task_id: str) -> str:
 
 
 def _iso_or_none(value) -> str | None:
-    return value.isoformat() if value else None
+    return fmt_local_time(value)
 
 
 def _format_freshness(value: datetime | None) -> str:

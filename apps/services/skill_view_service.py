@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from exceptions import NotFoundError
 from repositories import skill_repo, skill_version_repo
+from core.time_utils import fmt_local_time
 
 logger = logging.getLogger(__name__)
 
@@ -136,11 +137,7 @@ async def get_skill_integrity(
         "file_hashes": version.file_hashes,
         "drift_detected": version.drift_detected,
         "drifted_files": version.drifted_files,
-        "last_drift_check_at": (
-            version.last_drift_check_at.isoformat()
-            if version.last_drift_check_at
-            else None
-        ),
+        "last_drift_check_at": fmt_local_time(version.last_drift_check_at),
         "drift_check_error": version.drift_check_error or "",
         "protocol_valid": version.protocol_valid,
         "protocol_errors": version.protocol_errors,

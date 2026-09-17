@@ -14,6 +14,8 @@ from exceptions import NotFoundError, ValidationError
 from models.db import SkillTag
 from repositories import skill_repo, skill_tag_repo, skill_version_repo
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 LATEST_TAG = "latest"
@@ -27,7 +29,7 @@ def _serialize_tag(t: SkillTag) -> dict:
         "tag_name": t.tag_name,
         "version_id": t.version_id,
         "is_system": t.is_system,
-        "created_at": t.created_at.isoformat() if t.created_at else None,
+        "created_at": fmt_local_time(t.created_at),
     }
 
 

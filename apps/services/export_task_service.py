@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from celery_app import celery_app
 from core.config import settings
+from core.time_utils import fmt_local_time
 from models.db import ExportTask
 from repositories import export_task_repo
 from services.export_task_builders import build_export_rows
@@ -143,9 +144,7 @@ def _serialize_task(task: ExportTask) -> dict:
 
 
 def _fmt_time(value: datetime | None) -> str | None:
-    if not value:
-        return None
-    return value.isoformat()
+    return fmt_local_time(value)
 
 
 CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")

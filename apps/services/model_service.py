@@ -22,6 +22,8 @@ from services.litellm_credential_payload import (
     build_litellm_credential_values_for_credential,
 )
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -1137,12 +1139,10 @@ def _serialize_model(model: Model) -> dict:
         "supports_parallel_function_calling": model.supports_parallel_function_calling,
         "supports_tool_choice": model.supports_tool_choice,
         "litellm_provider": model.litellm_provider,
-        "registry_synced_at": (
-            model.registry_synced_at.isoformat() if model.registry_synced_at else None
-        ),
+        "registry_synced_at": (fmt_local_time(model.registry_synced_at)),
         "deployment_count": len(model.deployments) if model.deployments else 0,
-        "created_at": model.created_at.isoformat() if model.created_at else None,
-        "updated_at": model.updated_at.isoformat() if model.updated_at else None,
+        "created_at": fmt_local_time(model.created_at),
+        "updated_at": fmt_local_time(model.updated_at),
     }
 
 
@@ -1166,9 +1166,7 @@ def _serialize_deployment(deployment: ModelDeployment) -> dict:
         "monthly_call_quota": deployment.monthly_call_quota,
         "monthly_call_used": deployment.monthly_call_used,
         "is_active": deployment.is_active,
-        "created_at": (
-            deployment.created_at.isoformat() if deployment.created_at else None
-        ),
+        "created_at": (fmt_local_time(deployment.created_at)),
     }
 
 
@@ -1179,7 +1177,7 @@ def _serialize_access_group(group: ModelAccessGroup) -> dict:
         "description": group.description,
         "model_ids": group.model_ids,
         "is_active": group.is_active,
-        "created_at": group.created_at.isoformat() if group.created_at else None,
+        "created_at": fmt_local_time(group.created_at),
     }
 
 
@@ -1193,7 +1191,7 @@ def _serialize_router_settings(settings: RouterSettings) -> dict:
         "num_retries": settings.num_retries,
         "timeout": settings.timeout,
         "config": settings.config,
-        "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
+        "updated_at": fmt_local_time(settings.updated_at),
     }
 
 
