@@ -13,7 +13,6 @@ from repositories import export_task_repo
 from services.export_task_builders import build_export_rows
 
 MAX_EXPORT_ROWS = 100000
-EXPORT_RETENTION_DAYS = 7
 SOURCE_OPTIONS = [
     {"key": "usage_logs", "label": "日志管理"},
     {"key": "efficiency", "label": "AI效能"},
@@ -147,12 +146,23 @@ def _fmt_time(value: datetime | None) -> str | None:
     return value.isoformat()
 
 
+CSV_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def _sanitize_csv_cell(value: object) -> object:
+    if isinstance(value, str) and value.lstrip().startswith(CSV_FORMULA_PREFIXES):
+        return f"'{value}"
+    return value
+
+
 def _write_csv(path: Path, header: list[str], rows: list[list[object]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8-sig", newline="") as fp:
         writer = csv.writer(fp)
         writer.writerow(header)
-        writer.writerows(rows)
+        writer.writerows(
+            [[_sanitize_csv_cell(value) for value in row] for row in rows]
+        )
 
 
 async def list_export_tasks(
@@ -171,7 +181,7 @@ async def list_export_tasks(
         "page_size": page_size,
         "sources": SOURCE_OPTIONS,
         "statuses": STATUS_OPTIONS,
-        "retention_days": EXPORT_RETENTION_DAYS,
+        "retention_days": settings.export_task_retention_days,
     }
 
 
@@ -309,8 +319,10 @@ async def cancel_export_task(session: AsyncSession, task_id: int) -> dict:
 
 
 async def cleanup_export_tasks(
-    session: AsyncSession, retention_days: int = EXPORT_RETENTION_DAYS
+    session: AsyncSession, retention_days: int | None = None
 ) -> dict:
+    if retention_days is None:
+        retention_days = settings.export_task_retention_days
     if retention_days < 1:
         raise ValueError("保留天数不能小于 1 天")
     before = _now() - timedelta(days=retention_days)

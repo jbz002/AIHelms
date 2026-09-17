@@ -153,6 +153,9 @@ class Settings(BaseSettings):
     efficiency_aggregate_interval_seconds: int = 300
     llm_log_retention_days: int = 0  # 0 = 不清理
 
+    # 导出任务记录保留天数（0 = 不清理）
+    export_task_retention_days: int = 7
+
     @model_validator(mode="after")
     def build_urls(self) -> "Settings":
         if not self.database_url:
