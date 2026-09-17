@@ -698,6 +698,8 @@ class ResourceApplication(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     review_notes: Mapped[str] = mapped_column(Text, default="")
     approval_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    invalidated_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    invalidation_reason: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()

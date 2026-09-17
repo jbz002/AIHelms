@@ -240,6 +240,7 @@ function statusColor(status: string): string {
   if (status === 'pending') return 'bg-amber-50 text-amber-700'
   if (status === 'approved') return 'bg-green-50 text-green-700'
   if (status === 'rejected') return 'bg-red-50 text-red-700'
+  if (status === 'invalidated') return 'bg-slate-100 text-slate-500'
   return 'bg-slate-100 text-slate-700'
 }
 
@@ -247,6 +248,7 @@ function statusLabel(status: string): string {
   if (status === 'pending') return '待审批'
   if (status === 'approved') return '已批准'
   if (status === 'rejected') return '已拒绝'
+  if (status === 'invalidated') return '已失效'
   return status
 }
 
@@ -303,6 +305,7 @@ onBeforeUnmount(() => clearTimeout(userSearchTimer))
         <option value="pending">待审批</option>
         <option value="approved">已批准</option>
         <option value="rejected">已拒绝</option>
+        <option value="invalidated">已失效</option>
       </select>
       <SearchableSelect
         v-model="filterUserId"

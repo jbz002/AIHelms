@@ -582,6 +582,8 @@ CREATE TABLE IF NOT EXISTS aihelms.resource_applications (
     reviewed_at TIMESTAMPTZ,
     review_notes TEXT DEFAULT '',
     approval_config JSONB DEFAULT '{}',
+    invalidated_at TIMESTAMPTZ,
+    invalidation_reason TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
     lock_version INTEGER NOT NULL DEFAULT 0

@@ -277,6 +277,10 @@ async def _serialize(session: AsyncSession, app: ResourceApplication) -> dict:
         "reviewed_at": app.reviewed_at.isoformat() if app.reviewed_at else None,
         "review_notes": app.review_notes,
         "approval_config": app.approval_config,
+        "invalidated_at": (
+            app.invalidated_at.isoformat() if app.invalidated_at else None
+        ),
+        "invalidation_reason": app.invalidation_reason,
         "created_at": app.created_at.isoformat() if app.created_at else None,
         "updated_at": app.updated_at.isoformat() if app.updated_at else None,
         "user": (

@@ -1,5 +1,5 @@
 import logging
-from datetime import date
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
 from sqlalchemy import select
@@ -909,6 +909,17 @@ async def update_model_publish(
             for user, _ in members:
                 user_ids.add(user.id)
         await model_repo.set_visibility_users(session, model_id, list(user_ids))
+
+    if is_published is False:
+        from repositories import resource_application_repo
+
+        await resource_application_repo.invalidate_approved_for_resource(
+            session,
+            "model",
+            model_id,
+            datetime.now(timezone.utc),
+            "模型取消发布，原审批授权失效",
+        )
 
     # 发布且不需要审批时，自动同步到所有主 Key
     await _sync_published_model_to_main_keys(session, model)

@@ -469,11 +469,12 @@ onMounted(async () => {
           <div v-for="app in applications" :key="app.id"
             class="flex items-center gap-3 rounded-lg bg-slate-50/80 px-4 py-2.5">
             <Clock v-if="app.status === 'pending'" class="h-4 w-4 shrink-0 text-amber-500" />
+            <Clock v-else-if="app.status === 'invalidated'" class="h-4 w-4 shrink-0 text-slate-400" />
             <CheckCircle2 v-else-if="app.status === 'approved'" class="h-4 w-4 shrink-0 text-green-500" />
             <XCircle v-else class="h-4 w-4 shrink-0 text-red-400" />
             <span class="rounded bg-white px-1.5 py-0.5 text-xs text-slate-500">{{ typeLabel[app.resource_type] }}</span>
             <span class="flex-1 truncate text-sm text-slate-900">{{ app.resource_info?.name || `#${app.resource_id}` }}</span>
-            <span class="text-xs text-slate-400">{{ app.status === 'pending' ? '审批中' : app.status === 'approved' ? '已通过' : '已拒绝' }}</span>
+            <span class="text-xs text-slate-400">{{ app.status === 'pending' ? '审批中' : app.status === 'approved' ? '已通过' : app.status === 'invalidated' ? '已失效' : '已拒绝' }}</span>
           </div>
         </div>
       </section>
