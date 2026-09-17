@@ -180,6 +180,11 @@ async def approve_application(
     if app.status != "pending":
         raise ConflictError("该申请已处理")
 
+    if app.resource_type == ResourceType.MODEL:
+        model = await model_repo.find_by_id(session, app.resource_id)
+        if not model or not model.is_active or not model.is_published:
+            raise ConflictError("模型未发布或已停用，不能批准申请")
+
     await resource_application_repo.update_status_with_lock(
         session,
         app_id,

@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.security import get_password_hash
 from exceptions import ConflictError, NotFoundError
 from models.db import User
-from repositories import user_repo
+from repositories import model_repo, user_repo
 from services import ai_key_service, litellm_client
 
 logger = logging.getLogger(__name__)
@@ -59,6 +59,7 @@ async def create_user(
     position: str = "",
     avatar: str = "",
     is_active: bool = True,
+    department_ids: list[int] | None = None,
 ) -> dict:
     existing = await user_repo.find_user_by_username_or_email(session, username, email)
     if existing:
@@ -76,6 +77,10 @@ async def create_user(
         is_active=is_active,
     )
     user = await user_repo.create_user(session, user)
+    await user_repo.replace_user_departments(session, user.id, department_ids or [])
+    if department_ids and is_active:
+        await model_repo.initialize_user_model_visibility(session, user.id)
+        user.model_departments_initialized = True
 
     await provision_user_resources(session, user)
     return _serialize_user(user)
@@ -115,6 +120,8 @@ async def update_user(
         active_changed = True
 
     # 用户启用/禁用时，同步名下所有 AI Key 到 LiteLLM（禁用=卡住预算，启用=恢复）
+    if active_changed and is_active:
+        await initialize_pending_model_access(session, user, allow_inactive_key=True)
     if active_changed:
         await ai_key_service.sync_user_keys_active(session, user_id, is_active)
 
@@ -198,6 +205,8 @@ async def update_user_departments(
     if not user:
         raise NotFoundError("user", user_id)
     await user_repo.replace_user_departments(session, user_id, department_ids)
+    if department_ids:
+        await initialize_pending_model_access(session, user)
     await session.commit()
 
 
@@ -250,3 +259,21 @@ def _serialize_user_detail(user: User) -> dict:
     data["litellm_user_id"] = user.litellm_user_id
     data["updated_at"] = user.updated_at.isoformat() if user.updated_at else None
     return data
+
+
+async def initialize_pending_model_access(
+    session: AsyncSession, user: User, allow_inactive_key: bool = False
+) -> None:
+    if user.model_departments_initialized or not user.is_active:
+        return
+    departments = await user_repo.find_user_departments(session, user.id)
+    if departments:
+        await model_repo.initialize_user_model_visibility(session, user.id)
+    complete = (
+        user.is_admin
+        or await ai_key_service.initialize_personal_department_models(
+            session, user.id, allow_inactive_key=allow_inactive_key
+        )
+    )
+    if complete and departments:
+        user.model_departments_initialized = True

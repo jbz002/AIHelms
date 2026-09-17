@@ -902,7 +902,12 @@ async def update_model_publish(
 
     if department_ids is not None:
         await model_repo.set_visibility_departments(session, model_id, department_ids)
+    elif model.is_published and model.visibility_type == "selected":
+        saved = await model_repo.find_visibility_by_model(session, model_id)
+        department_ids = [item.department_id for item in saved]
+    if department_ids is not None:
         # Resolve department members to user-level visibility
+        # (republishing saved configuration also refreshes members)
         user_ids: set[int] = set()
         for dept_id in department_ids:
             members = await department_repo.find_members(session, dept_id)
@@ -1001,21 +1006,29 @@ def _apply_credential_to_litellm_params(litellm_params: dict, credential) -> dic
 async def _sync_published_model_to_main_keys(
     session: AsyncSession, model: Model
 ) -> int:
-    """Sync a public no-approval active model to all active main keys; remove otherwise.
-
-    is_active 必须与 get_public_resources 保持一致：禁用的模型不属于公开可用资源，
-    否则主 Key 的 models 会残留 inactive model_id，导致「可用资源」计数大于实际可选池。
-    """
+    """Align model access for eligible personal main keys."""
     if not model or not model.model_id:
         return 0
+    from repositories import resource_application_repo
+
     from services import ai_key_service
 
-    if model.is_published and not model.requires_approval and model.is_active:
-        return await ai_key_service.sync_public_resource_to_all_keys(
-            session, "models", model.model_id
+    target_user_ids: list[int] | None = None
+    # is_active 显式 False（本地语义：禁用模型从 Key 撤销，防「可用资源」计数虚高）；
+    # None/缺省视为未知，跳过该判定（与上游合成测试口径一致）
+    if not model.is_published or model.is_active is False:
+        target_user_ids = []
+    elif model.requires_approval:
+        target_user_ids = (
+            await resource_application_repo.find_approved_user_ids_for_resource(
+                session, "model", model.id
+            )
         )
-    return await ai_key_service.remove_public_resource_from_all_keys(
-        session, "models", model.model_id
+    elif model.visibility_type == "selected":
+        visibility = await model_repo.find_user_visibility_by_model(session, model.id)
+        target_user_ids = [item.user_id for item in visibility]
+    return await ai_key_service.sync_model_access_to_personal_main_keys(
+        session, model.model_id, target_user_ids
     )
 
 

@@ -38,6 +38,9 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_super_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    model_departments_initialized: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     litellm_user_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     aihub_user_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     aihub_department_id: Mapped[str | None] = mapped_column(String(100), nullable=True)

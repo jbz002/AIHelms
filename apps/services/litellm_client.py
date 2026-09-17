@@ -11,6 +11,18 @@ logger = logging.getLogger(__name__)
 
 LITELLM_TIMEOUT = 10.0
 
+NO_DEFAULT_MODELS = "no-default-models"
+
+
+def normalize_models_for_litellm(models: list[str] | None) -> list[str] | None:
+    """Keep None as no change and translate an explicit empty list to deny-all."""
+    if models is None:
+        return None
+    normalized = list(
+        dict.fromkeys(model for model in models if model != NO_DEFAULT_MODELS)
+    )
+    return normalized or [NO_DEFAULT_MODELS]
+
 
 async def _request(
     method: str,
@@ -226,8 +238,7 @@ async def create_key(
         data["user_id"] = user_id
     if team_id:
         data["team_id"] = team_id
-    if models:
-        data["models"] = models
+    data["models"] = normalize_models_for_litellm(models or [])
     if max_budget is not None:
         data["max_budget"] = max_budget
     if metadata:
@@ -262,7 +273,7 @@ async def update_key(
 ) -> dict:
     data: dict = {"key": key_id}
     if models is not None:
-        data["models"] = models
+        data["models"] = normalize_models_for_litellm(models)
     if max_budget is not None:
         data["max_budget"] = max_budget
     if metadata is not None:

@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS aihelms.users (
     is_active BOOLEAN DEFAULT true,
     is_admin BOOLEAN DEFAULT false,
     is_super_admin BOOLEAN DEFAULT false,
+    model_departments_initialized BOOLEAN NOT NULL DEFAULT false,
     litellm_user_id VARCHAR(100),
     aihub_user_id VARCHAR(100),
     aihub_department_id VARCHAR(100),

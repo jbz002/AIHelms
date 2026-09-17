@@ -70,6 +70,16 @@ async def _upsert_and_sign(
         await user_service.provision_user_resources(session, user)
     except litellm_client.LiteLLMError:
         logger.exception("provision user resources failed, will retry next login")
+    # SSO 首登部门初始模型授权（一次性，调部门不重复发放）。key 未建成时
+    # initialize_pending_model_access 自行跳过，下次登录重试。
+    if local_dept and not user.model_departments_initialized:
+        try:
+            await user_service.initialize_pending_model_access(session, user)
+            await session.commit()
+        except litellm_client.LiteLLMError:
+            logger.exception(
+                "initialize pending model access failed, will retry next login"
+            )
     return token, user
 
 
