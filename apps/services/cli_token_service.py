@@ -17,6 +17,8 @@ from exceptions import NotFoundError, ValidationError
 from models.db import AiKey
 from repositories import ai_key_repo
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 TOKEN_PREFIX_LITERAL = "sk_cli_"
@@ -72,12 +74,10 @@ def _serialize(token: AiKey, *, include_key: bool = False, raw_key: str = "") ->
         "owner_id": token.owner_id,
         "is_active": token.is_active,
         "created_by": token.created_by,
-        "created_at": token.created_at.isoformat() if token.created_at else None,
-        "updated_at": token.updated_at.isoformat() if token.updated_at else None,
-        "expires_at": token.expires_at.isoformat() if token.expires_at else None,
-        "last_used_at": (
-            token.last_used_at.isoformat() if token.last_used_at else None
-        ),
+        "created_at": fmt_local_time(token.created_at),
+        "updated_at": fmt_local_time(token.updated_at),
+        "expires_at": fmt_local_time(token.expires_at),
+        "last_used_at": (fmt_local_time(token.last_used_at)),
     }
     if include_key:
         data["key_value"] = raw_key

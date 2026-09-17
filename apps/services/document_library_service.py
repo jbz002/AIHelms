@@ -16,6 +16,8 @@ from repositories import (
 )
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,8 +31,8 @@ def _serialize_library(lib: DocumentLibrary) -> dict:
         "source_url": lib.source_url,
         "active_version": lib.active_version,
         "created_by": lib.created_by,
-        "created_at": lib.created_at.isoformat() if lib.created_at else None,
-        "updated_at": lib.updated_at.isoformat() if lib.updated_at else None,
+        "created_at": fmt_local_time(lib.created_at),
+        "updated_at": fmt_local_time(lib.updated_at),
     }
 
 

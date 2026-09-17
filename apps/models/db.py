@@ -38,6 +38,9 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
     is_super_admin: Mapped[bool] = mapped_column(Boolean, default=False)
+    model_departments_initialized: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
     litellm_user_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     aihub_user_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     aihub_department_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -698,6 +701,8 @@ class ResourceApplication(Base):
     reviewed_at: Mapped[datetime | None] = mapped_column(nullable=True)
     review_notes: Mapped[str] = mapped_column(Text, default="")
     approval_config: Mapped[dict] = mapped_column(JSONB, default=dict)
+    invalidated_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    invalidation_reason: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()

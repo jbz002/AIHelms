@@ -6,12 +6,12 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { BarChart, LineChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent } from 'echarts/components'
 import { getMcpUsageStats, getSkillUsageStats } from '@aihelms/shared'
-import type { EntityType, McpUsageStats, SkillUsageStats, StatsRange } from '@aihelms/shared'
+import type { PublishReviewEntityType, McpUsageStats, SkillUsageStats, StatsRange } from '@aihelms/shared'
 
 use([CanvasRenderer, LineChart, BarChart, GridComponent, TooltipComponent])
 
 interface Props {
-  entityType: EntityType
+  entityType: PublishReviewEntityType
   entityId: number
 }
 

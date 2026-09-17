@@ -6,10 +6,11 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from repositories import efficiency_health_repo
+from core.time_utils import fmt_local_time
 
 
 def _iso_or_none(value) -> str | None:
-    return value.isoformat() if value else None
+    return fmt_local_time(value)
 
 
 def _ratio_state(healthy: int, total: int) -> str:
@@ -23,7 +24,7 @@ def _ratio_state(healthy: int, total: int) -> str:
 
 
 def _iso_or_none(value) -> str | None:
-    return value.isoformat() if value else None
+    return fmt_local_time(value)
 
 
 async def get_ai_health(session: AsyncSession) -> dict:

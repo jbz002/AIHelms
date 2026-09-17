@@ -11,6 +11,8 @@ from services import litellm_client, versioning_service
 from services.icon_url import normalize_hosted_icon_path, resolve_icon_url
 from services.litellm_client import LiteLLMError
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -491,7 +493,7 @@ def _serialize_version(v: McpServerVersion) -> dict:
         "change_log": v.change_log,
         "auto_discovered_version": v.auto_discovered_version,
         "created_by": v.created_by,
-        "created_at": v.created_at.isoformat() if v.created_at else None,
+        "created_at": fmt_local_time(v.created_at),
     }
 
 
@@ -778,9 +780,7 @@ def _serialize_server(server: McpServer) -> dict:
         "requires_approval": server.requires_approval,
         "status": server.status,
         "call_count": server.call_count or 0,
-        "last_health_check": (
-            server.last_health_check.isoformat() if server.last_health_check else None
-        ),
+        "last_health_check": (fmt_local_time(server.last_health_check)),
         "health_check_error": server.health_check_error,
         "litellm_synced": server.litellm_synced,
         "litellm_sync_error": server.litellm_sync_error,
@@ -792,8 +792,8 @@ def _serialize_server(server: McpServer) -> dict:
         "current_version_id": server.current_version_id,
         "active_version": _serialize_version(active) if active else None,
         "created_by": server.created_by,
-        "created_at": server.created_at.isoformat() if server.created_at else None,
-        "updated_at": server.updated_at.isoformat() if server.updated_at else None,
+        "created_at": fmt_local_time(server.created_at),
+        "updated_at": fmt_local_time(server.updated_at),
     }
 
 

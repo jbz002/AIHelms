@@ -161,11 +161,11 @@ def _patch_key_env(
         key.id = 123
         return key
 
-    async def fake_public_resources(session):
+    async def fake_public_resources(session, user_id):
         return {"models": ["m1"], "skills": [], "mcps": [], "agents": []}
 
     async def fake_find_user(session, user_id):
-        return SimpleNamespace(litellm_user_id="aihelms_user_1")
+        return SimpleNamespace(litellm_user_id="aihelms_user_1", is_active=True)
 
     async def fake_expand(session, models, arg):
         return list(models), []

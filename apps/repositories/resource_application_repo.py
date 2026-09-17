@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,6 +37,44 @@ async def find_pending_by_user_resource(
     return result.scalar_one_or_none()
 
 
+async def find_approved_user_ids_for_resource(
+    session: AsyncSession, resource_type: str, resource_id: int
+) -> list[int]:
+    result = await session.execute(
+        select(ResourceApplication.user_id)
+        .where(
+            ResourceApplication.resource_type == resource_type,
+            ResourceApplication.resource_id == resource_id,
+            ResourceApplication.status == "approved",
+        )
+        .distinct()
+    )
+    return list(result.scalars().all())
+
+
+async def invalidate_approved_for_resource(
+    session: AsyncSession,
+    resource_type: str,
+    resource_id: int,
+    invalidated_at: datetime,
+    reason: str,
+) -> int:
+    result = await session.execute(
+        update(ResourceApplication)
+        .where(
+            ResourceApplication.resource_type == resource_type,
+            ResourceApplication.resource_id == resource_id,
+            ResourceApplication.status == "approved",
+        )
+        .values(
+            status="invalidated",
+            invalidated_at=invalidated_at,
+            invalidation_reason=reason,
+        )
+    )
+    return result.rowcount or 0
+
+
 async def find_all(
     session: AsyncSession,
     page: int = 1,
@@ -43,6 +83,10 @@ async def find_all(
     resource_type: str | None = None,
     resource_id: int | None = None,
     status: str | None = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    reviewed_after: datetime | None = None,
+    reviewed_before: datetime | None = None,
 ) -> list[ResourceApplication]:
     stmt = select(ResourceApplication).order_by(ResourceApplication.id.desc())
     if user_id is not None:
@@ -53,6 +97,14 @@ async def find_all(
         stmt = stmt.where(ResourceApplication.resource_id == resource_id)
     if status:
         stmt = stmt.where(ResourceApplication.status == status)
+    if created_after:
+        stmt = stmt.where(ResourceApplication.created_at >= created_after)
+    if created_before:
+        stmt = stmt.where(ResourceApplication.created_at <= created_before)
+    if reviewed_after:
+        stmt = stmt.where(ResourceApplication.reviewed_at >= reviewed_after)
+    if reviewed_before:
+        stmt = stmt.where(ResourceApplication.reviewed_at <= reviewed_before)
     offset = (page - 1) * page_size
     stmt = stmt.limit(page_size).offset(offset)
     result = await session.execute(stmt)
@@ -65,6 +117,10 @@ async def count_all(
     resource_type: str | None = None,
     resource_id: int | None = None,
     status: str | None = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    reviewed_after: datetime | None = None,
+    reviewed_before: datetime | None = None,
 ) -> int:
     stmt = select(func.count(ResourceApplication.id))
     if user_id is not None:
@@ -75,6 +131,14 @@ async def count_all(
         stmt = stmt.where(ResourceApplication.resource_id == resource_id)
     if status:
         stmt = stmt.where(ResourceApplication.status == status)
+    if created_after:
+        stmt = stmt.where(ResourceApplication.created_at >= created_after)
+    if created_before:
+        stmt = stmt.where(ResourceApplication.created_at <= created_before)
+    if reviewed_after:
+        stmt = stmt.where(ResourceApplication.reviewed_at >= reviewed_after)
+    if reviewed_before:
+        stmt = stmt.where(ResourceApplication.reviewed_at <= reviewed_before)
     result = await session.execute(stmt)
     return result.scalar_one()
 

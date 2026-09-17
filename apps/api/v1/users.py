@@ -21,10 +21,14 @@ async def list_users(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     keyword: str = Query("", max_length=64),
+    is_admin: bool | None = Query(None),
+    is_active: bool | None = Query(None),
     session: AsyncSession = Depends(get_db),
     _: dict = Depends(require_permission("user:read")),
 ):
-    result = await user_service.list_users(session, page, page_size, keyword)
+    result = await user_service.list_users(
+        session, page, page_size, keyword, is_admin, is_active
+    )
     return {"code": 200, "message": "ok", "data": result}
 
 
@@ -45,6 +49,7 @@ async def create_user(
             position=req.position,
             avatar=req.avatar,
             is_active=req.is_active,
+            department_ids=req.department_ids,
         )
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))

@@ -8,6 +8,8 @@ from repositories import credential_repo
 from services import litellm_client
 from services.litellm_credential_payload import build_litellm_credential_values
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -172,10 +174,6 @@ def _serialize(credential: Credential) -> dict:
         "deployment_count": (
             len(credential.deployments) if credential.deployments else 0
         ),
-        "created_at": (
-            credential.created_at.isoformat() if credential.created_at else None
-        ),
-        "updated_at": (
-            credential.updated_at.isoformat() if credential.updated_at else None
-        ),
+        "created_at": (fmt_local_time(credential.created_at)),
+        "updated_at": (fmt_local_time(credential.updated_at)),
     }

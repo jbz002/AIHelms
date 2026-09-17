@@ -9,6 +9,7 @@ from models.db import Skill, SkillVersion
 from repositories import ai_policies_repo
 from services.icon_url import resolve_icon_url
 from services.skill_lifecycle_projection import build_projection
+from core.time_utils import fmt_local_time
 
 
 async def _latest_audit_map(session, skills: list[Skill]) -> dict[int, str]:
@@ -46,21 +47,17 @@ def _serialize_version(
         "file_hashes": v.file_hashes,
         "drift_detected": v.drift_detected,
         "drifted_files": v.drifted_files or [],
-        "last_drift_check_at": (
-            v.last_drift_check_at.isoformat() if v.last_drift_check_at else None
-        ),
+        "last_drift_check_at": (fmt_local_time(v.last_drift_check_at)),
         "drift_check_error": v.drift_check_error or "",
         "protocol_valid": v.protocol_valid,
         "protocol_errors": v.protocol_errors,
-        "last_validated_at": (
-            v.last_validated_at.isoformat() if v.last_validated_at else None
-        ),
+        "last_validated_at": (fmt_local_time(v.last_validated_at)),
         "security_status": v.security_status,
         "security_decision": v.security_decision,
         "latest_ai_policies_audit_id": v.latest_ai_policies_audit_id,
         "latest_ai_policies_audit_code": audit_code,
         "created_by": v.created_by,
-        "created_at": v.created_at.isoformat() if v.created_at else None,
+        "created_at": fmt_local_time(v.created_at),
     }
 
 
@@ -106,7 +103,7 @@ def _serialize(
         "requires_approval": skill.requires_approval,
         "visibility_type": skill.visibility_type,
         "hidden": skill.hidden,
-        "hidden_at": skill.hidden_at.isoformat() if skill.hidden_at else None,
+        "hidden_at": fmt_local_time(skill.hidden_at),
         "lifecycle_projection": projection,
         "install_count": skill.install_count,
         "frontmatter": skill.frontmatter,
@@ -120,6 +117,6 @@ def _serialize(
         "current_version_id": skill.current_version_id,
         "active_version": _serialize_version(active) if active else None,
         "created_by": skill.created_by,
-        "created_at": skill.created_at.isoformat() if skill.created_at else None,
-        "updated_at": skill.updated_at.isoformat() if skill.updated_at else None,
+        "created_at": fmt_local_time(skill.created_at),
+        "updated_at": fmt_local_time(skill.updated_at),
     }

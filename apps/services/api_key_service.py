@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.api_key_utils import generate_api_key
+from core.time_utils import fmt_local_time
 from core.crypto import decrypt, encrypt
 from exceptions import NotFoundError
 from models.db import ApiKey
@@ -122,12 +123,10 @@ def _serialize(api_key: ApiKey, include_raw: bool = False) -> dict:
         "key_prefix": api_key.key_prefix,
         "is_active": api_key.is_active,
         "created_by": api_key.created_by,
-        "created_at": api_key.created_at.isoformat() if api_key.created_at else None,
-        "updated_at": api_key.updated_at.isoformat() if api_key.updated_at else None,
-        "expires_at": api_key.expires_at.isoformat() if api_key.expires_at else None,
-        "last_used_at": (
-            api_key.last_used_at.isoformat() if api_key.last_used_at else None
-        ),
+        "created_at": fmt_local_time(api_key.created_at),
+        "updated_at": fmt_local_time(api_key.updated_at),
+        "expires_at": fmt_local_time(api_key.expires_at),
+        "last_used_at": (fmt_local_time(api_key.last_used_at)),
     }
     if include_raw:
         data["raw_key"] = (

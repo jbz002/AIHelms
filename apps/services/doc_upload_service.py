@@ -11,6 +11,8 @@ from services import document_library_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 from services.document_service import build_ingest_url
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 # 纯文本格式（直接解码，无需 docling）
@@ -128,8 +130,8 @@ def _serialize_record(record: DocUploadRecord) -> dict:
         "error_message": record.error_message,
         "extracted_content_preview": extracted_preview,
         "created_by": record.created_by,
-        "created_at": record.created_at.isoformat() if record.created_at else None,
-        "finished_at": record.finished_at.isoformat() if record.finished_at else None,
+        "created_at": fmt_local_time(record.created_at),
+        "finished_at": fmt_local_time(record.finished_at),
     }
 
 

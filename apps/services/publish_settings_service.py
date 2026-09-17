@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from repositories import publish_settings_repo
+from core.time_utils import fmt_local_time
 
 
 async def get_settings(session: AsyncSession) -> dict:
@@ -15,7 +16,7 @@ async def get_settings(session: AsyncSession) -> dict:
     return {
         "publish_review_enabled": s.publish_review_enabled,
         "updated_by": s.updated_by,
-        "updated_at": s.updated_at.isoformat() if s.updated_at else None,
+        "updated_at": fmt_local_time(s.updated_at),
     }
 
 

@@ -1,5 +1,5 @@
 import logging
-from datetime import date
+from datetime import date, datetime, timezone
 from types import SimpleNamespace
 
 from sqlalchemy import select
@@ -21,6 +21,8 @@ from services.icon_url import resolve_provider_icon_url
 from services.litellm_credential_payload import (
     build_litellm_credential_values_for_credential,
 )
+
+from core.time_utils import fmt_local_time
 
 logger = logging.getLogger(__name__)
 
@@ -902,13 +904,29 @@ async def update_model_publish(
 
     if department_ids is not None:
         await model_repo.set_visibility_departments(session, model_id, department_ids)
+    elif model.is_published and model.visibility_type == "selected":
+        saved = await model_repo.find_visibility_by_model(session, model_id)
+        department_ids = [item.department_id for item in saved]
+    if department_ids is not None:
         # Resolve department members to user-level visibility
+        # (republishing saved configuration also refreshes members)
         user_ids: set[int] = set()
         for dept_id in department_ids:
             members = await department_repo.find_members(session, dept_id)
             for user, _ in members:
                 user_ids.add(user.id)
         await model_repo.set_visibility_users(session, model_id, list(user_ids))
+
+    if is_published is False:
+        from repositories import resource_application_repo
+
+        await resource_application_repo.invalidate_approved_for_resource(
+            session,
+            "model",
+            model_id,
+            datetime.now(timezone.utc),
+            "模型取消发布，原审批授权失效",
+        )
 
     # 发布且不需要审批时，自动同步到所有主 Key
     await _sync_published_model_to_main_keys(session, model)
@@ -990,21 +1008,29 @@ def _apply_credential_to_litellm_params(litellm_params: dict, credential) -> dic
 async def _sync_published_model_to_main_keys(
     session: AsyncSession, model: Model
 ) -> int:
-    """Sync a public no-approval active model to all active main keys; remove otherwise.
-
-    is_active 必须与 get_public_resources 保持一致：禁用的模型不属于公开可用资源，
-    否则主 Key 的 models 会残留 inactive model_id，导致「可用资源」计数大于实际可选池。
-    """
+    """Align model access for eligible personal main keys."""
     if not model or not model.model_id:
         return 0
+    from repositories import resource_application_repo
+
     from services import ai_key_service
 
-    if model.is_published and not model.requires_approval and model.is_active:
-        return await ai_key_service.sync_public_resource_to_all_keys(
-            session, "models", model.model_id
+    target_user_ids: list[int] | None = None
+    # is_active 显式 False（本地语义：禁用模型从 Key 撤销，防「可用资源」计数虚高）；
+    # None/缺省视为未知，跳过该判定（与上游合成测试口径一致）
+    if not model.is_published or model.is_active is False:
+        target_user_ids = []
+    elif model.requires_approval:
+        target_user_ids = (
+            await resource_application_repo.find_approved_user_ids_for_resource(
+                session, "model", model.id
+            )
         )
-    return await ai_key_service.remove_public_resource_from_all_keys(
-        session, "models", model.model_id
+    elif model.visibility_type == "selected":
+        visibility = await model_repo.find_user_visibility_by_model(session, model.id)
+        target_user_ids = [item.user_id for item in visibility]
+    return await ai_key_service.sync_model_access_to_personal_main_keys(
+        session, model.model_id, target_user_ids
     )
 
 
@@ -1113,12 +1139,10 @@ def _serialize_model(model: Model) -> dict:
         "supports_parallel_function_calling": model.supports_parallel_function_calling,
         "supports_tool_choice": model.supports_tool_choice,
         "litellm_provider": model.litellm_provider,
-        "registry_synced_at": (
-            model.registry_synced_at.isoformat() if model.registry_synced_at else None
-        ),
+        "registry_synced_at": (fmt_local_time(model.registry_synced_at)),
         "deployment_count": len(model.deployments) if model.deployments else 0,
-        "created_at": model.created_at.isoformat() if model.created_at else None,
-        "updated_at": model.updated_at.isoformat() if model.updated_at else None,
+        "created_at": fmt_local_time(model.created_at),
+        "updated_at": fmt_local_time(model.updated_at),
     }
 
 
@@ -1142,9 +1166,7 @@ def _serialize_deployment(deployment: ModelDeployment) -> dict:
         "monthly_call_quota": deployment.monthly_call_quota,
         "monthly_call_used": deployment.monthly_call_used,
         "is_active": deployment.is_active,
-        "created_at": (
-            deployment.created_at.isoformat() if deployment.created_at else None
-        ),
+        "created_at": (fmt_local_time(deployment.created_at)),
     }
 
 
@@ -1155,7 +1177,7 @@ def _serialize_access_group(group: ModelAccessGroup) -> dict:
         "description": group.description,
         "model_ids": group.model_ids,
         "is_active": group.is_active,
-        "created_at": group.created_at.isoformat() if group.created_at else None,
+        "created_at": fmt_local_time(group.created_at),
     }
 
 
@@ -1169,7 +1191,7 @@ def _serialize_router_settings(settings: RouterSettings) -> dict:
         "num_retries": settings.num_retries,
         "timeout": settings.timeout,
         "config": settings.config,
-        "updated_at": settings.updated_at.isoformat() if settings.updated_at else None,
+        "updated_at": fmt_local_time(settings.updated_at),
     }
 
 

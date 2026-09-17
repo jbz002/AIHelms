@@ -16,6 +16,8 @@ from repositories import (
 from services import document_library_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -83,8 +85,8 @@ def _serialize_document(doc: Document) -> dict:
         "content_hash": doc.content_hash,
         "error_message": doc.error_message,
         "created_by": doc.created_by,
-        "created_at": doc.created_at.isoformat() if doc.created_at else None,
-        "updated_at": doc.updated_at.isoformat() if doc.updated_at else None,
+        "created_at": fmt_local_time(doc.created_at),
+        "updated_at": fmt_local_time(doc.updated_at),
         "metadata": doc.metadata_ if doc.metadata_ else {},
     }
 

@@ -1,7 +1,9 @@
+import hashlib
 import logging
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import AiKey
@@ -16,6 +18,8 @@ from repositories import (
 )
 from services import litellm_client, platform_settings_service
 from services.model_service import ANTHROPIC_MODEL_SUFFIX
+
+from core.time_utils import fmt_local_time
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +52,8 @@ VALID_RATE_LIMIT_MODES = {
     RATE_LIMIT_MODE_TOTAL,
     RATE_LIMIT_MODE_PER_MODEL,
 }
+
+LITELLM_NO_DEFAULT_MODELS = "no-default-models"
 
 
 async def list_keys(
@@ -173,6 +179,7 @@ async def create_key(
     # Sync to LiteLLM
     litellm_duration = budget_duration if budget_duration and budget_limit else duration
     litellm_models, _ = await _expand_models_with_anthropic(session, models or [], None)
+    litellm_models = _to_litellm_models(litellm_models)
     mcp_server_names = await _resolve_mcp_server_names(session, mcps or [])
     result = await litellm_client.create_key(
         key_alias=key_alias,
@@ -422,6 +429,15 @@ async def _expand_models_with_anthropic(
     return expanded_models, expanded_budgets
 
 
+def _to_litellm_models(models: list[str] | None) -> list[str]:
+    """Translate the platform's empty grant list to LiteLLM's deny-all sentinel."""
+    normalized = list(models or [])
+    if normalized:
+        filtered = [item for item in normalized if item != LITELLM_NO_DEFAULT_MODELS]
+        return filtered or [LITELLM_NO_DEFAULT_MODELS]
+    return [LITELLM_NO_DEFAULT_MODELS]
+
+
 async def _sync_key_to_litellm(
     key,
     models_changed: bool,
@@ -442,6 +458,8 @@ async def _sync_key_to_litellm(
         litellm_models, _ = await _expand_models_with_anthropic(
             session, key.models, None
         )
+    if models_changed:
+        litellm_models = _to_litellm_models(litellm_models)
 
     # Resolve MCP server names from IDs
     mcp_server_names: list[str] | None = None
@@ -477,6 +495,14 @@ async def toggle_key(session: AsyncSession, key_id: int) -> dict:
         raise NotFoundError("ai_key", key_id)
 
     key.is_active = not key.is_active
+
+    if key.is_active and key.key_type == KEY_TYPE_PERSONAL_MAIN:
+        from services.user_service import initialize_pending_model_access
+
+        user = await user_repo.find_user_by_id(session, key.owner_id)
+        if not user or not user.is_active:
+            raise ConflictError("所属用户已停用，不能启用 Key")
+        await initialize_pending_model_access(session, user)
 
     # Sync budget: active + hard_limit → set budget; inactive → set budget to 0 to block
     if key.litellm_key_id:
@@ -658,7 +684,12 @@ async def create_personal_main_key(
     if existing:
         return existing
 
-    public_resources = await get_public_resources(session)
+    user = await user_repo.find_user_by_id(session, user_id)
+    if not user:
+        raise NotFoundError("user", user_id)
+    public_resources = await get_public_resources(session, user_id)
+    if not user.is_active:
+        public_resources["models"] = []
     defaults = await _load_default_key_config(session)
 
     key_alias = f"user:{username}/main"
@@ -673,7 +704,7 @@ async def create_personal_main_key(
         skills=public_resources["skills"],
         mcps=public_resources["mcps"],
         agents=public_resources["agents"],
-        is_active=True,
+        is_active=user.is_active,
         created_by=user_id,
         budget_limit=defaults.budget_limit if defaults else None,
         budget_hard_limit=defaults.budget_hard_limit if defaults else False,
@@ -685,23 +716,23 @@ async def create_personal_main_key(
     )
     ai_key = await ai_key_repo.create(session, ai_key)
 
-    # Get user's litellm_user_id
-    user = await user_repo.find_user_by_id(session, user_id)
-    litellm_user_id = user.litellm_user_id if user else None
-
     litellm_models, _ = await _expand_models_with_anthropic(
         session, public_resources["models"], None
     )
+    litellm_models = _to_litellm_models(litellm_models)
 
-    # 预算不传 LiteLLM（平台聚合任务管硬阻断），限流需同步 LiteLLM 实时生效
+    # 预算不传 LiteLLM（平台聚合任务管硬阻断）；停用用户例外：预算置 0 先卡死
+    # 限流需同步 LiteLLM 实时生效
+    block_budget = {} if user.is_active else {"max_budget": 0.0}
     result = await litellm_client.create_key(
         key_alias=key_alias,
-        user_id=litellm_user_id,
+        user_id=user.litellm_user_id,
         models=litellm_models,
         metadata={"aihelms_key_id": ai_key.id, "key_type": KEY_TYPE_PERSONAL_MAIN},
         tpm_limit=defaults.tpm_limit if defaults else None,
         rpm_limit=defaults.rpm_limit if defaults else None,
         max_parallel_requests=defaults.max_parallel_requests if defaults else None,
+        **block_budget,
     )
     ai_key.litellm_key_id = result.get("key")
     ai_key.litellm_key_alias = key_alias
@@ -712,19 +743,14 @@ async def create_personal_main_key(
 # --- Public resource sync ---
 
 
-async def get_public_resources(session: AsyncSession) -> dict[str, list]:
-    """获取所有已发布且不需要审批的资源 ID。"""
+async def get_public_resources(session: AsyncSession, user_id: int) -> dict[str, list]:
+    """获取该用户可获得的已发布且不需要审批的资源 ID。"""
     from sqlalchemy import select
 
-    from models.db import Agent, McpServer, Model, Skill
+    from models.db import Agent, McpServer, Skill
 
-    models_result = await session.execute(
-        select(Model.model_id).where(
-            Model.is_published == True,
-            Model.requires_approval == False,
-            Model.is_active == True,
-        )
-    )
+    # 模型授权必须按用户可见范围过滤，不能返回全部公开模型
+    model_ids = await model_repo.find_public_model_ids_for_user(session, user_id)
     skills_result = await session.execute(
         select(Skill.id).where(
             Skill.is_published == True, Skill.requires_approval == False
@@ -743,7 +769,7 @@ async def get_public_resources(session: AsyncSession) -> dict[str, list]:
         )
     )
     return {
-        "models": [r[0] for r in models_result.all()],
+        "models": model_ids,
         "skills": [r[0] for r in skills_result.all()],
         "mcps": [r[0] for r in mcps_result.all()],
         "agents": [r[0] for r in agents_result.all()],
@@ -1279,8 +1305,114 @@ def _serialize_key(key: AiKey) -> dict:
         "scenario_id": key.scenario_id,
         "is_active": key.is_active,
         "created_by": key.created_by,
-        "created_at": key.created_at.isoformat() if key.created_at else None,
-        "updated_at": key.updated_at.isoformat() if key.updated_at else None,
-        "expires_at": key.expires_at.isoformat() if key.expires_at else None,
-        "last_used_at": key.last_used_at.isoformat() if key.last_used_at else None,
+        "created_at": fmt_local_time(key.created_at),
+        "updated_at": fmt_local_time(key.updated_at),
+        "expires_at": fmt_local_time(key.expires_at),
+        "last_used_at": fmt_local_time(key.last_used_at),
     }
+
+
+async def sync_model_access_to_personal_main_keys(
+    session: AsyncSession,
+    model_id: str,
+    target_user_ids: list[int] | None,
+) -> int:
+    """Align model access for personal main keys in one database transaction."""
+    all_keys = await ai_key_repo.find_personal_main_keys_for_model_sync(
+        session, include_inactive=True
+    )
+    target_keys = await ai_key_repo.find_personal_main_keys_for_model_sync(
+        session, target_user_ids, include_inactive=False
+    )
+    target_ids = {key.id for key in target_keys}
+    changed_keys = _apply_model_access_changes(all_keys, target_ids, model_id)
+    litellm_model_ids, _ = await _expand_models_with_anthropic(
+        session, [model_id], None
+    )
+
+    desired_by_hash: dict[str, bool] = {}
+    for key in all_keys:
+        if not key.litellm_key_id:
+            raise ConflictError(f"AI Key {key.id} 缺少 LiteLLM token")
+        token_hash = hashlib.sha256(key.litellm_key_id.encode()).hexdigest()
+        desired_by_hash[token_hash] = key.id in target_ids
+    if not desired_by_hash:
+        return len(changed_keys)
+    add_hashes = [key_hash for key_hash, wanted in desired_by_hash.items() if wanted]
+    remove_hashes = [
+        key_hash for key_hash, wanted in desired_by_hash.items() if not wanted
+    ]
+    anthropic_alias = f"{model_id}{ANTHROPIC_MODEL_SUFFIX}"
+    remove_model_ids = (
+        [model_id, anthropic_alias]
+        if anthropic_alias not in litellm_model_ids
+        else litellm_model_ids
+    )
+    await ai_key_repo.sync_litellm_model_access(
+        session,
+        litellm_model_ids,
+        add_hashes,
+        remove_hashes,
+        remove_model_ids=remove_model_ids,
+    )
+    actual_by_hash = await ai_key_repo.get_litellm_model_access(
+        session, list(desired_by_hash)
+    )
+    if set(actual_by_hash) != set(desired_by_hash):
+        raise ConflictError("LiteLLM Key 白名单同步不完整")
+    for token_hash, should_have in desired_by_hash.items():
+        actual_models = actual_by_hash[token_hash]
+        if not actual_models or "*" in actual_models:
+            raise ConflictError("LiteLLM Key 白名单仍为不受限状态")
+        checked_models = litellm_model_ids if should_have else remove_model_ids
+        if any((variant in actual_models) != should_have for variant in checked_models):
+            raise ConflictError("LiteLLM Key 白名单校验失败")
+    await session.flush()
+    return len(changed_keys)
+
+
+def _apply_model_access_changes(
+    keys: list[AiKey], target_ids: set[int], model_id: str
+) -> list[AiKey]:
+    changed_keys = []
+    for key in keys:
+        should_have = key.id in target_ids
+        models = list(key.models or [])
+        has_model = model_id in models
+        if should_have == has_model:
+            continue
+        key.models = (
+            models + [model_id]
+            if should_have
+            else [item for item in models if item != model_id]
+        )
+        flag_modified(key, "models")
+        changed_keys.append(key)
+    return changed_keys
+
+
+async def initialize_personal_department_models(
+    session: AsyncSession, user_id: int, allow_inactive_key: bool = False
+) -> bool:
+    """Grant initial department models without recalculating later job transfers."""
+    key = await ai_key_repo.find_personal_main(session, user_id)
+    if not key or (not key.is_active and not allow_inactive_key):
+        return False
+    model_ids = await model_repo.find_public_model_ids_for_user(session, user_id)
+    models = list(dict.fromkeys([*(key.models or []), *model_ids]))
+    if models == list(key.models or []):
+        return True
+    key.models = models
+    flag_modified(key, "models")
+    await _sync_key_to_litellm(
+        key,
+        models_changed=True,
+        mcps_changed=False,
+        budget_changed=False,
+        model_budgets_changed=False,
+        rate_limits_changed=key.rate_limit_mode == RATE_LIMIT_MODE_PER_MODEL,
+        session=session,
+    )
+    await session.flush()
+
+    return True

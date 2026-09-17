@@ -11,6 +11,8 @@ from models.db import Permission, RolePermission, User, UserRole
 from repositories import department_repo, user_repo
 from services import litellm_client, user_service
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,6 +72,16 @@ async def _upsert_and_sign(
         await user_service.provision_user_resources(session, user)
     except litellm_client.LiteLLMError:
         logger.exception("provision user resources failed, will retry next login")
+    # SSO 首登部门初始模型授权（一次性，调部门不重复发放）。key 未建成时
+    # initialize_pending_model_access 自行跳过，下次登录重试。
+    if local_dept and not user.model_departments_initialized:
+        try:
+            await user_service.initialize_pending_model_access(session, user)
+            await session.commit()
+        except litellm_client.LiteLLMError:
+            logger.exception(
+                "initialize pending model access failed, will retry next login"
+            )
     return token, user
 
 
@@ -168,7 +180,7 @@ async def get_current_user_info(session: AsyncSession, user_id: int) -> dict:
         "position": user.position,
         "is_active": user.is_active,
         "is_admin": user.is_admin,
-        "created_at": user.created_at.isoformat() if user.created_at else None,
+        "created_at": fmt_local_time(user.created_at),
         "permissions": permissions,
         "roles": [
             {

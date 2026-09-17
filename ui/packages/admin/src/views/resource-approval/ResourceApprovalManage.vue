@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { Download } from 'lucide-vue-next'
 import {
+  createExportTask,
   getResourceApplications,
   approveResourceApplication,
   rejectResourceApplication,
@@ -25,6 +27,10 @@ const submitting = ref(false)
 const filterStatus = ref<string>('pending')
 const filterType = ref<string>('')
 const filterUserId = ref<number | ''>('')
+const filterCreatedStart = ref('')
+const filterCreatedEnd = ref('')
+const filterReviewedStart = ref('')
+const filterReviewedEnd = ref('')
 const selectedApplicantLabel = ref('')
 const usersLoading = ref(false)
 const selectedIds = ref<Set<number>>(new Set())
@@ -35,6 +41,8 @@ const reviewing = ref<ResourceApplication | null>(null)
 const reviewAction = ref<'approve' | 'reject'>('approve')
 const batchAction = ref<'approve' | 'reject' | null>(null)
 const reviewNotes = ref('')
+const exporting = ref(false)
+const exportNotice = ref('')
 
 const RESOURCE_TYPE_LABELS: Record<string, string> = {
   model: '模型',
@@ -67,6 +75,10 @@ async function loadApplications(): Promise<void> {
       filterUserId.value || undefined,
       filterType.value || undefined,
       filterStatus.value || undefined,
+      filterCreatedStart.value || undefined,
+      filterCreatedEnd.value || undefined,
+      filterReviewedStart.value || undefined,
+      filterReviewedEnd.value || undefined,
     )
     applications.value = res.items
     total.value = res.total
@@ -240,6 +252,7 @@ function statusColor(status: string): string {
   if (status === 'pending') return 'bg-amber-50 text-amber-700'
   if (status === 'approved') return 'bg-green-50 text-green-700'
   if (status === 'rejected') return 'bg-red-50 text-red-700'
+  if (status === 'invalidated') return 'bg-slate-100 text-slate-500'
   return 'bg-slate-100 text-slate-700'
 }
 
@@ -247,6 +260,7 @@ function statusLabel(status: string): string {
   if (status === 'pending') return '待审批'
   if (status === 'approved') return '已批准'
   if (status === 'rejected') return '已拒绝'
+  if (status === 'invalidated') return '已失效'
   return status
 }
 
@@ -263,6 +277,37 @@ function resourceName(app: ResourceApplication): string {
 
 function userName(user: User): string {
   return user.display_name || user.username || `#${user.id}`
+}
+
+const EXPORT_SOURCE = 'resource_applications'
+const EXPORT_TYPE = 'applications'
+const EXPORT_TASK_NAME = '审批记录导出'
+const EXPORT_TASK_ROUTE = '/export-tasks'
+
+async function handleExport(): Promise<void> {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    await createExportTask({
+      source: EXPORT_SOURCE,
+      export_type: EXPORT_TYPE,
+      params: {
+        user_id: filterUserId.value || undefined,
+        resource_type: filterType.value || undefined,
+        status: filterStatus.value || undefined,
+        created_after: filterCreatedStart.value || undefined,
+        created_before: filterCreatedEnd.value || undefined,
+        reviewed_after: filterReviewedStart.value || undefined,
+        reviewed_before: filterReviewedEnd.value || undefined,
+      },
+      task_name: EXPORT_TASK_NAME,
+    })
+    exportNotice.value = '导出任务已创建，请到数据中心 > 导出任务下载表格'
+  } catch (e) {
+    toast.error((e as { message?: string }).message || '创建导出任务失败')
+  } finally {
+    exporting.value = false
+  }
 }
 
 onMounted(() => {
@@ -303,6 +348,7 @@ onBeforeUnmount(() => clearTimeout(userSearchTimer))
         <option value="pending">待审批</option>
         <option value="approved">已批准</option>
         <option value="rejected">已拒绝</option>
+        <option value="invalidated">已失效</option>
       </select>
       <SearchableSelect
         v-model="filterUserId"
@@ -316,7 +362,45 @@ onBeforeUnmount(() => clearTimeout(userSearchTimer))
         @search="handleUserSearch"
         @change="handleApplicantChange"
       />
+      <input
+        v-model="filterCreatedStart"
+        type="date"
+        title="申请开始日期"
+        class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none"
+        @change="handleFilterChange"
+      />
+      <span class="text-xs text-slate-400">至</span>
+      <input
+        v-model="filterCreatedEnd"
+        type="date"
+        title="申请结束日期"
+        class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none"
+        @change="handleFilterChange"
+      />
+      <input
+        v-model="filterReviewedStart"
+        type="date"
+        title="审批开始日期"
+        class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none"
+        @change="handleFilterChange"
+      />
+      <span class="text-xs text-slate-400">至</span>
+      <input
+        v-model="filterReviewedEnd"
+        type="date"
+        title="审批结束日期"
+        class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none"
+        @change="handleFilterChange"
+      />
       <div class="ml-auto flex items-center gap-2">
+        <button
+          class="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="exporting"
+          @click="handleExport"
+        >
+          <Download class="h-3.5 w-3.5" />
+          导出
+        </button>
         <span class="text-xs text-slate-500">已选 {{ selectedCount }} 项</span>
         <button
           class="rounded-lg bg-green-50 px-3 py-1.5 text-xs font-medium text-green-700 hover:bg-green-100 disabled:cursor-not-allowed disabled:opacity-50"
@@ -333,6 +417,19 @@ onBeforeUnmount(() => clearTimeout(userSearchTimer))
           批量拒绝
         </button>
       </div>
+    </div>
+
+    <div
+      v-if="exportNotice"
+      class="mb-4 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800"
+    >
+      <span>{{ exportNotice }}</span>
+      <RouterLink
+        :to="EXPORT_TASK_ROUTE"
+        class="rounded-md border border-emerald-300 bg-white px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+      >
+        前往下载
+      </RouterLink>
     </div>
 
     <div v-if="loading" class="py-12 text-center text-sm text-slate-500">加载中...</div>

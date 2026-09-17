@@ -32,6 +32,7 @@ const showProviderForm = ref(false)
 const isEditingProvider = ref(false)
 const editingProviderId = ref<number | null>(null)
 const deleteProviderTarget = ref<Provider | null>(null)
+const deleteProviderError = ref('')
 const providerError = ref('')
 
 const formName = ref('')
@@ -45,6 +46,7 @@ const showCredForm = ref(false)
 const isEditingCred = ref(false)
 const editingCredId = ref<number | null>(null)
 const deleteCredTarget = ref<Credential | null>(null)
+const deleteCredError = ref('')
 const credError = ref('')
 
 // Access Test
@@ -202,6 +204,7 @@ async function handleToggleProvider(provider: Provider): Promise<void> {
 
 async function handleConfirmDeleteProvider(): Promise<void> {
   if (!deleteProviderTarget.value) return
+  deleteProviderError.value = ''
   try {
     await deleteProvider(deleteProviderTarget.value.id)
     if (selectedProvider.value?.id === deleteProviderTarget.value.id) {
@@ -211,8 +214,7 @@ async function handleConfirmDeleteProvider(): Promise<void> {
     deleteProviderTarget.value = null
     await fetchProviders()
   } catch (e) {
-    providerError.value = e instanceof Error ? e.message : '删除失败'
-    deleteProviderTarget.value = null
+    deleteProviderError.value = e instanceof Error ? e.message : '删除失败'
   }
 }
 
@@ -304,13 +306,13 @@ async function handleToggleCred(cred: Credential): Promise<void> {
 
 async function handleConfirmDeleteCred(): Promise<void> {
   if (!deleteCredTarget.value) return
+  deleteCredError.value = ''
   try {
     await deleteCredential(deleteCredTarget.value.id)
     deleteCredTarget.value = null
     if (selectedProvider.value) await fetchProviderCredentials(selectedProvider.value.id)
   } catch (e) {
-    credError.value = e instanceof Error ? e.message : '删除失败'
-    deleteCredTarget.value = null
+    deleteCredError.value = e instanceof Error ? e.message : '删除失败'
   }
 }
 
@@ -410,6 +412,7 @@ onMounted(() => {
             </button>
             <button
               v-if="hasPermission('user:delete')"
+              data-testid="delete-provider-button"
               class="rounded-md bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-100"
               @click="deleteProviderTarget = selectedProvider"
             >
@@ -483,6 +486,7 @@ onMounted(() => {
                   </button>
                   <button
                     v-if="hasPermission('user:delete')"
+                    data-testid="delete-credential-button"
                     class="rounded-md bg-red-50 px-2 py-1 text-xs font-medium text-red-600 transition-colors hover:bg-red-100"
                     @click="deleteCredTarget = cred"
                   >
@@ -623,16 +627,18 @@ onMounted(() => {
       :visible="!!deleteProviderTarget"
       title="确认删除"
       :message="`确定要删除供应商「${deleteProviderTarget?.name}」吗？`"
+      :error="deleteProviderError"
       @confirm="handleConfirmDeleteProvider"
-      @cancel="deleteProviderTarget = null"
+      @cancel="deleteProviderTarget = null; deleteProviderError = ''"
     />
 
     <ConfirmDialog
       :visible="!!deleteCredTarget"
       title="确认删除"
       :message="`确定要删除凭证「${deleteCredTarget?.credential_name}」吗？被部署引用的凭证无法删除。`"
+      :error="deleteCredError"
       @confirm="handleConfirmDeleteCred"
-      @cancel="deleteCredTarget = null"
+      @cancel="deleteCredTarget = null; deleteCredError = ''"
     />
 
     <AccessTestDialog

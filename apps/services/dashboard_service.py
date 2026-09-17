@@ -21,6 +21,7 @@ from models.db import (
     User,
 )
 from repositories import dashboard_repo
+from core.time_utils import fmt_local_time
 
 
 def _prev_period(start_date: date, end_date: date) -> tuple[date, date]:
@@ -55,7 +56,7 @@ async def get_dashboard(
             "endDate": end_date.isoformat(),
             "label": _period_label(start_date, end_date),
         },
-        "lastUpdatedAt": last_updated_at.isoformat() if last_updated_at else None,
+        "lastUpdatedAt": fmt_local_time(last_updated_at),
         "lastUpdatedLabel": _time_ago(last_updated_at),
         "status": status,
         "requestTrend": trend,
@@ -166,7 +167,7 @@ async def _get_latest_pending_approvals(
                 "resourceTypeLabel": _resource_type_label(app.resource_type),
                 "resourceName": _build_resource_title(app.resource_type, app.reason),
                 "reason": app.reason or "",
-                "createdAt": app.created_at.isoformat() if app.created_at else None,
+                "createdAt": fmt_local_time(app.created_at),
                 "timeAgo": _time_ago(app.created_at),
                 "linkUrl": f"/resource-approval?status=pending&keyword={app.id}",
             }

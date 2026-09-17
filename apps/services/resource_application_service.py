@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from enum import Enum
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,10 +17,44 @@ from repositories import (
 from services import ai_key_service
 from services.icon_url import resolve_icon_url
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
-VALID_RESOURCE_TYPES = ("model", "mcp", "skill", "agent")
+class LabeledValue(str, Enum):
+    label: str
+
+    def __new__(cls, value: str, label: str):
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.label = label
+        return member
+
+    @classmethod
+    def label_for(cls, value: str) -> str:
+        try:
+            return cls(value).label
+        except ValueError:
+            return value
+
+
+class ResourceType(LabeledValue):
+    MODEL = ("model", "模型")
+    MCP = ("mcp", "MCP")
+    SKILL = ("skill", "Skill")
+    AGENT = ("agent", "智能体")
+
+
+class ApplicationStatus(LabeledValue):
+    PENDING = ("pending", "待审批")
+    APPROVED = ("approved", "已批准")
+    REJECTED = ("rejected", "已拒绝")
+    INVALIDATED = ("invalidated", "已失效")
+
+
+VALID_RESOURCE_TYPES = tuple(item.value for item in ResourceType)
+RESOURCE_TYPE_PATTERN = rf"^({'|'.join(VALID_RESOURCE_TYPES)})$"
 
 
 async def create_application(
@@ -61,12 +96,34 @@ async def list_applications(
     user_id: int | None = None,
     resource_type: str | None = None,
     status: str | None = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    reviewed_after: datetime | None = None,
+    reviewed_before: datetime | None = None,
 ) -> dict:
     total = await resource_application_repo.count_all(
-        session, user_id, resource_type, None, status
+        session,
+        user_id,
+        resource_type,
+        None,
+        status,
+        created_after,
+        created_before,
+        reviewed_after,
+        reviewed_before,
     )
     items = await resource_application_repo.find_all(
-        session, page, page_size, user_id, resource_type, None, status
+        session,
+        page,
+        page_size,
+        user_id,
+        resource_type,
+        None,
+        status,
+        created_after,
+        created_before,
+        reviewed_after,
+        reviewed_before,
     )
     serialized = [await _serialize(session, a) for a in items]
     return {
@@ -75,6 +132,34 @@ async def list_applications(
         "page": page,
         "page_size": page_size,
     }
+
+
+async def list_applications_for_export(
+    session: AsyncSession,
+    page: int = 1,
+    page_size: int = 100000,
+    user_id: int | None = None,
+    resource_type: str | None = None,
+    status: str | None = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    reviewed_after: datetime | None = None,
+    reviewed_before: datetime | None = None,
+) -> list[ResourceApplication]:
+    """获取审批记录的 ORM 对象列表用于导出，保留关系数据。"""
+    return await resource_application_repo.find_all(
+        session,
+        page,
+        page_size,
+        user_id,
+        resource_type,
+        None,
+        status,
+        created_after,
+        created_before,
+        reviewed_after,
+        reviewed_before,
+    )
 
 
 async def get_application(session: AsyncSession, app_id: int) -> dict:
@@ -96,6 +181,11 @@ async def approve_application(
         raise NotFoundError("resource_application", app_id)
     if app.status != "pending":
         raise ConflictError("该申请已处理")
+
+    if app.resource_type == ResourceType.MODEL:
+        model = await model_repo.find_by_id(session, app.resource_id)
+        if not model or not model.is_active or not model.is_published:
+            raise ConflictError("模型未发布或已停用，不能批准申请")
 
     await resource_application_repo.update_status_with_lock(
         session,
@@ -274,11 +364,13 @@ async def _serialize(session: AsyncSession, app: ResourceApplication) -> dict:
         "request_config": app.request_config,
         "status": app.status,
         "reviewed_by": app.reviewed_by,
-        "reviewed_at": app.reviewed_at.isoformat() if app.reviewed_at else None,
+        "reviewed_at": fmt_local_time(app.reviewed_at),
         "review_notes": app.review_notes,
         "approval_config": app.approval_config,
-        "created_at": app.created_at.isoformat() if app.created_at else None,
-        "updated_at": app.updated_at.isoformat() if app.updated_at else None,
+        "invalidated_at": (fmt_local_time(app.invalidated_at)),
+        "invalidation_reason": app.invalidation_reason,
+        "created_at": fmt_local_time(app.created_at),
+        "updated_at": fmt_local_time(app.updated_at),
         "user": (
             {
                 "id": app.user.id,

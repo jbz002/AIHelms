@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from exceptions import ConflictError, NotFoundError, ValidationError
 from repositories import publish_review_repo
+from core.time_utils import fmt_local_time
 
 ENTITY_MCP = "mcp_server"
 ENTITY_SKILL = "skill"
@@ -178,7 +179,7 @@ async def _set_entity_published(
 
 
 def _fmt(dt) -> str | None:
-    return dt.isoformat() if dt else None
+    return fmt_local_time(dt)
 
 
 def _serialize(review) -> dict:

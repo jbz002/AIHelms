@@ -12,6 +12,8 @@ from services import document_library_service
 from services.docs_mcp_client import DocsMcpError, docs_mcp_client
 from services.document_service import build_ingest_url
 
+from core.time_utils import fmt_local_time
+
 logger = logging.getLogger(__name__)
 
 
@@ -68,9 +70,9 @@ def _serialize_task(task: CrawlTask) -> dict:
         "current_url": task.current_url,
         "error_message": task.error_message,
         "created_by": task.created_by,
-        "created_at": task.created_at.isoformat() if task.created_at else None,
-        "started_at": task.started_at.isoformat() if task.started_at else None,
-        "finished_at": task.finished_at.isoformat() if task.finished_at else None,
+        "created_at": fmt_local_time(task.created_at),
+        "started_at": fmt_local_time(task.started_at),
+        "finished_at": fmt_local_time(task.finished_at),
     }
 
 
@@ -85,7 +87,7 @@ def _serialize_page(page: CrawledPage) -> dict:
         "text_content": page.text_content[:200] if page.text_content else "",
         "chunks_count": len(page.chunks) if page.chunks else 0,
         "depth": page.depth,
-        "created_at": page.created_at.isoformat() if page.created_at else None,
+        "created_at": fmt_local_time(page.created_at),
     }
 
 
