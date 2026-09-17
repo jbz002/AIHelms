@@ -16,6 +16,7 @@ MAX_EXPORT_ROWS = 100000
 SOURCE_OPTIONS = [
     {"key": "usage_logs", "label": "日志管理"},
     {"key": "efficiency", "label": "AI效能"},
+    {"key": "resource_applications", "label": "审批记录"},
 ]
 EXPORT_TYPE_OPTIONS = {
     "usage_logs": {"llm", "mcp", "skill", "agent"},
@@ -40,6 +41,7 @@ EXPORT_TYPE_OPTIONS = {
         "health_docker",
         "health_mcp",
     },
+    "resource_applications": {"applications"},
 }
 EXPORT_RUNNING_TIMEOUT_MINUTES = 30
 STATUS_OPTIONS = [
@@ -160,9 +162,7 @@ def _write_csv(path: Path, header: list[str], rows: list[list[object]]) -> None:
     with path.open("w", encoding="utf-8-sig", newline="") as fp:
         writer = csv.writer(fp)
         writer.writerow(header)
-        writer.writerows(
-            [[_sanitize_csv_cell(value) for value in row] for row in rows]
-        )
+        writer.writerows([[_sanitize_csv_cell(value) for value in row] for row in rows])
 
 
 async def list_export_tasks(

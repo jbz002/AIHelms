@@ -26,6 +26,13 @@ async def find_by_id(session: AsyncSession, model_id: int) -> Model | None:
     return result.scalar_one_or_none()
 
 
+async def find_by_ids(session: AsyncSession, ids: list[int]) -> list[Model]:
+    if not ids:
+        return []
+    result = await session.execute(select(Model).where(Model.id.in_(ids)))
+    return list(result.scalars().all())
+
+
 async def find_by_model_id(session: AsyncSession, model_id_str: str) -> Model | None:
     result = await session.execute(select(Model).where(Model.model_id == model_id_str))
     return result.scalar_one_or_none()

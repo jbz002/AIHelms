@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from enum import Enum
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +20,39 @@ from services.icon_url import resolve_icon_url
 logger = logging.getLogger(__name__)
 
 
-VALID_RESOURCE_TYPES = ("model", "mcp", "skill", "agent")
+class LabeledValue(str, Enum):
+    label: str
+
+    def __new__(cls, value: str, label: str):
+        member = str.__new__(cls, value)
+        member._value_ = value
+        member.label = label
+        return member
+
+    @classmethod
+    def label_for(cls, value: str) -> str:
+        try:
+            return cls(value).label
+        except ValueError:
+            return value
+
+
+class ResourceType(LabeledValue):
+    MODEL = ("model", "模型")
+    MCP = ("mcp", "MCP")
+    SKILL = ("skill", "Skill")
+    AGENT = ("agent", "智能体")
+
+
+class ApplicationStatus(LabeledValue):
+    PENDING = ("pending", "待审批")
+    APPROVED = ("approved", "已批准")
+    REJECTED = ("rejected", "已拒绝")
+    INVALIDATED = ("invalidated", "已失效")
+
+
+VALID_RESOURCE_TYPES = tuple(item.value for item in ResourceType)
+RESOURCE_TYPE_PATTERN = rf"^({'|'.join(VALID_RESOURCE_TYPES)})$"
 
 
 async def create_application(
@@ -61,12 +94,34 @@ async def list_applications(
     user_id: int | None = None,
     resource_type: str | None = None,
     status: str | None = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    reviewed_after: datetime | None = None,
+    reviewed_before: datetime | None = None,
 ) -> dict:
     total = await resource_application_repo.count_all(
-        session, user_id, resource_type, None, status
+        session,
+        user_id,
+        resource_type,
+        None,
+        status,
+        created_after,
+        created_before,
+        reviewed_after,
+        reviewed_before,
     )
     items = await resource_application_repo.find_all(
-        session, page, page_size, user_id, resource_type, None, status
+        session,
+        page,
+        page_size,
+        user_id,
+        resource_type,
+        None,
+        status,
+        created_after,
+        created_before,
+        reviewed_after,
+        reviewed_before,
     )
     serialized = [await _serialize(session, a) for a in items]
     return {
@@ -75,6 +130,34 @@ async def list_applications(
         "page": page,
         "page_size": page_size,
     }
+
+
+async def list_applications_for_export(
+    session: AsyncSession,
+    page: int = 1,
+    page_size: int = 100000,
+    user_id: int | None = None,
+    resource_type: str | None = None,
+    status: str | None = None,
+    created_after: datetime | None = None,
+    created_before: datetime | None = None,
+    reviewed_after: datetime | None = None,
+    reviewed_before: datetime | None = None,
+) -> list[ResourceApplication]:
+    """获取审批记录的 ORM 对象列表用于导出，保留关系数据。"""
+    return await resource_application_repo.find_all(
+        session,
+        page,
+        page_size,
+        user_id,
+        resource_type,
+        None,
+        status,
+        created_after,
+        created_before,
+        reviewed_after,
+        reviewed_before,
+    )
 
 
 async def get_application(session: AsyncSession, app_id: int) -> dict:
