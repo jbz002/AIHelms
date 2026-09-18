@@ -143,7 +143,31 @@ class Settings(BaseSettings):
     # docling-serve（文档格式转换：PDF/DOCX/PPTX 等 → Markdown）
     docling_serve_url: str = "http://localhost:5001"
     docling_serve_port: int = 5001
-    docling_convert_timeout: int = 60  # 单文件转换超时（秒）
+    # 单文件转换超时（秒）。开了图片描述后每张图都要过一次视觉模型（推理模型，
+    # 单图可达数十秒），60s 连一页扫描件都翻不完，对齐 ai-assistant 用 600。
+    docling_convert_timeout: int = 600
+    # OCR 引擎与语言（**必须显式传**）。serve 默认 preset=auto、语言为空，实际落到
+    # 纯英文模型，中文截图/扫描件整片成噪声（实测同一张中文截图：不传 → "2 y /
+    # Iu litellm POST"，传 → "浏览 API 接口 / 登录获取访问令牌"）。
+    # 语言用逗号分隔（pydantic list 字段只认 JSON 字面量，逗号串会解析失败）。
+    docling_ocr_preset: str = "easyocr"
+    docling_ocr_lang: str = "ch_sim,en"
+
+    # 图片描述（docling 原生 picture description）：PDF/图片里的位图交视觉模型逐字
+    # 转写后并入正文——OCR 只认字形，图里的排版/图标/表格关系会丢，VLM 能连结构一起
+    # 还原。预设定义在 docling 实例侧（aihelms-docling 的 docling-serve.yaml，见
+    # dev/resource/aihelms-docling-docsmcp-deploy.md），指向本机 AIHelms 网关的
+    # deepseek-v4.1-flash；预设改名要两处同步。
+    # ⚠️ 预设名必须显式传：serve 的 "default" 别名只认 docling 内置预设名，
+    # 指向自定义预设会报 Preset 'xxx' not found。
+    # ⚠️ 只对 PDF / 图片输入生效：docling-serve 只给这两种格式挂 pipeline options，
+    # docx/pptx/xlsx 走 SimplePipeline，图片描述不参与（上游能力缺口）。
+    # ⚠️ 位图小于页面面积阈值的会被跳过，而阈值只认**请求字段**
+    # picture_description_area_threshold（jobkit 用它无条件覆盖预设里的
+    # picture_area_threshold，预设写 0.02 不生效），所以要在这里显式给。
+    docling_picture_description: bool = True
+    docling_picture_description_preset: str = "aihelms-vl"
+    docling_picture_description_area_threshold: float = 0.02
 
     # LLM 调用日志同步与清理
     llm_log_sync_interval_minutes: int = 5

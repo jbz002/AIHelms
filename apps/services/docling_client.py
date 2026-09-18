@@ -52,12 +52,35 @@ class DoclingClient:
                 data = {
                     "to_formats": "md",
                     "do_ocr": "true" if do_ocr else "false",
+                    # OCR 引擎与语言必须显式给：serve 默认 preset=auto、语言为空，
+                    # 走纯英文模型，中文截图/扫描件整片识别成噪声（实测同一张中文
+                    # 截图：不传 → "2 y / Iu litellm POST"，传 → "浏览 API 接口"）。
+                    "ocr_preset": settings.docling_ocr_preset,
+                    "ocr_lang": [
+                        lang.strip()
+                        for lang in settings.docling_ocr_lang.split(",")
+                        if lang.strip()
+                    ],
                 }
+                # 图片描述走 docling 实例侧预设（docling-serve.yaml 里定义，指向
+                # AIHelms 网关视觉模型）。预设名必须显式给：serve 的 "default" 别名
+                # 只认 docling 内置预设名，指向自定义预设会 404。
+                if settings.docling_picture_description:
+                    data["do_picture_description"] = "true"
+                    data["picture_description_preset"] = (
+                        settings.docling_picture_description_preset
+                    )
+                    # 阈值只认请求字段：jobkit 用它无条件覆盖预设里的
+                    # picture_area_threshold，不传就是 0.05（小示意图会被跳过）。
+                    data["picture_description_area_threshold"] = str(
+                        settings.docling_picture_description_area_threshold
+                    )
                 logger.info(
-                    "docling convert: %s (%s, ocr=%s)",
+                    "docling convert: %s (%s, ocr=%s, picture_description=%s)",
                     file_name,
                     content_type,
                     do_ocr,
+                    settings.docling_picture_description,
                 )
                 resp = await client.post(url, files=files, data=data)
 
