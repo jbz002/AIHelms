@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from core.time_utils import fmt_local_time
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import (
     Model,
@@ -21,8 +22,6 @@ from services.icon_url import resolve_provider_icon_url
 from services.litellm_credential_payload import (
     build_litellm_credential_values_for_credential,
 )
-
-from core.time_utils import fmt_local_time
 
 logger = logging.getLogger(__name__)
 
@@ -268,8 +267,6 @@ async def _sync_model_rename(
         )
         deployment.litellm_params = sync_params
         sync_params = _convert_cost_for_litellm(sync_params)
-        sync_model_info = dict(deployment.model_info or {})
-        sync_model_info["active"] = routable
         try:
             await litellm_client.update_model(
                 litellm_model_id=deployment.litellm_model_id,
@@ -277,7 +274,7 @@ async def _sync_model_rename(
                     model, credential, routable=routable
                 ),
                 litellm_params=sync_params,
-                model_info=sync_model_info,
+                model_info=_build_sync_model_info(deployment, model, active=routable),
             )
         except litellm_client.LiteLLMError:
             logger.warning(
@@ -1012,7 +1009,6 @@ async def _sync_published_model_to_main_keys(
     if not model or not model.model_id:
         return 0
     from repositories import resource_application_repo
-
     from services import ai_key_service
 
     target_user_ids: list[int] | None = None
@@ -1247,15 +1243,38 @@ def _convert_modal_cost_for_litellm(
     return result
 
 
+# 平台 models 表 → LiteLLM deployment model_info 的能力字段
+# （litellm ModelInfo 官方字段名，与平台列名一字不差）
+_MODEL_CAPABILITY_FIELDS = (
+    "max_input_tokens",
+    "max_output_tokens",
+    "supports_vision",
+    "supports_function_calling",
+    "supports_reasoning",
+    "supports_response_schema",
+    "supports_parallel_function_calling",
+    "supports_tool_choice",
+)
+
+
 def _build_sync_model_info(
     deployment: ModelDeployment, model: Model, active: bool
 ) -> dict:
-    """构造推给 LiteLLM 的 model_info：合并部署扩展信息 + active + mode。"""
+    """构造推给 LiteLLM 的 model_info：部署扩展信息 + active + mode + 能力字段。
+
+    能力字段以平台 models 表为准写入后，litellm /v1/models 的
+    max_input_tokens/max_output_tokens、router 溢出保护均用平台配置，
+    覆盖内置价目表的按名兜底匹配（自定义名匹配不上、或匹配到过时数据）。
+    """
     info = dict(deployment.model_info or {})
     info["active"] = active
     mode = _resolve_litellm_mode(model)
     if mode:
         info["mode"] = mode
+    for field in _MODEL_CAPABILITY_FIELDS:
+        value = getattr(model, field)
+        if value is not None:
+            info[field] = value
     return info
 
 
@@ -1442,15 +1461,13 @@ async def resync_anthropic_deployments(session: AsyncSession) -> dict:
             )
             deployment.litellm_params = sync_params
             sync_params = _convert_cost_for_litellm(sync_params)
-            sync_model_info = dict(deployment.model_info or {})
-            sync_model_info["active"] = routable
             await litellm_client.update_model(
                 litellm_model_id=deployment.litellm_model_id,
                 model_name=_get_litellm_model_name(
                     model, credential, routable=routable
                 ),
                 litellm_params=sync_params,
-                model_info=sync_model_info,
+                model_info=_build_sync_model_info(deployment, model, active=routable),
             )
             synced += 1
         except litellm_client.LiteLLMError:
@@ -1488,8 +1505,6 @@ async def sync_credential_routing(session: AsyncSession, credential) -> dict:
         )
         deployment.litellm_params = sync_params
         sync_params = _convert_cost_for_litellm(sync_params)
-        sync_model_info = dict(deployment.model_info or {})
-        sync_model_info["active"] = routable
         try:
             await litellm_client.update_model(
                 litellm_model_id=deployment.litellm_model_id,
@@ -1497,7 +1512,7 @@ async def sync_credential_routing(session: AsyncSession, credential) -> dict:
                     model, credential, routable=routable
                 ),
                 litellm_params=sync_params,
-                model_info=sync_model_info,
+                model_info=_build_sync_model_info(deployment, model, active=routable),
             )
             synced += 1
         except litellm_client.LiteLLMError as e:

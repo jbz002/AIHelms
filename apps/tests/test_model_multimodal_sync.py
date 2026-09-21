@@ -8,8 +8,21 @@ from services import model_service
 
 
 def _model(**kwargs):
-    """构造一个带 mode/category 属性的伪 Model 对象。"""
-    return SimpleNamespace(**kwargs)
+    """构造带 mode/category/能力列属性的伪 Model 对象（对齐 Model ORM 列全集）。"""
+    defaults = {
+        "mode": None,
+        "category": "chat",
+        "max_input_tokens": None,
+        "max_output_tokens": None,
+        "supports_vision": False,
+        "supports_function_calling": False,
+        "supports_reasoning": False,
+        "supports_response_schema": False,
+        "supports_parallel_function_calling": False,
+        "supports_tool_choice": False,
+    }
+    defaults.update(kwargs)
+    return SimpleNamespace(**defaults)
 
 
 # --- _validate_mode_category ---
@@ -118,3 +131,32 @@ def test_build_sync_model_info_omits_mode_when_unresolvable() -> None:
     info = model_service._build_sync_model_info(deployment, model, active=False)
     assert info["active"] is False
     assert "mode" not in info
+
+
+def test_build_sync_model_info_injects_capability_fields() -> None:
+    deployment = SimpleNamespace(model_info={})
+    model = _model(
+        mode="chat",
+        category="chat",
+        max_input_tokens=163840,
+        max_output_tokens=8192,
+        supports_vision=True,
+        supports_function_calling=True,
+    )
+    info = model_service._build_sync_model_info(deployment, model, active=True)
+    assert info["max_input_tokens"] == 163840
+    assert info["max_output_tokens"] == 8192
+    assert info["supports_vision"] is True
+    assert info["supports_function_calling"] is True
+    assert info["supports_reasoning"] is False
+    assert info["supports_tool_choice"] is False
+
+
+def test_build_sync_model_info_omits_null_token_limits() -> None:
+    deployment = SimpleNamespace(model_info={})
+    model = _model(mode="chat", category="chat")
+    info = model_service._build_sync_model_info(deployment, model, active=True)
+    assert "max_input_tokens" not in info
+    assert "max_output_tokens" not in info
+    # 布尔能力位有默认值 False，应显式写入（litellm 用其做视觉/工具参数校验）
+    assert info["supports_vision"] is False

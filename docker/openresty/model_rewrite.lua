@@ -16,7 +16,7 @@ local cjson = require "cjson.safe"
 local SUFFIX = "(Anthropic)"
 local REFRESH_INTERVAL = 30  -- 秒
 
--- 映射缓存：model_id -> { has_anthropic=bool, has_openai=bool, supports_vision=bool }
+-- 映射缓存：model_id -> { has_anthropic, has_openai, supports_vision, inject={能力字段集} }
 local map = {}
 
 
@@ -71,10 +71,22 @@ local function fetch_map(premature)
     end
     local new_map = {}
     for _, mi in ipairs(body.data.models) do
+        -- inject: /v1/models 响应注入字段（OpenAI 标准无能力字段，litellm 不吐，平台侧补）
+        local inject = {
+            supports_vision = mi.supports_vision == true,
+            supports_function_calling = mi.supports_function_calling == true,
+            supports_reasoning = mi.supports_reasoning == true,
+            supports_response_schema = mi.supports_response_schema == true,
+            supports_parallel_function_calling =
+                mi.supports_parallel_function_calling == true,
+            supports_tool_choice = mi.supports_tool_choice == true,
+        }
+        if mi.mode then inject.mode = mi.mode end
         new_map[mi.model_id] = {
             has_anthropic = mi.has_anthropic == true,
             has_openai = mi.has_openai == true,
             supports_vision = mi.supports_vision == true,
+            inject = inject,
         }
     end
     map = new_map
@@ -130,8 +142,10 @@ local function strip_images(data)
 end
 
 
--- GET /v1/models 响应过滤:剔除 id 以 (Anthropic) 结尾的条目
--- 网关已把裸名自动路由到正确后缀组,客户端不应看到这些方言分身
+-- GET /v1/models 响应处理:剔除 id 以 (Anthropic) 结尾的方言分身条目,
+-- 并给每条模型对象注入平台能力字段(supports_* 全集 + mode)。
+-- 网关已把裸名自动路由到正确后缀组,客户端不应看到分身;
+-- OpenAI 标准模型对象无能力字段、litellm 不吐,由平台侧(source of truth)补
 function _M.filter_models_body()
     local chunk = ngx.arg[1]
     local eof = ngx.arg[2]
@@ -149,6 +163,12 @@ function _M.filter_models_body()
         local kept = {}
         for _, mi in ipairs(data.data) do
             if type(mi.id) == "string" and not ends_with(mi.id, SUFFIX) then
+                local info = map[mi.id]
+                if info and info.inject then
+                    for k, v in pairs(info.inject) do
+                        mi[k] = v
+                    end
+                end
                 kept[#kept + 1] = mi
             end
         end
