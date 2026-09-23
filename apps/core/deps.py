@@ -7,13 +7,14 @@ from fastapi import Depends, HTTPException, Query, Request
 from jose import JWTError, jwt
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.aihub_verify import verify_aihub_credential
 from core.api_key_utils import hash_api_key, looks_like_api_key
 from core.config import settings
 from core.database import async_session
 from core.security import ALGORITHM
 from exceptions import UnauthorizedError
 from repositories import ai_key_repo, api_key_repo, user_repo
-from services import auth_service, cli_token_service
+from services import auth_service, cli_token_service, integration_service
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,69 @@ def require_permission(permission_code: str):
         return current_user
 
     return checker
+
+
+# ═══════════════════════════════════════════════════════════════
+# 跨应用兼容鉴权（方式六：AI Hub 签发凭证 introspect）
+# ═══════════════════════════════════════════════════════════════
+
+
+async def _aihub_caller_identity(session: AsyncSession, caller: dict) -> dict:
+    """introspect 出的 user 态 caller → AIHelms 用户定位/建档 → get_current_user 同形身份。
+
+    字段派生同 validate_api_key 尾部（is_admin/permissions 按本地用户算，而非照抄
+    AI Hub 角色）——visibility 判权（can_access）只消费 id 与 is_admin。
+    """
+    aihub_user_id = str(caller.get("user_id") or "")
+    if not aihub_user_id:
+        raise HTTPException(status_code=401, detail="token 无效")
+    user = await integration_service.get_user_by_aihub_id(session, aihub_user_id)
+    if not user.is_active:
+        raise HTTPException(status_code=401, detail="token 无效")
+    permissions = await auth_service.get_user_permissions(session, user.id)
+    return {
+        "id": user.id,
+        "user_id": user.id,
+        "username": user.username,
+        "identity_type": "user",
+        "is_admin": bool(user.is_admin or user.is_super_admin),
+        "permissions": permissions,
+    }
+
+
+async def get_current_user_compat(
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+) -> dict:
+    """get_current_user 的跨应用兼容版，通道顺序按开销排：
+
+    1. 平台 API Key（哈希查库前先前缀短路）
+    2. 自有 JWT（本地验签零网络开销）
+    3. AI Hub 签发凭证 → introspect 自省（方式六，AI Hub 集中判权），
+       user 态按 AI Hub user_id 定位/占位建档后代理该用户操作。
+
+    前两通道都拒才走自省——本站用户零额外 RTT；AI Hub 不可达时对本站用户无感、
+    对 AI Hub 凭证 fail-closed（401），与 aihub_verify 语义一致。
+    """
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="未提供认证 token")
+    token = auth_header.split(" ", 1)[1]
+
+    if looks_like_api_key(token):
+        return await _authenticate_api_key(token)
+
+    try:
+        return _authenticate_jwt(token)
+    except (HTTPException, ValueError):
+        # ValueError 防御：外部应用 JWT 若同 secret（当前不同），sub 非数字会在
+        # int() 炸 500——归一成回退而不是炸
+        pass
+
+    caller = await verify_aihub_credential(request)
+    if caller.get("caller_type") != "user":
+        raise HTTPException(status_code=403, detail="个人数据需用户凭证")
+    return await _aihub_caller_identity(session, caller)
 
 
 async def get_ai_key_identity(

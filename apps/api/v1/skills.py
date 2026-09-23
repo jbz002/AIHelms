@@ -15,7 +15,13 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.deps import get_ai_key_identity, get_current_user, get_db, require_permission
+from core.deps import (
+    get_ai_key_identity,
+    get_current_user,
+    get_current_user_compat,
+    get_db,
+    require_permission,
+)
 from core.public_urls import resolve_platform_public_url
 from exceptions import ConflictError, NotFoundError, ValidationError
 from services import (
@@ -93,9 +99,14 @@ async def list_published_skills(
     page_size: int = Query(50, ge=1, le=200),
     category: str | None = None,
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user_compat),
 ):
-    """公开接口：已认证用户可查看已发布的 Skill 列表。"""
+    """公开接口：已认证用户可查看已发布的 Skill 列表。
+
+    鉴权走 get_current_user_compat：本站登录（自有 JWT/平台 Key）之外，
+    其他子应用用户持 AI Hub 签发凭证（方式六 introspect）亦可浏览——
+    ai-assistant 市场透传即此通道（2026-09-23）。
+    """
     data = await skill_service.list_skills(
         session,
         page,
@@ -146,7 +157,7 @@ async def get_skill(
 async def get_skill_market_detail(
     skill_id: int,
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user_compat),
 ):
     """直链详情：all/selected/unlisted 登录可读，private 仅创建者+管理员。"""
     try:
@@ -170,7 +181,7 @@ async def get_skill_market_detail(
 async def get_skill_card(
     skill_id: int,
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(get_current_user_compat),
 ):
     try:
         data = await skill_view_service.get_skill_card(session, skill_id)
@@ -184,7 +195,7 @@ async def get_skill_summary(
     skill_id: int,
     version_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(get_current_user_compat),
 ):
     try:
         data = await skill_view_service.get_skill_summary(session, skill_id, version_id)
@@ -198,7 +209,7 @@ async def get_skill_full(
     skill_id: int,
     version_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    _: dict = Depends(get_current_user_compat),
 ):
     try:
         data = await skill_view_service.get_skill_full(session, skill_id, version_id)
