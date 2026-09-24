@@ -1,0 +1,6 @@
+{
+  "apikeys.clientConfig.title": "Claude Code client config",
+  "apikeys.clientConfig.copy": "Copy config",
+  "apikeys.clientConfig.copied": "Copied",
+  "apikeys.clientConfig.hint": "Paste into Claude Code's MCP config. If no plaintext key is shown, replace YOUR_PLATFORM_API_KEY with a key you created (plaintext is visible only at creation)."
+}

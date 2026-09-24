@@ -1,0 +1,6 @@
+{
+  "apikeys.clientConfig.title": "Claude Code 客户端配置",
+  "apikeys.clientConfig.copy": "复制配置",
+  "apikeys.clientConfig.copied": "已复制",
+  "apikeys.clientConfig.hint": "复制到 Claude Code 的 MCP 配置中；未显示明文 Key 时，把 YOUR_PLATFORM_API_KEY 替换为你新建的 Key（明文仅创建时可见）"
+}

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, type Ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Copy, Check, Trash2, Plus, X, KeyRound } from 'lucide-vue-next'
 import { getMyApiKeys, createMyApiKey, deleteMyApiKey, toast, type ApiKey } from '@aihelms/shared'
 import { request } from '@aihelms/shared/src/api/request'
 
+const { t } = useI18n()
 const keys = ref<ApiKey[]>([])
 const loading = ref(false)
 const mcpEndpoint = ref('')
@@ -14,6 +16,25 @@ const createSubmitting = ref(false)
 
 const justCreated = ref<ApiKey | null>(null)
 const copied = ref(false)
+const configCopied = ref(false)
+
+// 明文 Key 仅创建时可见，之后配置示例里用占位符，提示用户自行替换
+const claudeConfig = computed(() => {
+  const apiKey = justCreated.value?.raw_key || 'YOUR_PLATFORM_API_KEY'
+  return JSON.stringify(
+    {
+      mcpServers: {
+        aihelms: {
+          type: 'http',
+          url: mcpEndpoint.value,
+          headers: { Authorization: `Bearer ${apiKey}` },
+        },
+      },
+    },
+    null,
+    2,
+  )
+})
 
 async function loadKeys(): Promise<void> {
   loading.value = true
@@ -68,25 +89,41 @@ async function handleDelete(item: ApiKey): Promise<void> {
   }
 }
 
+async function writeClipboard(text: string): Promise<void> {
+  if (navigator.clipboard && window.isSecureContext) {
+    await navigator.clipboard.writeText(text)
+    return
+  }
+  const ta = document.createElement('textarea')
+  ta.value = text
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.select()
+  const ok = document.execCommand('copy')
+  document.body.removeChild(ta)
+  if (!ok) throw new Error('execCommand copy failed')
+}
+
+function flashCopied(flag: Ref<boolean>): void {
+  flag.value = true
+  setTimeout(() => { flag.value = false }, 2000)
+}
+
 async function handleCopyRaw(): Promise<void> {
   if (!justCreated.value?.raw_key) return
-  const text = justCreated.value.raw_key
   try {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(text)
-    } else {
-      const ta = document.createElement('textarea')
-      ta.value = text
-      ta.style.position = 'fixed'
-      ta.style.opacity = '0'
-      document.body.appendChild(ta)
-      ta.select()
-      const ok = document.execCommand('copy')
-      document.body.removeChild(ta)
-      if (!ok) throw new Error('execCommand copy failed')
-    }
-    copied.value = true
-    setTimeout(() => { copied.value = false }, 2000)
+    await writeClipboard(justCreated.value.raw_key)
+    flashCopied(copied)
+  } catch {
+    toast.error('复制失败')
+  }
+}
+
+async function handleCopyConfig(): Promise<void> {
+  try {
+    await writeClipboard(claudeConfig.value)
+    flashCopied(configCopied)
   } catch {
     toast.error('复制失败')
   }
@@ -130,6 +167,22 @@ onMounted(async () => {
       <div class="mt-2 text-xs text-slate-500">Endpoint</div>
       <code class="mt-0.5 block break-all rounded bg-white px-2 py-1 text-sm text-slate-800">{{ mcpEndpoint }}</code>
       <div class="mt-2 text-xs text-slate-500">鉴权头：<code class="text-slate-700">Authorization: Bearer &lt;你的平台 API Key&gt;</code></div>
+
+      <div class="mt-4 border-t border-purple-100 pt-3">
+        <div class="flex items-center justify-between">
+          <div class="text-xs text-slate-500">{{ t('apikeys.clientConfig.title') }}</div>
+          <button
+            class="shrink-0 rounded-lg border border-purple-200 bg-white px-3 py-1 text-xs font-medium text-purple-700 hover:bg-purple-100"
+            @click="handleCopyConfig"
+          >
+            <Check v-if="configCopied" class="inline h-3 w-3 text-green-600" />
+            <Copy v-else class="inline h-3 w-3" />
+            {{ configCopied ? t('apikeys.clientConfig.copied') : t('apikeys.clientConfig.copy') }}
+          </button>
+        </div>
+        <pre class="mt-2 overflow-x-auto rounded bg-white p-3 text-xs text-slate-800"><code>{{ claudeConfig }}</code></pre>
+        <p class="mt-1 text-xs text-slate-400">{{ t('apikeys.clientConfig.hint') }}</p>
+      </div>
     </div>
 
     <!-- 刚创建的明文（仅本次）-->

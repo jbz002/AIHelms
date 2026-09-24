@@ -14,6 +14,8 @@ import contributorZh from './zh-CN/contributor.json'
 import contributorEn from './en-US/contributor.json'
 import docsZh from './zh-CN/docs.json'
 import docsEn from './en-US/docs.json'
+import apikeysZh from './zh-CN/apikeys.json'
+import apikeysEn from './en-US/apikeys.json'
 
 export const messages = {
   'zh-CN': {
@@ -25,6 +27,7 @@ export const messages = {
     ...identityZh,
     ...contributorZh,
     ...docsZh,
+    ...apikeysZh,
   },
   'en-US': {
     ...commonEn,
@@ -35,5 +38,6 @@ export const messages = {
     ...identityEn,
     ...contributorEn,
     ...docsEn,
+    ...apikeysEn,
   },
 }
