@@ -1293,7 +1293,7 @@ INSERT INTO aihelms.roles (name, display_name, description, is_system) VALUES
     ('admin', '管理员', '管理平台日常运营', true),
     ('department_manager', '部门管理员', '管理所属部门', true),
     ('user', '普通用户', '基础使用权限', true),
-    ('contributor', 'Skill 贡献者', '可在 web 端贡献 Skill 草稿并提发布审核', false),
+    ('contributor', 'MCP/Agent 贡献者', '可在 web 端贡献 MCP Server 与智能体草稿（Skill 贡献已全员开放）', false),
     ('document_user', 'API文档使用者', '可在 web 端文档中心浏览/测试接口、上传文档、AI 提取接口', false)
 ON CONFLICT (name) DO NOTHING;
 
@@ -1376,16 +1376,16 @@ SELECT r.id, p.id FROM aihelms.roles r, aihelms.permissions p
 WHERE r.name = 'department_manager' AND p.code IN ('user:read', 'department:read', 'project:read', 'role:read', 'permission:read')
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
--- user 只有基础查看权限
+-- user 有基础查看权限；Skill 贡献全员开放
 INSERT INTO aihelms.role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM aihelms.roles r, aihelms.permissions p
-WHERE r.name = 'user' AND p.code IN ('permission:read')
+WHERE r.name = 'user' AND p.code IN ('permission:read', 'skill:contribute')
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
--- contributor 仅可在 web 端贡献自己的 Skill / MCP / 智能体草稿
+-- contributor 仅可在 web 端贡献自己的 MCP / 智能体草稿（Skill 贡献已全员开放）
 INSERT INTO aihelms.role_permissions (role_id, permission_id)
 SELECT r.id, p.id FROM aihelms.roles r, aihelms.permissions p
-WHERE r.name = 'contributor' AND p.code IN ('skill:contribute', 'mcp:contribute', 'agent:contribute')
+WHERE r.name = 'contributor' AND p.code IN ('mcp:contribute', 'agent:contribute')
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- document_user 可在 web 端文档中心浏览/测试接口、上传文档、AI 提取接口
