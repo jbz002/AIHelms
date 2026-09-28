@@ -390,7 +390,13 @@ async def test_cli_publish_auto_activates_version():
 
 @pytest.mark.asyncio
 async def test_cli_create_skill_auto_activates_and_submits_review():
-    """外部系统程序化上传：创建 + 自动激活 + 自动提审，一次调用完成。"""
+    """外部系统程序化上传（门控开）：创建 + 自动激活 + 自动提审，一次调用完成。"""
+    from models.db import PublishSettings
+
+    async with _session() as s:
+        settings = await s.get(PublishSettings, 1)
+        settings.publish_review_enabled = True
+        await s.commit()
     uid = await _make_user("crt")
     token_ids: list[int] = []
     created_skill_ids: list[int] = []
@@ -453,6 +459,10 @@ async def test_cli_create_skill_auto_activates_and_submits_review():
         await _cleanup_skills(created_skill_ids)
         await _cleanup_tokens(token_ids)
         await _cleanup_users([uid])
+        async with _session() as s:
+            settings = await s.get(PublishSettings, 1)
+            settings.publish_review_enabled = False
+            await s.commit()
 
 
 @pytest.mark.asyncio

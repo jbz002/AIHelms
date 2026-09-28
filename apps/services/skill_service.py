@@ -280,7 +280,8 @@ def _is_list_visible_to_public(skill: Skill) -> bool:
         skill.is_published
         and not skill.requires_approval
         and not skill.hidden
-        and skill.visibility_type in (visibility_service.ALL, visibility_service.SELECTED)
+        and skill.visibility_type
+        in (visibility_service.ALL, visibility_service.SELECTED)
     )
 
 
@@ -318,6 +319,7 @@ async def update_skill(
     actor_id: int | None = None,
     zip_content: bytes | None = None,
     zip_filename: str | None = None,
+    actor_is_admin: bool = False,
     **kwargs,
 ) -> dict:
     """更新 Skill 元数据。
@@ -338,8 +340,14 @@ async def update_skill(
         if hasattr(skill, key) and value is not None:
             setattr(skill, key, value)
 
-    # 发布门控：False→True 变更且门控开启时，转提交申请，保持未发布
-    if not was_published and skill.is_published and actor_id is not None:
+    # 发布门控：False→True 变更且门控开启时，转提交申请，保持未发布。
+    # admin 豁免：管理员的发布动作直接生效（否则管理员要自己批自己的审核单）
+    if (
+        not was_published
+        and skill.is_published
+        and actor_id is not None
+        and not actor_is_admin
+    ):
         from services import publish_review_service, publish_settings_service
 
         if await publish_settings_service.is_gate_enabled(session):

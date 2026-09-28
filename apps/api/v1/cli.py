@@ -186,7 +186,7 @@ async def cli_list_tags(
     return {"code": 200, "message": "ok", "data": data}
 
 
-@router.post("/skills", summary="创建 Skill 并提交发布审核")
+@router.post("/skills", summary="创建 Skill 并发布（门控自决）")
 async def cli_create_skill(
     name: str = Form(...),
     description: str = Form(""),
@@ -203,7 +203,8 @@ async def cli_create_skill(
     """外部系统程序化上传入口：与 web 贡献上传同一编排。
 
     预检 → 落库（免审批 + 可见性默认按令牌 owner 部门）→ 自动激活 v1 →
-    自动提审；visibility_type 不传走默认，传 all/department 显式指定。
+    发布态由门控决定（关=直接发布，开=自动提审）；visibility_type 不传走
+    默认，传 all/department 显式指定。
     """
     if identity["owner_type"] != "user":
         raise HTTPException(status_code=403, detail="CLI publish 仅支持 user 类型令牌")
@@ -231,7 +232,12 @@ async def cli_create_skill(
         raise HTTPException(status_code=409, detail=str(e))
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"code": 200, "message": "Skill 已上传并提交发布审核", "data": data}
+    message = (
+        "Skill 已上传并发布"
+        if data.get("is_published")
+        else "Skill 已上传并提交发布审核"
+    )
+    return {"code": 200, "message": message, "data": data}
 
 
 @router.post("/skills/{identifier}/versions", summary="发布 Skill 版本")

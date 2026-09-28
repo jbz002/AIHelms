@@ -1,21 +1,23 @@
-"""贡献者 Skill 上传编排：预检 → 落库 → 自动激活 → 自动提审。
+"""贡献者 Skill 上传编排：预检 → 落库 → 自动激活 → 发布（门控自决）。
 
 设计约定（2026-09 需求 3/4）：
 - 上传即最新版，激活版本默认跟随最新版；首传版本自动激活，无「设为激活」UI。
 - 多版本共存后，owner 可在 web 端手动切换激活版本（contributor activate 端点）。
-- 领用默认免审批（requires_approval=False）；发布仍走 publish_review 管理员审批。
+- 领用默认免审批（requires_approval=False）；发布是否需审核由发布门控决定
+  （create_skill 内 resolve_publish）：门控关 = 上传即发布，门控开 = 自动提审。
+  推版本不提审（首审挡入口，后续版本信任 owner）。
 - 可见性：调用方不传 → 默认按创建者部门（无部门回退 all）；显式传 all/department
   等值则尊重调用方（web 表单可见范围选择器 / 外部系统程序化上传均走此参数）。
 
-三步是各自独立可复用的 service 调用（skill_service / publish_review_service），
-本模块只做顺序编排；admin 链路不经过这里。contributor（JWT）与 CLI 通道
-（API Key + skill:publish scope）共用本编排。
+三步是各自独立可复用的 service 调用（skill_service），本模块只做顺序编排；
+admin 链路不经过这里。contributor（JWT）与 CLI 通道（API Key + skill:publish
+scope）共用本编排。
 """
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from repositories import department_repo, skill_version_repo
-from services import publish_review_service, skill_service, visibility_service
+from services import skill_service, visibility_service
 from services.skill_protocol_service import validate_skill_package_or_raise
 from services.skill_serializers import _serialize_version
 
@@ -65,7 +67,11 @@ async def create_contribution_and_submit(
     zip_filename: str = "",
     created_by: int,
 ) -> dict:
-    """上传编排：物化 zip → 双重预检 → 创建（免审批 + 可见性裁决）→ 激活 v1 → 提审。"""
+    """上传编排：物化 zip → 双重预检 → 创建（免审批 + 可见性裁决）→ 激活 v1 → 发布。
+
+    is_published=True 交给 create_skill 门控自决：门控关直接发布；门控开由其内部
+    转提审（此处不再显式 submit_review，避免双重提审撞 409）。
+    """
     if source_url and not zip_content:
         zip_content, zip_filename = await skill_service.fetch_skill_zip_from_url(
             source_url
@@ -88,7 +94,7 @@ async def create_contribution_and_submit(
         author=author,
         agent_install_prompt=agent_install_prompt,
         usage_instructions=usage_instructions,
-        is_published=False,
+        is_published=True,
         requires_approval=False,
         visibility_type=effective_visibility,
         visible_department_id=department_id,
@@ -99,9 +105,6 @@ async def create_contribution_and_submit(
     )
     await skill_service.activate_version(
         session, int(created["id"]), int(created["current_version_id"])
-    )
-    await publish_review_service.submit_review(
-        session, publish_review_service.ENTITY_SKILL, int(created["id"]), created_by
     )
     return created
 

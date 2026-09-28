@@ -27,15 +27,29 @@ async def _real_user_id() -> int:
         return int(row)
 
 
+def _fake_zip_bytes() -> bytes:
+    """合法 skill 包（含 SKILL.md，frontmatter name 为 kebab-case），过物理校验。"""
+    import io
+    import zipfile
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(
+            "pub-review-skill/SKILL.md",
+            "---\nname: pub-review-skill\ndescription: test\n---\n# t\n\ntest body\n",
+        )
+    return buf.getvalue()
+
+
 async def _make_skill() -> int:
-    name = f"test_pub_{uuid.uuid4().hex[:8]}"
+    name = f"test-pub-{uuid.uuid4().hex[:8]}"
     session = _session()
     try:
         data = await skill_service.create_skill(
             session,
             name=name,
             version="1.0.0",
-            zip_content=b"PK\x03\x04fake",
+            zip_content=_fake_zip_bytes(),
             zip_filename=f"{name}.zip",
         )
     finally:
@@ -186,3 +200,44 @@ async def test_resolve_publish_gate_off_then_on():
         assert eff is False and submit is True
     finally:
         await _reset_gate(False)
+
+
+@pytest.mark.asyncio
+async def test_update_publish_admin_bypasses_gate():
+    """门控开启时：admin 拨 is_published 直接生效；普通 actor 转提审保持未发布。"""
+    skill_id = await _make_skill()
+    user_id = await _real_user_id()
+    await _reset_gate(True)
+    try:
+        session = _session()
+        await skill_service.update_skill(
+            session, skill_id, actor_id=user_id, actor_is_admin=True, is_published=True
+        )
+        await session.close()
+        async with _session() as s:
+            skill = await s.get(Skill, skill_id)
+            assert skill.is_published is True
+
+        session = _session()
+        await skill_service.update_skill(
+            session, skill_id, actor_id=user_id, actor_is_admin=True, is_published=False
+        )
+        await session.close()
+        session = _session()
+        await skill_service.update_skill(
+            session, skill_id, actor_id=user_id, is_published=True
+        )
+        await session.close()
+        async with _session() as s:
+            skill = await s.get(Skill, skill_id)
+            assert skill.is_published is False
+            review = await s.execute(
+                select(PublishReview).where(
+                    PublishReview.entity_type == "skill",
+                    PublishReview.entity_id == skill_id,
+                )
+            )
+            assert review.scalar_one().status == "pending"
+    finally:
+        await _reset_gate(False)
+        await _cleanup_skill(skill_id)

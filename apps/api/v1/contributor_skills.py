@@ -86,7 +86,7 @@ async def create_my_skill(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission_compat("skill:contribute")),
 ):
-    """上传即发布申请：自动激活 v1 并提交发布审核。
+    """上传自动激活 v1；发布态由门控决定（关=直接发布，开=自动提审）。
 
     visibility_type 不传按创建者部门默认（无部门 all）；web 表单显式传
     all/department；程序化调用方同理（简化默认值，接口解耦）。
@@ -123,7 +123,12 @@ async def create_my_skill(
         raise HTTPException(status_code=409, detail=str(e))
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"code": 200, "message": "Skill 已上传并提交发布审核", "data": data}
+    message = (
+        "Skill 已上传并发布"
+        if data.get("is_published")
+        else "Skill 已上传并提交发布审核"
+    )
+    return {"code": 200, "message": message, "data": data}
 
 
 @router.put("/{skill_id}", summary="更新我的 Skill 草稿")

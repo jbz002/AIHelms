@@ -126,7 +126,14 @@ async def test_require_owned_owner_passes_non_owner_404():
 
 
 @pytest.mark.asyncio
-async def test_create_defaults_draft_no_approval_sets_created_by():
+async def test_create_gate_on_defaults_draft_no_approval_sets_created_by():
+    """门控开：上传默认草稿（待审）+ 免审批领用 + 归属创建者。"""
+    from models.db import PublishSettings
+
+    async with _session() as s:
+        settings = await s.get(PublishSettings, 1)
+        settings.publish_review_enabled = True
+        await s.commit()
     owner, _ = await _two_user_ids()
     created = await _create_via_router(owner)
     skill_id = int(created["id"])
@@ -136,6 +143,10 @@ async def test_create_defaults_draft_no_approval_sets_created_by():
         assert created["created_by"] == owner
     finally:
         await _cleanup_skill(skill_id)
+        async with _session() as s:
+            settings = await s.get(PublishSettings, 1)
+            settings.publish_review_enabled = False
+            await s.commit()
 
 
 @pytest.mark.asyncio

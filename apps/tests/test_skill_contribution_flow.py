@@ -1,7 +1,7 @@
 """贡献者上传编排流程测试（需求 3/4：上传即激活提审、部门可见、下载收口）。
 
 走真实 DB + 直接调 router/service（依赖 dev 中间件运行）。覆盖：
-- 上传自动激活 v1（is_active + lifecycle published）并自动提审（pending）
+- 上传自动激活 v1（is_active + lifecycle published）；发布态由门控决定（开=提审 pending，关=直接发布）
 - 脏包（协议不过）上传 400，不落库
 - 版本上传自动激活新版（激活跟随最新版）
 - owner 设激活端点：可切换；非 owner 404
@@ -128,14 +128,27 @@ async def _cleanup_skill(skill_id: int) -> None:
                 pass
 
 
+async def _reset_gate(enabled: bool) -> None:
+    from models.db import PublishSettings
+
+    async with _session() as s:
+        settings = await s.get(PublishSettings, 1)
+        assert settings is not None, "publish_settings 单例行缺失"
+        settings.publish_review_enabled = enabled
+        await s.commit()
+
+
 @pytest.mark.asyncio
-async def test_upload_auto_activates_and_submits_review():
+async def test_upload_gate_on_auto_activates_and_submits_review():
+    """门控开：上传自动激活 v1，保持未发布，自动提审（pending）。"""
+    await _reset_gate(True)
     owner, _ = await _two_user_ids()
     created = await _create_via_router(owner)
     skill_id = int(created["id"])
     try:
         async with _session() as s:
             skill = await s.get(Skill, skill_id)
+            assert skill.is_published is False
             version = await s.get(SkillVersion, skill.current_version_id)
             assert version.is_active is True
             assert version.lifecycle_status == "published"
@@ -146,6 +159,29 @@ async def test_upload_auto_activates_and_submits_review():
                 )
             )
             assert review.scalar_one().status == "pending"
+    finally:
+        await _cleanup_skill(skill_id)
+        await _reset_gate(False)
+
+
+@pytest.mark.asyncio
+async def test_upload_gate_off_publishes_directly():
+    """门控关：上传即直接发布，无审核单。"""
+    await _reset_gate(False)
+    owner, _ = await _two_user_ids()
+    created = await _create_via_router(owner)
+    skill_id = int(created["id"])
+    try:
+        async with _session() as s:
+            skill = await s.get(Skill, skill_id)
+            assert skill.is_published is True
+            review = await s.execute(
+                select(PublishReview).where(
+                    PublishReview.entity_type == "skill",
+                    PublishReview.entity_id == skill_id,
+                )
+            )
+            assert review.scalar_one_or_none() is None
     finally:
         await _cleanup_skill(skill_id)
 

@@ -587,6 +587,7 @@ async def update_skill(
             session,
             skill_id,
             actor_id=current_user["id"],
+            actor_is_admin=bool(current_user.get("is_admin")),
             zip_content=zip_content,
             zip_filename=zip_filename,
             **kwargs,

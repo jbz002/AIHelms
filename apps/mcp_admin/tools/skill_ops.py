@@ -95,7 +95,7 @@ async def admin_update_skill(params: UpdateSkillInput) -> str:
     async with async_session() as session:
         try:
             data = await skill_service.update_skill(
-                session, params.skill_id, actor, **kwargs
+                session, params.skill_id, actor, actor_is_admin=True, **kwargs
             )
         except (NotFoundError, ConflictError, ValidationError) as e:
             return error_text(e)
