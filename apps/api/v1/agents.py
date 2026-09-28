@@ -23,6 +23,8 @@ class CreateAgentRequest(BaseModel):
     chat_url: str = Field("", max_length=500)
     tags: list[str] = Field(default_factory=list)
     is_published: bool = False
+    visibility_type: str = Field("all", pattern=r"^(all|department)$")
+    visible_department_id: int | None = Field(None, ge=1)
     requires_approval: bool = False
     status: str = Field("online", pattern=r"^(online|offline|loading)$")
 
@@ -42,6 +44,8 @@ class UpdateAgentRequest(BaseModel):
     tags: list[str] | None = None
     is_active: bool | None = None
     is_published: bool | None = None
+    visibility_type: str | None = Field(None, pattern=r"^(all|department)$")
+    visible_department_id: int | None = Field(None, ge=0)  # 0 = 清空部门归属
     requires_approval: bool | None = None
     status: str | None = Field(None, pattern=r"^(online|offline|loading)$")
 
@@ -157,11 +161,26 @@ async def list_published_agents(
     category: str | None = None,
     platform: str | None = None,
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(get_current_user),
+    current_user: dict = Depends(get_current_user),
 ):
-    """List published agents visible to all authenticated users."""
+    """List published agents visible to all authenticated users. department 仅本部门成员。"""
+    from repositories import department_repo
+
+    viewer_department_ids = None
+    if not current_user["is_admin"]:
+        viewer_department_ids = await department_repo.find_user_department_ids(
+            session, current_user["id"]
+        )
     data = await agent_service.list_agents(
-        session, page, page_size, category, platform, is_published=True
+        session,
+        page,
+        page_size,
+        category,
+        platform,
+        is_published=True,
+        viewer_id=current_user["id"],
+        is_admin=current_user["is_admin"],
+        viewer_department_ids=viewer_department_ids,
     )
     return {"code": 200, "message": "ok", "data": data}
 
@@ -215,6 +234,8 @@ async def create_agent(
         chat_url=req.chat_url,
         tags=req.tags,
         is_published=req.is_published,
+        visibility_type=req.visibility_type,
+        visible_department_id=req.visible_department_id,
         requires_approval=req.requires_approval,
         status=req.status,
         created_by=current_user["id"],

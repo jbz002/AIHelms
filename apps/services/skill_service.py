@@ -173,6 +173,9 @@ async def create_skill(
 ) -> dict:
     if not zip_content and not source_url:
         raise ValidationError("请上传 zip 包或提供仓库 URL")
+    visibility_service.validate_write_visibility(visibility_type)
+    if visibility_type == visibility_service.DEPARTMENT and not visible_department_id:
+        raise ValidationError("可见性为按部门时必须选择部门")
 
     existing = await skill_repo.find_by_name(session, name)
     if existing:
@@ -334,6 +337,8 @@ async def update_skill(
     was_published = skill.is_published
     # visible_department_id 语义特殊（None=不变，0=清空），不能走通用 setattr 循环
     visible_department_id = kwargs.pop("visible_department_id", None)
+    if "visibility_type" in kwargs:
+        visibility_service.validate_write_visibility(kwargs["visibility_type"])
     if "icon_url" in kwargs:
         kwargs["icon_url"] = normalize_hosted_icon_path(kwargs["icon_url"])
     elif "icon" in kwargs:

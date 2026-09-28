@@ -66,6 +66,7 @@ async def find_all_servers(
     status: str | None = None,
     viewer_id: int | None = None,
     is_admin: bool = False,
+    viewer_department_ids: list[int] | None = None,
 ) -> list[McpServer]:
     stmt = select(McpServer).order_by(McpServer.id)
     if category:
@@ -76,7 +77,9 @@ async def find_all_servers(
         stmt = stmt.where(McpServer.is_published == is_published)
     if status:
         stmt = stmt.where(McpServer.status == status)
-    vis_clause = list_visibility_clause(McpServer, viewer_id, is_admin)
+    vis_clause = list_visibility_clause(
+        McpServer, viewer_id, is_admin, viewer_department_ids
+    )
     if vis_clause is not None:
         stmt = stmt.where(vis_clause)
     offset = (page - 1) * page_size
@@ -93,6 +96,7 @@ async def count_servers(
     status: str | None = None,
     viewer_id: int | None = None,
     is_admin: bool = False,
+    viewer_department_ids: list[int] | None = None,
 ) -> int:
     stmt = select(func.count(McpServer.id))
     if category:
@@ -103,7 +107,9 @@ async def count_servers(
         stmt = stmt.where(McpServer.is_published == is_published)
     if status:
         stmt = stmt.where(McpServer.status == status)
-    vis_clause = list_visibility_clause(McpServer, viewer_id, is_admin)
+    vis_clause = list_visibility_clause(
+        McpServer, viewer_id, is_admin, viewer_department_ids
+    )
     if vis_clause is not None:
         stmt = stmt.where(vis_clause)
     result = await session.execute(stmt)

@@ -28,6 +28,19 @@ UNLISTED = "unlisted"
 VISIBILITY_TYPES: tuple[str, ...] = (ALL, SELECTED, DEPARTMENT, PRIVATE, UNLISTED)
 # 进市场列表的可见性（unlisted / private 不进列表；department 仅本部门成员可见）
 LIST_VISIBLE_TYPES: tuple[str, ...] = (ALL, SELECTED, DEPARTMENT)
+# 写入端收敛两选（2026-09-28 决策：private/unlisted 在本生态无消费路径，selected 遗留半实现；
+# 读规则暂留五型兼容存量与防直写库脏值，写入仅接受 all/department）
+WRITE_VISIBILITY_TYPES: tuple[str, ...] = (ALL, DEPARTMENT)
+
+
+def validate_write_visibility(value: str) -> None:
+    """写入端可见性校验：仅允许 公开/按部门。非法值抛 ValidationError。"""
+    from exceptions import ValidationError
+
+    if value not in WRITE_VISIBILITY_TYPES:
+        raise ValidationError(
+            f"可见性仅支持 {'/'.join(WRITE_VISIBILITY_TYPES)}：{value}"
+        )
 
 
 def list_visibility_clause(

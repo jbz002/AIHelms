@@ -1,32 +1,28 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import type { FullDepartmentItem } from '@aihelms/shared'
 
-// Skill / MCP 发布设置共享弹窗：三个字段 is_published / visibility_type / requires_approval。
-// 与模型发布设置同款样式（开关 + 卡片）。可见性基础三选 all/private/unlisted；
-// Skill 传 supportDepartment 时额外提供 department（按部门）+ 部门选择器。
+// Skill / MCP 发布设置共享弹窗：is_published / visibility_type / requires_approval。
+// 可见性收敛两选（2026-09-28 决策）：公开 / 按部门 + 部门选择器。
 interface Props {
   visible: boolean
   isPublished: boolean
   requiresApproval: boolean
   visibilityType: string
+  departments: FullDepartmentItem[]
+  visibleDepartmentId?: number | null
   loading?: boolean
   title?: string
   hint?: string
   errorMessage?: string
-  supportDepartment?: boolean
-  departments?: FullDepartmentItem[]
-  visibleDepartmentId?: number | null
 }
 
 const props = withDefaults(defineProps<Props>(), {
+  visibleDepartmentId: null,
   loading: false,
   title: '发布设置',
   hint: '设置资源在用户端的可见性与领用方式',
   errorMessage: '',
-  supportDepartment: false,
-  departments: () => [],
-  visibleDepartmentId: null,
 })
 
 const emit = defineEmits<{
@@ -36,7 +32,7 @@ const emit = defineEmits<{
       is_published: boolean
       requires_approval: boolean
       visibility_type: string
-      visible_department_id?: number
+      visible_department_id: number
     },
   ]
 }>()
@@ -61,24 +57,13 @@ watch(
   },
 )
 
-const baseVisibilityOptions: { value: string; label: string; desc: string }[] = [
-  { value: 'all', label: '公开', desc: '进入市场列表' },
-  { value: 'private', label: '仅创建者', desc: '私有，仅创建者和管理员可见' },
-  { value: 'unlisted', label: '不列出', desc: '不进市场，持有直链的登录用户可访问' },
+const visibilityOptions: { value: string; label: string; desc: string }[] = [
+  { value: 'all', label: '公开', desc: '进入市场列表，全员可用' },
+  { value: 'department', label: '按部门', desc: '仅所选部门的成员可见' },
 ]
 
-const visibilityOptions = computed(() => {
-  if (!props.supportDepartment) return baseVisibilityOptions
-  return [
-    baseVisibilityOptions[0],
-    { value: 'department', label: '按部门', desc: '仅所选部门的成员可见' },
-    baseVisibilityOptions[1],
-    baseVisibilityOptions[2],
-  ]
-})
-
 function handleSave(): void {
-  if (props.supportDepartment && localVisibility.value === 'department') {
+  if (localVisibility.value === 'department') {
     if (!localDepartmentId.value) {
       departmentError.value = '请选择部门'
       return
@@ -95,9 +80,9 @@ function handleSave(): void {
   emit('save', {
     is_published: localPublished.value,
     requires_approval: localPublished.value ? localApproval.value : false,
-    visibility_type: localVisibility.value,
+    visibility_type: 'all',
     // 切离按部门时清空部门归属，避免孤儿部门 id
-    ...(props.supportDepartment ? { visible_department_id: 0 } : {}),
+    visible_department_id: 0,
   })
 }
 </script>
@@ -144,7 +129,7 @@ function handleSave(): void {
           </label>
         </div>
         <!-- 部门选择器（仅按部门可见时） -->
-        <div v-if="supportDepartment && localVisibility === 'department'" class="mt-2">
+        <div v-if="localVisibility === 'department'" class="mt-2">
           <select
             v-model="localDepartmentId"
             class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-purple-400 focus:outline-none"

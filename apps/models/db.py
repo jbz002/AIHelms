@@ -568,6 +568,11 @@ class McpServer(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     visibility_type: Mapped[str] = mapped_column(String(20), default="all")
+    visible_department_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("aihelms.departments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(20), default="unknown")
     call_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -1161,6 +1166,12 @@ class Agent(Base):
     tags: Mapped[list] = mapped_column(JSONB, default=list)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
+    visibility_type: Mapped[str] = mapped_column(String(20), default="all")
+    visible_department_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("aihelms.departments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[str] = mapped_column(String(20), default="online")
     user_count: Mapped[int] = mapped_column(Integer, default=0)

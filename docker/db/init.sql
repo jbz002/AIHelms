@@ -500,6 +500,7 @@ CREATE TABLE IF NOT EXISTS aihelms.mcp_servers (
     is_active BOOLEAN DEFAULT true,
     is_published BOOLEAN DEFAULT false,
     visibility_type VARCHAR(20) DEFAULT 'all',
+    visible_department_id BIGINT REFERENCES aihelms.departments(id) ON DELETE SET NULL,
     requires_approval BOOLEAN DEFAULT false,
     status VARCHAR(20) DEFAULT 'unknown',
     call_count INTEGER DEFAULT 0,
@@ -1021,6 +1022,8 @@ CREATE TABLE IF NOT EXISTS aihelms.agents (
     tags JSONB DEFAULT '[]',
     is_active BOOLEAN DEFAULT true,
     is_published BOOLEAN DEFAULT false,
+    visibility_type VARCHAR(20) DEFAULT 'all',
+    visible_department_id BIGINT REFERENCES aihelms.departments(id) ON DELETE SET NULL,
     requires_approval BOOLEAN DEFAULT false,
     status VARCHAR(20) DEFAULT 'online',
     user_count INTEGER DEFAULT 0,
@@ -1036,6 +1039,8 @@ CREATE INDEX IF NOT EXISTS idx_agents_published ON aihelms.agents(is_published);
 CREATE INDEX IF NOT EXISTS idx_agents_business_scenario ON aihelms.agents(business_scenario_id);
 CREATE INDEX IF NOT EXISTS idx_agents_department ON aihelms.agents(department_id);
 CREATE INDEX IF NOT EXISTS idx_agents_created_by ON aihelms.agents(created_by);
+CREATE INDEX IF NOT EXISTS idx_agents_visibility ON aihelms.agents(visibility_type);
+CREATE INDEX IF NOT EXISTS idx_agents_visible_department ON aihelms.agents(visible_department_id);
 
 -- Agent 使用日志
 CREATE TABLE IF NOT EXISTS aihelms.agent_usage_logs (

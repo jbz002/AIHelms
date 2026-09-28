@@ -48,6 +48,7 @@ class CreateMcpServerInput(BaseModel):
     icon_url: str = ""
     is_published: bool = False
     visibility_type: str = "all"
+    visible_department_id: int | None = Field(None, ge=1)
     requires_approval: bool = False
 
 
@@ -65,6 +66,7 @@ class UpdateMcpServerInput(BaseModel):
     instructions: str | None = None
     is_published: bool | None = None
     visibility_type: str | None = None
+    visible_department_id: int | None = Field(None, ge=0)
     requires_approval: bool | None = None
 
 
@@ -134,6 +136,7 @@ async def admin_create_mcp_server(params: CreateMcpServerInput) -> str:
                 icon_url=params.icon_url,
                 is_published=params.is_published,
                 visibility_type=params.visibility_type,
+                visible_department_id=params.visible_department_id,
                 requires_approval=params.requires_approval,
                 created_by=created_by,
             )
@@ -151,7 +154,7 @@ async def admin_update_mcp_server(params: UpdateMcpServerInput) -> str:
     async with async_session() as session:
         try:
             data = await mcp_service.update_server(
-                session, params.server_id, actor, **kwargs
+                session, params.server_id, actor, actor_is_admin=True, **kwargs
             )
         except (NotFoundError, ConflictError, ValidationError) as e:
             return error_text(e)

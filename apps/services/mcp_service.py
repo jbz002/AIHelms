@@ -4,14 +4,13 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.time_utils import fmt_local_time
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import McpServer, McpServerVersion, McpTool
 from repositories import mcp_repo, mcp_version_repo
-from services import litellm_client, versioning_service
+from services import litellm_client, versioning_service, visibility_service
 from services.icon_url import normalize_hosted_icon_path, resolve_icon_url
 from services.litellm_client import LiteLLMError
-
-from core.time_utils import fmt_local_time
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +33,17 @@ async def list_servers(
     status: str | None = None,
     viewer_id: int | None = None,
     is_admin: bool = False,
+    viewer_department_ids: list[int] | None = None,
 ) -> dict:
     total = await mcp_repo.count_servers(
-        session, category, is_active, is_published, status, viewer_id, is_admin
+        session,
+        category,
+        is_active,
+        is_published,
+        status,
+        viewer_id,
+        is_admin,
+        viewer_department_ids,
     )
     items = await mcp_repo.find_all_servers(
         session,
@@ -48,6 +55,7 @@ async def list_servers(
         status,
         viewer_id,
         is_admin,
+        viewer_department_ids,
     )
     serialized = [_serialize_server(s) for s in items]
     return {
@@ -95,11 +103,16 @@ async def create_server(
     external_cost_per_call: float = 0,
     is_published: bool = False,
     visibility_type: str = "all",
+    visible_department_id: int | None = None,
     requires_approval: bool = False,
     created_by: int | None = None,
 ) -> dict:
     if transport not in ("sse", "http", "streamable_http", "streamableHttp"):
         raise ValidationError("transport 只支持 sse 或 streamableHttp")
+    visibility_service.validate_write_visibility(visibility_type)
+    await _validate_department_visibility(
+        session, visibility_type, visible_department_id
+    )
 
     if "-" in server_name:
         raise ValidationError(
@@ -157,6 +170,7 @@ async def create_server(
         external_cost_per_call=external_cost_per_call,
         is_published=effective_published,
         visibility_type=visibility_type,
+        visible_department_id=visible_department_id,
         requires_approval=requires_approval,
         created_by=created_by,
     )
@@ -209,10 +223,49 @@ async def create_server(
     return _serialize_server(server)
 
 
+async def _validate_department_visibility(
+    session: AsyncSession, visibility_type: str, visible_department_id: int | None
+) -> None:
+    """department 可见必须有部门且部门存在；all 清部门归属。"""
+    if visibility_type == visibility_service.DEPARTMENT:
+        if not visible_department_id:
+            raise ValidationError("可见性为按部门时必须选择部门")
+        from repositories import department_repo
+
+        dept = await department_repo.find_by_id(session, visible_department_id)
+        if not dept or not dept.is_active:
+            raise ValidationError("所选部门不存在或已停用")
+
+
+async def _sync_mcp_visibility(session: AsyncSession, server: McpServer) -> None:
+    """按可见性同步 MCP 到主 Key：all 广播全体；department 仅部门成员；其余移除。"""
+    from services import ai_key_service
+
+    if server.is_published and not server.requires_approval:
+        if server.visibility_type == visibility_service.DEPARTMENT:
+            if server.visible_department_id:
+                await ai_key_service.sync_public_resource_to_department_keys(
+                    session, "mcps", server.id, server.visible_department_id
+                )
+            else:
+                await ai_key_service.remove_public_resource_from_all_keys(
+                    session, "mcps", server.id
+                )
+        else:
+            await ai_key_service.sync_public_resource_to_all_keys(
+                session, "mcps", server.id
+            )
+    else:
+        await ai_key_service.remove_public_resource_from_all_keys(
+            session, "mcps", server.id
+        )
+
+
 async def update_server(
     session: AsyncSession,
     server_id: int,
     actor_id: int | None = None,
+    actor_is_admin: bool = False,
     **kwargs,
 ) -> dict:
     server = await mcp_repo.find_server_by_id(session, server_id)
@@ -255,14 +308,38 @@ async def update_server(
             )
 
     was_published = server.is_published
+    # visible_department_id 语义特殊（None=不变，0=清空），不能走通用 setattr 循环
+    visible_department_id = kwargs.pop("visible_department_id", None)
+    if "visibility_type" in kwargs:
+        visibility_service.validate_write_visibility(kwargs["visibility_type"])
     if "icon_url" in kwargs:
         kwargs["icon_url"] = normalize_hosted_icon_path(kwargs["icon_url"]) or ""
     for key, value in kwargs.items():
         if hasattr(server, key) and value is not None:
             setattr(server, key, value)
 
-    # 发布门控：False→True 变更且门控开启时，转提交申请，保持未发布
-    if not was_published and server.is_published and actor_id is not None:
+    if visible_department_id is not None:
+        if visible_department_id == 0:
+            server.visible_department_id = None
+        else:
+            from repositories import department_repo
+
+            dept = await department_repo.find_by_id(session, visible_department_id)
+            if not dept or not dept.is_active:
+                raise ValidationError("所选部门不存在或已停用")
+            server.visible_department_id = visible_department_id
+    await _validate_department_visibility(
+        session, server.visibility_type, server.visible_department_id
+    )
+
+    # 发布门控：False→True 变更且门控开启时，转提交申请，保持未发布。
+    # admin 豁免：管理员的发布动作直接生效（同 skill，9a6b523）
+    if (
+        not was_published
+        and server.is_published
+        and actor_id is not None
+        and not actor_is_admin
+    ):
         from services import publish_review_service, publish_settings_service
 
         if await publish_settings_service.is_gate_enabled(session):
@@ -271,19 +348,8 @@ async def update_server(
                 session, publish_review_service.ENTITY_MCP, server_id, actor_id
             )
 
-    # 发布且不需要审批时同步到所有主 Key，否则从主 Key 中移除
-    if server.is_published and not server.requires_approval:
-        from services import ai_key_service
-
-        await ai_key_service.sync_public_resource_to_all_keys(
-            session, "mcps", server.id
-        )
-    else:
-        from services import ai_key_service
-
-        await ai_key_service.remove_public_resource_from_all_keys(
-            session, "mcps", server.id
-        )
+    # 按可见性同步主 Key（all 广播 / department 部门成员 / 其余移除）
+    await _sync_mcp_visibility(session, server)
 
     await session.flush()
 
@@ -306,16 +372,7 @@ async def set_published(session: AsyncSession, server_id: int, value: bool) -> N
     if not server:
         raise NotFoundError("mcp_server", server_id)
     server.is_published = value
-    from services import ai_key_service
-
-    if value and not server.requires_approval:
-        await ai_key_service.sync_public_resource_to_all_keys(
-            session, "mcps", server.id
-        )
-    else:
-        await ai_key_service.remove_public_resource_from_all_keys(
-            session, "mcps", server.id
-        )
+    await _sync_mcp_visibility(session, server)
     await session.flush()
 
 
@@ -777,6 +834,7 @@ def _serialize_server(server: McpServer) -> dict:
         "is_active": server.is_active,
         "is_published": server.is_published,
         "visibility_type": server.visibility_type,
+        "visible_department_id": server.visible_department_id,
         "requires_approval": server.requires_approval,
         "status": server.status,
         "call_count": server.call_count or 0,

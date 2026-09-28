@@ -52,6 +52,8 @@ const form = ref({
   tags: '',
   status: 'online',
   is_published: false,
+  visibility_type: 'all' as 'all' | 'department',
+  visible_department_id: null as number | null,
   requires_approval: false,
 })
 
@@ -102,6 +104,8 @@ async function loadData(): Promise<void> {
         tags: (a.tags || []).join(', '),
         status: a.status,
         is_published: a.is_published,
+        visibility_type: (a.visibility_type as 'all' | 'department') || 'all',
+        visible_department_id: a.visible_department_id ?? null,
         requires_approval: a.requires_approval,
       }
     } else {
@@ -143,6 +147,10 @@ async function handleSave(): Promise<void> {
       tags,
       status: form.value.status,
       is_published: form.value.is_published,
+      visibility_type: form.value.visibility_type,
+      // 切离按部门时清空部门归属（0 = 清空）
+      visible_department_id:
+        form.value.visibility_type === 'department' ? form.value.visible_department_id : 0,
       requires_approval: form.value.requires_approval,
     }
     if (isNew.value) {
@@ -343,6 +351,27 @@ onMounted(loadData)
               class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
               placeholder="客服, 多轮对话"
             />
+          </div>
+          <div v-if="form.is_published" class="col-span-2">
+            <label class="mb-1 block text-sm font-medium text-slate-700">可见性</label>
+            <div class="flex items-center gap-4">
+              <label class="flex items-center gap-1 text-sm text-slate-700">
+                <input v-model="form.visibility_type" type="radio" value="all" class="h-4 w-4 text-purple-600" />
+                公开
+              </label>
+              <label class="flex items-center gap-1 text-sm text-slate-700">
+                <input v-model="form.visibility_type" type="radio" value="department" class="h-4 w-4 text-purple-600" />
+                按部门
+              </label>
+              <select
+                v-if="form.visibility_type === 'department'"
+                v-model="form.visible_department_id"
+                class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm focus:border-purple-500 focus:outline-none"
+              >
+                <option :value="null" disabled>请选择部门</option>
+                <option v-for="d in flatDepts" :key="d.id" :value="d.id">{{ '　'.repeat(d.depth) + d.name }}</option>
+              </select>
+            </div>
           </div>
           <div class="col-span-2 flex items-center gap-4">
             <label class="flex items-center gap-2 text-sm text-slate-700">

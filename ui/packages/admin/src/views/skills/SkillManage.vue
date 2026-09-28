@@ -71,7 +71,7 @@ async function handleSavePublish(payload: {
   is_published: boolean
   requires_approval: boolean
   visibility_type: string
-  visible_department_id?: number
+  visible_department_id: number
 }): Promise<void> {
   if (!selectedSkill.value) return
   publishLoading.value = true
@@ -534,7 +534,6 @@ onMounted(loadDepartments)
       :is-published="selectedSkill.is_published"
       :requires-approval="selectedSkill.requires_approval"
       :visibility-type="selectedSkill.visibility_type || 'all'"
-      :support-department="true"
       :departments="departments"
       :visible-department-id="selectedSkill.visible_department_id ?? null"
       :loading="publishLoading"

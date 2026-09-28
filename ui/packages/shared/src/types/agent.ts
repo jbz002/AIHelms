@@ -31,6 +31,8 @@ export interface Agent {
   tags: string[]
   is_active: boolean
   is_published: boolean
+  visibility_type: string
+  visible_department_id?: number | null
   requires_approval: boolean
   status: string
   user_count: number
@@ -61,6 +63,8 @@ export interface CreateAgentParams {
   chat_url?: string
   tags?: string[]
   is_published?: boolean
+  visibility_type?: string
+  visible_department_id?: number
   requires_approval?: boolean
   status?: string
 }
@@ -80,6 +84,8 @@ export interface UpdateAgentParams {
   tags?: string[]
   is_active?: boolean
   is_published?: boolean
+  visibility_type?: string
+  visible_department_id?: number
   requires_approval?: boolean
   status?: string
 }

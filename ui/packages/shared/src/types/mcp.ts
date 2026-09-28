@@ -40,6 +40,7 @@ export interface McpServer {
   is_active: boolean
   is_published: boolean
   visibility_type: string
+  visible_department_id?: number | null
   requires_approval: boolean
   status: string
   call_count: number
@@ -140,6 +141,7 @@ export interface CreateMcpServerParams {
   external_cost_per_call?: number
   is_published?: boolean
   visibility_type?: string
+  visible_department_id?: number
   requires_approval?: boolean
 }
 
@@ -170,6 +172,7 @@ export interface UpdateMcpServerParams {
   is_active?: boolean
   is_published?: boolean
   visibility_type?: string
+  visible_department_id?: number
   requires_approval?: boolean
 }
 

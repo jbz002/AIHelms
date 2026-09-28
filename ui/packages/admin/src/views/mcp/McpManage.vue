@@ -7,7 +7,9 @@ import {
   getMcpCategories,
   createMcpCategory,
   deleteMcpCategory,
+  getAllDepartments,
   updateMcpServer,
+  type FullDepartmentItem,
   type McpServer,
   type McpServerVersion,
   type McpCategory,
@@ -28,6 +30,17 @@ const servers = ref<McpServer[]>([])
 const categories = ref<McpCategory[]>([])
 const loading = ref(false)
 const selectedServer = ref<McpServer | null>(null)
+
+// 全量部门（后端读时先尽力同步 AI Hub），按部门可见的选择器用
+const departments = ref<FullDepartmentItem[]>([])
+
+async function loadDepartments(): Promise<void> {
+  try {
+    departments.value = await getAllDepartments()
+  } catch {
+    departments.value = [] // 部门列表加载失败不阻断页面，弹窗内会提示
+  }
+}
 const selectedServerVersion = ref<McpServerVersion | null>(null)
 const switcherRef = ref<InstanceType<typeof McpVersionSwitcher> | null>(null)
 const showForm = ref(false)
@@ -56,6 +69,7 @@ async function handleSavePublish(payload: {
   is_published: boolean
   requires_approval: boolean
   visibility_type: string
+  visible_department_id: number
 }): Promise<void> {
   if (!selectedServer.value) return
   publishLoading.value = true
@@ -232,6 +246,7 @@ const transportLabels: Record<string, string> = {
 }
 
 onMounted(loadData)
+onMounted(loadDepartments)
 </script>
 
 <template>
@@ -511,6 +526,8 @@ onMounted(loadData)
       :is-published="selectedServer.is_published"
       :requires-approval="selectedServer.requires_approval"
       :visibility-type="selectedServer.visibility_type || 'all'"
+      :departments="departments"
+      :visible-department-id="selectedServer.visible_department_id ?? null"
       :loading="publishLoading"
       :error-message="publishError"
       title="MCP Server 发布设置"

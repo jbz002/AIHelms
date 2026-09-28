@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.db import Agent, AgentCategory, AgentPlatform, AgentUsageLog
+from services.visibility_service import list_visibility_clause
 
 # ─── Agent ──────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,9 @@ async def find_all(
     platform: str | None = None,
     is_published: bool | None = None,
     is_active: bool | None = None,
+    viewer_id: int | None = None,
+    is_admin: bool = False,
+    viewer_department_ids: list[int] | None = None,
 ) -> list[Agent]:
     stmt = select(Agent).order_by(Agent.id.desc())
     if category:
@@ -44,6 +48,11 @@ async def find_all(
         stmt = stmt.where(Agent.is_published == is_published)
     if is_active is not None:
         stmt = stmt.where(Agent.is_active == is_active)
+    vis_clause = list_visibility_clause(
+        Agent, viewer_id, is_admin, viewer_department_ids
+    )
+    if vis_clause is not None:
+        stmt = stmt.where(vis_clause)
     offset = (page - 1) * page_size
     stmt = stmt.limit(page_size).offset(offset)
     result = await session.execute(stmt)
@@ -56,6 +65,9 @@ async def count_all(
     platform: str | None = None,
     is_published: bool | None = None,
     is_active: bool | None = None,
+    viewer_id: int | None = None,
+    is_admin: bool = False,
+    viewer_department_ids: list[int] | None = None,
 ) -> int:
     stmt = select(func.count(Agent.id))
     if category:
@@ -66,6 +78,11 @@ async def count_all(
         stmt = stmt.where(Agent.is_published == is_published)
     if is_active is not None:
         stmt = stmt.where(Agent.is_active == is_active)
+    vis_clause = list_visibility_clause(
+        Agent, viewer_id, is_admin, viewer_department_ids
+    )
+    if vis_clause is not None:
+        stmt = stmt.where(vis_clause)
     result = await session.execute(stmt)
     return result.scalar_one()
 

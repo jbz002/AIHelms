@@ -308,6 +308,7 @@ onMounted(loadData)
                 {{ selectedAgent.status }}
               </span>
               <span v-if="selectedAgent.is_published" class="rounded bg-green-50 px-1.5 py-0.5 text-[10px] text-green-600">已发布</span>
+              <span v-if="selectedAgent.is_published && selectedAgent.visibility_type === 'department'" class="rounded bg-purple-50 px-1.5 py-0.5 text-[10px] text-purple-600">按部门</span>
               <span v-if="selectedAgent.requires_approval" class="rounded bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-600">需审批</span>
             </div>
             <div class="flex shrink-0 gap-1.5">

@@ -48,7 +48,8 @@ class CreateServerRequest(BaseModel):
     internal_cost_per_call: float = 0
     external_cost_per_call: float = 0
     is_published: bool = False
-    visibility_type: str = Field("all", pattern=r"^(all|selected|private|unlisted)$")
+    visibility_type: str = Field("all", pattern=r"^(all|department)$")
+    visible_department_id: int | None = Field(None, ge=1)
     requires_approval: bool = False
 
 
@@ -80,9 +81,8 @@ class UpdateServerRequest(BaseModel):
     external_cost_per_call: float | None = None
     is_active: bool | None = None
     is_published: bool | None = None
-    visibility_type: str | None = Field(
-        None, pattern=r"^(all|selected|private|unlisted)$"
-    )
+    visibility_type: str | None = Field(None, pattern=r"^(all|department)$")
+    visible_department_id: int | None = Field(None, ge=0)  # 0 = 清空部门归属
     requires_approval: bool | None = None
 
 
@@ -133,7 +133,14 @@ async def list_published_servers(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """公开接口：已认证用户可查看已发布的 MCP Server 列表。"""
+    """公开接口：已认证用户可查看已发布的 MCP Server 列表。department 仅本部门成员。"""
+    from repositories import department_repo
+
+    viewer_department_ids = None
+    if not current_user["is_admin"]:
+        viewer_department_ids = await department_repo.find_user_department_ids(
+            session, current_user["id"]
+        )
     data = await mcp_service.list_servers(
         session,
         page,
@@ -144,6 +151,7 @@ async def list_published_servers(
         status=None,
         viewer_id=current_user["id"],
         is_admin=current_user["is_admin"],
+        viewer_department_ids=viewer_department_ids,
     )
     return {"code": 200, "message": "ok", "data": data}
 
@@ -184,16 +192,26 @@ async def get_server_market_detail(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    """直链详情：all/selected/unlisted 登录可读，private 仅创建者+管理员。"""
+    """直链详情：department 本部门可读，其余登录可读（写入端已收敛两选，读规则兼容存量）。"""
     try:
         data = await mcp_service.get_server(session, server_id)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="MCP Server 不存在")
+    if not current_user["is_admin"]:
+        from repositories import department_repo
+
+        viewer_department_ids = await department_repo.find_user_department_ids(
+            session, current_user["id"]
+        )
+    else:
+        viewer_department_ids = None
     if not can_access(
         current_user["id"],
         current_user["is_admin"],
         data.get("visibility_type", "all"),
         data.get("created_by"),
+        viewer_department_ids=viewer_department_ids,
+        visible_department_id=data.get("visible_department_id"),
     ):
         raise HTTPException(status_code=403, detail="无权访问该资源")
     return {"code": 200, "message": "ok", "data": data}
@@ -233,6 +251,7 @@ async def create_server(
             external_cost_per_call=req.external_cost_per_call,
             is_published=req.is_published,
             visibility_type=req.visibility_type,
+            visible_department_id=req.visible_department_id,
             requires_approval=req.requires_approval,
             created_by=current_user["id"],
         )
@@ -253,7 +272,11 @@ async def update_server(
     kwargs = req.model_dump(exclude_none=True)
     try:
         data = await mcp_service.update_server(
-            session, server_id, actor_id=current_user["id"], **kwargs
+            session,
+            server_id,
+            actor_id=current_user["id"],
+            actor_is_admin=bool(current_user.get("is_admin")),
+            **kwargs,
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="MCP Server 不存在")
