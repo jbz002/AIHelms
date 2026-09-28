@@ -2,17 +2,20 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.time_utils import fmt_local_time
 from exceptions import ConflictError, NotFoundError
 from models.db import Department
 from repositories import department_repo, user_repo
 from services import litellm_client
 
-from core.time_utils import fmt_local_time
-
 logger = logging.getLogger(__name__)
 
 
 async def get_department_tree(session: AsyncSession) -> list[dict]:
+    # 先尽力同步 AI Hub 全量部门（TTL 节流，失败降级本地），树由此完整
+    from services import aihub_department_service
+
+    await aihub_department_service.ensure_synced(session)
     departments = await department_repo.find_all_active(session)
     items = [_serialize_dept(d) for d in departments]
     return _build_tree(items)

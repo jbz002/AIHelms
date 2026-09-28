@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     )
     ai_hub_app_code: str = ""  # 应用管理里注册的 app_code（= aihelms）
     ai_hub_admin_role: str = "aihelms-admin"  # 拥有此 app_roles 标签 = AIHelms 管理员
+    # 服务级 API Key（ak- 前缀，AI Hub「服务级 API Key」页创建），调 /api/v1/common/*。
+    # 部门读取接口不限绑定 app_code，可与 ai-assistant 等其他子应用共用一把 key
+    ai_hub_app_key: str = ""
 
     # 成本计算
     usd_to_cny_rate: float = 7.0  # LiteLLM spend(美元) → 人民币汇率

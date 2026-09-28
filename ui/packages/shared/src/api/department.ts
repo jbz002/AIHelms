@@ -11,6 +11,23 @@ export function getDepartmentTree(): Promise<DeptTreeNode[]> {
   return request<DeptTreeNode[]>('/api/v1/departments/tree')
 }
 
+export interface FullDepartmentItem {
+  id: number
+  name: string
+  parent_id: number | null
+  sort_order: number
+}
+
+/** 全量部门扁平列表（后端先尽力同步 AI Hub 再返回本地全量），选择器用 */
+export function getAllDepartments(): Promise<FullDepartmentItem[]> {
+  return request<FullDepartmentItem[]>('/api/v1/departments/all')
+}
+
+/** 强制全量同步 AI Hub 部门到本地，返回统计 */
+export function syncAihubDepartments(): Promise<{ fetched: number; inserted: number; updated: number; linked: number }> {
+  return request('/api/v1/departments/sync-aihub', { method: 'POST' })
+}
+
 export function getDepartmentById(id: number): Promise<Department> {
   return request<Department>(`/api/v1/departments/${id}`)
 }

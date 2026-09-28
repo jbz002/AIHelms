@@ -4,11 +4,13 @@ import {
   createSkillCategory,
   deleteSkill,
   deleteSkillCategory,
+  getAllDepartments,
   getSkillCategories,
   getSkillDownloadUrl,
   getSkills,
   toast,
   updateSkill,
+  type FullDepartmentItem,
   type Skill,
   type SkillCategory,
   type SkillVersion,
@@ -56,6 +58,8 @@ const deleteCategoryTarget = ref<SkillCategory | null>(null)
 const showPublishDialog = ref(false)
 const publishLoading = ref(false)
 const publishError = ref('')
+// 全量部门（后端读时先尽力同步 AI Hub），按部门可见的选择器用
+const departments = ref<FullDepartmentItem[]>([])
 
 function openPublish(): void {
   if (!selectedSkill.value) return
@@ -67,6 +71,7 @@ async function handleSavePublish(payload: {
   is_published: boolean
   requires_approval: boolean
   visibility_type: string
+  visible_department_id?: number
 }): Promise<void> {
   if (!selectedSkill.value) return
   publishLoading.value = true
@@ -86,8 +91,24 @@ async function handleSavePublish(payload: {
 
 const visibilityLabels: Record<string, string> = {
   all: '公开',
+  department: '按部门',
   private: '仅创建者',
   unlisted: '不列出',
+}
+
+// 详情页按部门可见时展示所属部门名
+const visibleDepartmentName = computed(() => {
+  const id = selectedSkill.value?.visible_department_id
+  if (!id || selectedSkill.value?.visibility_type !== 'department') return ''
+  return departments.value.find((d) => d.id === id)?.name || ''
+})
+
+async function loadDepartments(): Promise<void> {
+  try {
+    departments.value = await getAllDepartments()
+  } catch {
+    departments.value = [] // 部门列表加载失败不阻断页面，弹窗内会提示
+  }
 }
 
 const categoriesWithCount = computed(() => {
@@ -249,6 +270,7 @@ async function confirmDeleteCategory(): Promise<void> {
 }
 
 onMounted(loadData)
+onMounted(loadDepartments)
 </script>
 
 <template>
@@ -419,6 +441,7 @@ onMounted(loadData)
                 <div>
                   <span class="text-slate-500">可见性：</span>
                   <span class="text-slate-700">{{ visibilityLabels[selectedSkill.visibility_type || 'all'] }}</span>
+                  <span v-if="visibleDepartmentName" class="ml-1 text-xs text-slate-400">（{{ visibleDepartmentName }}）</span>
                 </div>
                 <div>
                   <span class="text-slate-500">发布：</span>
@@ -511,6 +534,9 @@ onMounted(loadData)
       :is-published="selectedSkill.is_published"
       :requires-approval="selectedSkill.requires_approval"
       :visibility-type="selectedSkill.visibility_type || 'all'"
+      :support-department="true"
+      :departments="departments"
+      :visible-department-id="selectedSkill.visible_department_id ?? null"
       :loading="publishLoading"
       :error-message="publishError"
       title="Skill 发布设置"

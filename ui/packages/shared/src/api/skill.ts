@@ -47,6 +47,7 @@ export interface SkillFormFields {
   is_published?: boolean
   requires_approval?: boolean
   visibility_type?: string
+  visible_department_id?: number
   zip_file?: File | null
   source_url?: string
 }
@@ -88,6 +89,7 @@ export function updateSkill(id: number, fields: Partial<SkillFormFields>): Promi
   if (fields.is_published !== undefined) fd.append('is_published', String(fields.is_published))
   if (fields.requires_approval !== undefined) fd.append('requires_approval', String(fields.requires_approval))
   if (fields.visibility_type !== undefined) fd.append('visibility_type', fields.visibility_type)
+  if (fields.visible_department_id !== undefined) fd.append('visible_department_id', String(fields.visible_department_id))
   if (fields.zip_file) fd.append('zip_file', fields.zip_file)
   return request<Skill>(`/api/v1/skills/${id}`, { method: 'PUT', body: fd })
 }

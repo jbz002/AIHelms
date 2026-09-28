@@ -9,7 +9,7 @@ from models.department import (
     UpdateDepartmentManagersRequest,
     UpdateDepartmentRequest,
 )
-from services import department_service
+from services import aihub_department_service, department_service
 
 router = APIRouter(prefix="/departments", tags=["departments"])
 
@@ -21,6 +21,29 @@ async def get_department_tree(
 ):
     tree = await department_service.get_department_tree(session)
     return {"code": 200, "message": "ok", "data": tree}
+
+
+@router.get("/all")
+async def list_all_departments(
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("department:read")),
+):
+    """全量部门扁平列表（选择器用）：先尽力同步 AI Hub，再返回本地全量。"""
+    data = await aihub_department_service.list_full_departments(session)
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.post("/sync-aihub", summary="同步 AI Hub 全量部门")
+async def sync_aihub_departments(
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("department:update")),
+):
+    """强制全量同步 AI Hub 部门到本地（绕过 TTL 节流）。"""
+    try:
+        stats = await aihub_department_service.sync_departments(session)
+    except aihub_department_service.AIHubDepartmentError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"code": 200, "message": "部门同步完成", "data": stats}
 
 
 @router.get("/{dept_id}")

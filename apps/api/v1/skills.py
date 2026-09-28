@@ -539,6 +539,7 @@ async def update_skill(
     is_published: bool | None = Form(None),
     requires_approval: bool | None = Form(None),
     visibility_type: str | None = Form(None),
+    visible_department_id: int | None = Form(None, ge=0),
     zip_file: UploadFile | None = File(None),
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("skill:update")),
@@ -575,6 +576,9 @@ async def update_skill(
         kwargs["requires_approval"] = requires_approval
     if visibility_type is not None:
         kwargs["visibility_type"] = visibility_type
+    if visible_department_id is not None:
+        # 0 = 清空部门归属（切离按部门可见时避免孤儿 id），正数 = 设置
+        kwargs["visible_department_id"] = visible_department_id
 
     zip_content = None
     zip_filename = None

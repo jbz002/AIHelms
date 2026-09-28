@@ -332,6 +332,8 @@ async def update_skill(
         raise NotFoundError("skill", skill_id)
 
     was_published = skill.is_published
+    # visible_department_id 语义特殊（None=不变，0=清空），不能走通用 setattr 循环
+    visible_department_id = kwargs.pop("visible_department_id", None)
     if "icon_url" in kwargs:
         kwargs["icon_url"] = normalize_hosted_icon_path(kwargs["icon_url"])
     elif "icon" in kwargs:
@@ -339,6 +341,22 @@ async def update_skill(
     for key, value in kwargs.items():
         if hasattr(skill, key) and value is not None:
             setattr(skill, key, value)
+
+    if visible_department_id is not None:
+        from repositories import department_repo
+
+        if visible_department_id == 0:
+            skill.visible_department_id = None
+        else:
+            dept = await department_repo.find_by_id(session, visible_department_id)
+            if not dept or not dept.is_active:
+                raise ValidationError("所选部门不存在或已停用")
+            skill.visible_department_id = visible_department_id
+    if (
+        skill.visibility_type == visibility_service.DEPARTMENT
+        and not skill.visible_department_id
+    ):
+        raise ValidationError("可见性为按部门时必须选择部门")
 
     # 发布门控：False→True 变更且门控开启时，转提交申请，保持未发布。
     # admin 豁免：管理员的发布动作直接生效（否则管理员要自己批自己的审核单）
