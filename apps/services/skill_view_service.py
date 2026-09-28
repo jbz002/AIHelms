@@ -10,9 +10,9 @@ import logging
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from core.time_utils import fmt_local_time
 from exceptions import NotFoundError
 from repositories import skill_repo, skill_version_repo
-from core.time_utils import fmt_local_time
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,7 @@ async def get_skill_full(
         return {
             "id": skill.id,
             "name": skill.name,
+            "version": skill.version,
             "frontmatter": skill.frontmatter,
             "summary_text": skill.summary_text,
             "full_content": "",
@@ -95,6 +96,7 @@ async def get_skill_full(
     return {
         "id": skill.id,
         "name": skill.name,
+        "version": version.version,
         "frontmatter": version.frontmatter,
         "summary_text": version.summary_text,
         "full_content": version.full_content,

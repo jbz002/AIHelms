@@ -187,6 +187,67 @@ async def test_upload_gate_off_publishes_directly():
 
 
 @pytest.mark.asyncio
+async def test_upload_blank_author_backfills_creator_name():
+    """author 空（ai-assistant 等程序化上传）→ 回填创建者姓名（上传者联动）。"""
+    owner, _ = await _two_user_ids()
+    async with _session() as s:
+        creator = await s.get(User, owner)
+        expected = creator.display_name or creator.username
+    session = _session()
+    name = f"auth{uuid.uuid4().hex[:8]}"
+    data = await cs.create_my_skill(
+        name=name,
+        icon="📦",
+        icon_url=None,
+        description="",
+        category="general",
+        version="1.0.0",
+        tags="[]",
+        author="",
+        agent_install_prompt="",
+        usage_instructions="",
+        visibility_type="all",
+        source_url="",
+        zip_file=_fake_zip(name),
+        session=session,
+        current_user={
+            "id": owner,
+            "is_admin": False,
+            "permissions": ["skill:contribute"],
+        },
+    )
+    await session.close()
+    skill_id = int(data["data"]["id"])
+    try:
+        async with _session() as s:
+            skill = await s.get(Skill, skill_id)
+            assert skill.author == expected
+    finally:
+        await _cleanup_skill(skill_id)
+
+
+@pytest.mark.asyncio
+async def test_full_view_returns_version():
+    """full 视图带 version（下游 update-info 版本比对的取数源）。"""
+    owner, _ = await _two_user_ids()
+    created = await _create_via_router(owner)
+    skill_id = int(created["id"])
+    try:
+        session = _session()
+        data = await admin_skills.get_skill_full(
+            skill_id,
+            version_id=None,
+            session=session,
+            current_user={"id": owner, "is_admin": True, "permissions": []},
+        )
+        await session.close()
+        assert data["code"] == 200
+        assert data["data"]["version"] == "1.0.0"
+    finally:
+        await _cleanup_skill(skill_id)
+
+
+@pytest.mark.asyncio
 async def test_upload_explicit_visibility_all_respected():
     """web 表单显式传 all → 尊重调用方（默认 department 只在不传时生效）。"""
     owner, _ = await _two_user_ids()

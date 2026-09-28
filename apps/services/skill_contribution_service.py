@@ -82,6 +82,12 @@ async def create_contribution_and_submit(
     effective_visibility, department_id = await _resolve_visibility(
         session, visibility_type, created_by
     )
+    if not author:
+        # 上传者联动：调用方（ai-assistant 等）不传 author 时回填创建者姓名
+        from repositories import user_repo
+
+        creator = await user_repo.find_user_by_id(session, created_by)
+        author = (creator.display_name or creator.username) if creator else ""
     created = await skill_service.create_skill(
         session,
         name=name,
