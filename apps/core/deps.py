@@ -181,6 +181,26 @@ async def get_current_user_compat(
     return await _aihub_caller_identity(session, caller)
 
 
+def require_permission_compat(permission_code: str):
+    """require_permission 的跨应用兼容版：身份走 get_current_user_compat（方式六）。
+
+    供外部应用（如 ai-assistant upload_skill）持 AI Hub 用户凭证调用的贡献类
+    端点使用——user 态 introspect 定位本地用户后按其本地权限判权，语义与
+    require_permission 一致（admin 放行，否则查 permission_code）。
+    """
+
+    async def checker(
+        current_user: dict = Depends(get_current_user_compat),
+    ) -> dict:
+        if current_user["is_admin"]:
+            return current_user
+        if permission_code not in current_user["permissions"]:
+            raise HTTPException(status_code=403, detail="权限不足")
+        return current_user
+
+    return checker
+
+
 async def get_ai_key_identity(
     request: Request,
     token: str | None = Query(None),

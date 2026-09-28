@@ -1,7 +1,8 @@
 """贡献者 Skill router — 普通用户在 web 端贡献自己的 Skill。
 
 与 admin 的 skills.py 正交：
-- 守卫统一 require_permission("skill:contribute")（admin 由 is_admin 放行，无需此码）。
+- 守卫统一 require_permission_compat("skill:contribute")（admin 由 is_admin 放行，无需此码；
+  身份通道含 AI Hub introspect——ai-assistant upload_skill 持用户 AI Hub 凭证调用）。
 - 所有权强制：每个端点经 _require_owned 比对 Skill.created_by == 当前用户，404 非 403。
 - 上传编排（skill_contribution_service）：预检 → 落库（部门可见默认 + 免审批）→
   自动激活最新版 → 自动提交发布审核；多版本后 owner 可自行切换激活版本。
@@ -13,7 +14,7 @@ import json
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.deps import get_db, require_permission
+from core.deps import get_db, require_permission_compat
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import Skill
 from repositories import skill_repo
@@ -40,7 +41,7 @@ async def list_my_skills(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:contribute")),
+    current_user: dict = Depends(require_permission_compat("skill:contribute")),
 ):
     uid = current_user["id"]
     skills = await skill_repo.find_all_by_creator(session, uid, page, page_size)
@@ -61,7 +62,7 @@ async def list_my_skills(
 async def get_my_skill(
     skill_id: int,
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:contribute")),
+    current_user: dict = Depends(require_permission_compat("skill:contribute")),
 ):
     skill = await _require_owned(session, skill_id, current_user["id"])
     return {"code": 200, "message": "ok", "data": _serialize(skill)}
@@ -83,7 +84,7 @@ async def create_my_skill(
     source_url: str = Form(""),
     zip_file: UploadFile | None = File(None),
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:contribute")),
+    current_user: dict = Depends(require_permission_compat("skill:contribute")),
 ):
     """上传即发布申请：自动激活 v1 并提交发布审核。
 
@@ -139,7 +140,7 @@ async def update_my_skill(
     agent_install_prompt: str | None = Form(None),
     usage_instructions: str | None = Form(None),
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:contribute")),
+    current_user: dict = Depends(require_permission_compat("skill:contribute")),
 ):
     skill = await _require_owned(session, skill_id, current_user["id"])
     if skill.is_published:
@@ -190,7 +191,7 @@ async def list_my_skill_versions(
     skill_id: int,
     include_deprecated: bool = Query(False),
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:contribute")),
+    current_user: dict = Depends(require_permission_compat("skill:contribute")),
 ):
     await _require_owned(session, skill_id, current_user["id"])
     try:
@@ -208,7 +209,7 @@ async def create_my_skill_version(
     change_log: str = Form(""),
     zip_file: UploadFile | None = File(None),
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:contribute")),
+    current_user: dict = Depends(require_permission_compat("skill:contribute")),
 ):
     """上传新版本并自动激活（激活版本始终跟随最新版）。"""
     await _require_owned(session, skill_id, current_user["id"])
@@ -246,7 +247,7 @@ async def activate_my_skill_version(
     skill_id: int,
     version_id: int,
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:contribute")),
+    current_user: dict = Depends(require_permission_compat("skill:contribute")),
 ):
     """多版本共存时 owner 手动切换激活版本（市场可见与下载的唯一版本）。"""
     await _require_owned(session, skill_id, current_user["id"])
@@ -263,7 +264,7 @@ async def activate_my_skill_version(
 async def delete_my_skill(
     skill_id: int,
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:contribute")),
+    current_user: dict = Depends(require_permission_compat("skill:contribute")),
 ):
     skill = await _require_owned(session, skill_id, current_user["id"])
     if skill.is_published:
@@ -281,7 +282,7 @@ async def delete_my_skill(
 async def submit_my_skill_review(
     skill_id: int,
     session: AsyncSession = Depends(get_db),
-    current_user: dict = Depends(require_permission("skill:contribute")),
+    current_user: dict = Depends(require_permission_compat("skill:contribute")),
 ):
     """上传已自动提审；本端点保留给被驳回后修正重提、或存量草稿补提场景。"""
     skill = await _require_owned(session, skill_id, current_user["id"])

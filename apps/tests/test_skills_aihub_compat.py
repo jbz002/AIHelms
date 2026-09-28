@@ -4,6 +4,7 @@
 - introspect user 态：按 AI Hub user_id 定位/占位建档，identity 字段按本地用户派生
 - introspect 拒（401/valid=false）/ app 态 / 无 Authorization 的失败语义
 - skills.py 浏览器面五端点（published/market-detail/card/summary/full）接线断言
+- contributor_skills.py 九端点接线断言（ai-assistant upload_skill 通道，防回退纯本站鉴权）
 """
 
 import inspect
@@ -224,3 +225,39 @@ def test_admin_endpoints_keep_strict_dependency():
     from api.v1 import skills
 
     assert _dep_name(skills.list_categories, "_") != "get_current_user_compat"
+
+
+def _identity_dep_name(func, param: str) -> str | None:
+    """穿透一层 checker，取身份依赖名（require_permission_compat → compat checker → 依赖）。"""
+    outer = getattr(
+        inspect.signature(func).parameters[param].default, "dependency", None
+    )
+    if outer is None or "current_user" not in inspect.signature(outer).parameters:
+        return None
+    inner = getattr(
+        inspect.signature(outer).parameters["current_user"].default, "dependency", None
+    )
+    return getattr(inner, "__name__", None)
+
+
+def test_contributor_skill_endpoints_use_compat_dependency():
+    """contributor skills 九端点必须挂 require_permission_compat（身份走 introspect 通道）。
+
+    ai-assistant upload_skill 以用户 AI Hub JWT 调贡献端点；回退纯本站鉴权会 401。
+    """
+    from api.v1 import contributor_skills
+
+    for func in (
+        contributor_skills.list_my_skills,
+        contributor_skills.get_my_skill,
+        contributor_skills.create_my_skill,
+        contributor_skills.update_my_skill,
+        contributor_skills.list_my_skill_versions,
+        contributor_skills.create_my_skill_version,
+        contributor_skills.activate_my_skill_version,
+        contributor_skills.delete_my_skill,
+        contributor_skills.submit_my_skill_review,
+    ):
+        assert (
+            _identity_dep_name(func, "current_user") == "get_current_user_compat"
+        ), func.__name__
