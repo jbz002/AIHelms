@@ -26,6 +26,7 @@ export interface Skill {
   is_published: boolean
   requires_approval: boolean
   visibility_type: string
+  visible_department_id?: number | null
   install_count: number
   frontmatter: Record<string, unknown>
   summary_text: string
@@ -57,11 +58,8 @@ export interface Skill {
 
 export type SkillVersionLifecycle =
   | 'draft'
-  | 'scanning'
-  | 'pending_review'
   | 'published'
   | 'yanked'
-  | 'rejected'
   | 'deprecated'
 
 export interface ManifestFile {
@@ -134,7 +132,7 @@ export interface SkillLifecycleProjection {
   headline_version: SkillVersion | null
   published_version: SkillVersion | null
   owner_preview_version: SkillVersion | null
-  resolution_mode: 'none' | 'pending_review' | 'scan_failed' | 'yanked'
+  resolution_mode: 'none' | 'yanked'
   is_hidden: boolean
 }
 

@@ -17,12 +17,11 @@ from repositories import (
     skill_version_repo,
     storage_deletion_compensation_repo,
 )
-from services import skill_tag_service, versioning_service
+from services import skill_tag_service, versioning_service, visibility_service
 from services.icon_url import normalize_hosted_icon_path
 from services.skill_content_service import ParsedSkillContent
 from services.skill_lifecycle_service import (
     DRAFT,
-    PENDING_REVIEW,
     PUBLISHED,
     YANKED,
 )
@@ -76,6 +75,16 @@ async def _download_from_url(url: str) -> tuple[bytes, str]:
     return content, filename
 
 
+async def fetch_skill_zip_from_url(source_url: str) -> tuple[bytes, str]:
+    """仓库 URL → 安全翻译 → 校验 → 下载 zip，供创建/贡献编排复用。"""
+    from core.url_safety import validate_url
+    from core.url_translator import translate_repo_url
+
+    translated = translate_repo_url(source_url)
+    validate_url(translated.download_url, profile="default")
+    return await _download_from_url(translated.download_url)
+
+
 # ─── Skill CRUD ──────────────────────────────────────────────────────────────
 
 
@@ -87,6 +96,7 @@ async def list_skills(
     is_published: bool | None = None,
     viewer_id: int | None = None,
     is_admin: bool = False,
+    viewer_department_ids: list[int] | None = None,
 ) -> dict:
     total = await skill_repo.count_all(
         session,
@@ -94,6 +104,7 @@ async def list_skills(
         is_published=is_published,
         viewer_id=viewer_id,
         is_admin=is_admin,
+        viewer_department_ids=viewer_department_ids,
     )
     items = await skill_repo.find_all(
         session,
@@ -103,6 +114,7 @@ async def list_skills(
         is_published=is_published,
         viewer_id=viewer_id,
         is_admin=is_admin,
+        viewer_department_ids=viewer_department_ids,
     )
     latest_audit_map = await _latest_audit_map(session, items)
     serialized = [_serialize(s, latest_audit_map) for s in items]
@@ -153,6 +165,7 @@ async def create_skill(
     is_published: bool = False,
     requires_approval: bool = False,
     visibility_type: str = "all",
+    visible_department_id: int | None = None,
     zip_content: bytes | None = None,
     zip_filename: str = "",
     source_url: str | None = None,
@@ -165,13 +178,8 @@ async def create_skill(
     if existing:
         raise ConflictError(f"Skill 名称 '{name}' 已存在")
 
-    if source_url:
-        from core.url_safety import validate_url
-        from core.url_translator import translate_repo_url
-
-        translated = translate_repo_url(source_url)
-        validate_url(translated.download_url, profile="default")
-        zip_content, zip_filename = await _download_from_url(translated.download_url)
+    if source_url and not zip_content:
+        zip_content, zip_filename = await fetch_skill_zip_from_url(source_url)
 
     sid = str(uuid.uuid4())
     zip_path = ""
@@ -211,6 +219,7 @@ async def create_skill(
         is_published=effective_published,
         requires_approval=requires_approval,
         visibility_type=visibility_type,
+        visible_department_id=visible_department_id,
         created_by=created_by,
     )
     skill = await skill_repo.create(session, skill)
@@ -220,12 +229,7 @@ async def create_skill(
         await _prs.submit_review(session, _prs.ENTITY_SKILL, skill.id, created_by)
 
     # 满足公开列表可见条件时，自动广播同步到所有主 Key
-    if _is_list_visible_to_public(skill):
-        from services import ai_key_service
-
-        await ai_key_service.sync_public_resource_to_all_keys(
-            session, "skills", skill.id
-        )
+    await _sync_skill_visibility(session, skill)
 
     await session.commit()
     await session.refresh(skill)
@@ -260,24 +264,7 @@ async def create_skill(
     await session.commit()
     await session.refresh(skill)
     await skill_tag_service.refresh_latest_tag(session, skill.id)
-
-    # 新建 Skill 自动对 v1 发起 balanced 版本级安全审查
-    # 通过后版本 lifecycle: draft→scanning→pending_review（待激活），异步，失败不阻断创建
-    if created_by:
-        try:
-            from services import ai_policies_service
-
-            await ai_policies_service.create_skill_audit(
-                session,
-                skill.id,
-                {"id": created_by},
-                version_id=v1.id,
-                policy="balanced",
-            )
-        except Exception:
-            logger.exception("auto skill audit failed: skill_id=%s", skill.id)
-
-    # 审查内部 commit 会过期 skill，序列化前重新加载，避免懒加载触发 MissingGreenlet
+    # tag 刷新内部 commit 会过期 skill，序列化前重新加载，避免懒加载触发 MissingGreenlet
     await session.refresh(skill)
     return _serialize(skill)
 
@@ -287,16 +274,42 @@ def _is_list_visible_to_public(skill: Skill) -> bool:
 
     与 skill_repo.find_all 对非 admin 的过滤保持一致：
     is_published 且无需审批 且未治理下架 且可见性为 all/selected。
-    private/unlisted 不进列表，不广播到主 Key（避免用户端展示成 #id 孤儿）。
+    private/unlisted/department 不进全员列表，不广播到所有主 Key。
     """
-    from services import visibility_service
-
     return (
         skill.is_published
         and not skill.requires_approval
         and not skill.hidden
-        and skill.visibility_type in visibility_service.LIST_VISIBLE_TYPES
+        and skill.visibility_type in (visibility_service.ALL, visibility_service.SELECTED)
     )
+
+
+async def _sync_skill_visibility(session: AsyncSession, skill: Skill) -> None:
+    """按当前可见性同步 Skill 到主 Key 资源数组。
+
+    all/selected 广播全体主 Key；department 仅同步部门成员个人主 Key；
+    其余（private/unlisted/未发布/需审批/已下架）从所有 Key 移除。
+    """
+    from services import ai_key_service
+
+    if _is_list_visible_to_public(skill):
+        await ai_key_service.sync_public_resource_to_all_keys(
+            session, "skills", skill.id
+        )
+    elif (
+        skill.is_published
+        and not skill.requires_approval
+        and not skill.hidden
+        and skill.visibility_type == visibility_service.DEPARTMENT
+        and skill.visible_department_id
+    ):
+        await ai_key_service.sync_public_resource_to_department_keys(
+            session, "skills", skill.id, skill.visible_department_id
+        )
+    else:
+        await ai_key_service.remove_public_resource_from_all_keys(
+            session, "skills", skill.id
+        )
 
 
 async def update_skill(
@@ -309,7 +322,7 @@ async def update_skill(
 ) -> dict:
     """更新 Skill 元数据。
 
-    内容（zip）变更走 create_version + activate_version + 版本绑定安全审查，
+    内容（zip）变更走 create_version + activate_version，
     不在此处直接覆盖 active 内容，避免与版本模型冲突。zip_* 参数仅为兼容旧调用签名。
     """
     skill = await skill_repo.find_by_id(session, skill_id)
@@ -335,17 +348,8 @@ async def update_skill(
                 session, publish_review_service.ENTITY_SKILL, skill_id, actor_id
             )
 
-    # 满足公开列表可见条件才广播同步到所有主 Key，否则移除（覆盖下架/隐藏/可见性变更）
-    from services import ai_key_service
-
-    if _is_list_visible_to_public(skill):
-        await ai_key_service.sync_public_resource_to_all_keys(
-            session, "skills", skill.id
-        )
-    else:
-        await ai_key_service.remove_public_resource_from_all_keys(
-            session, "skills", skill.id
-        )
+    # 满足公开列表可见条件才广播同步到主 Key，否则移除（覆盖下架/隐藏/可见性变更）
+    await _sync_skill_visibility(session, skill)
 
     await session.commit()
     await session.refresh(skill)
@@ -358,16 +362,7 @@ async def set_published(session: AsyncSession, skill_id: int, value: bool) -> No
     if not skill:
         raise NotFoundError("skill", skill_id)
     skill.is_published = value
-    from services import ai_key_service
-
-    if _is_list_visible_to_public(skill):
-        await ai_key_service.sync_public_resource_to_all_keys(
-            session, "skills", skill.id
-        )
-    else:
-        await ai_key_service.remove_public_resource_from_all_keys(
-            session, "skills", skill.id
-        )
+    await _sync_skill_visibility(session, skill)
     await session.flush()
 
 
@@ -501,10 +496,12 @@ async def get_skill_zip(
     skill_id: int,
     require_published: bool = False,
     version_id: int | None = None,
+    allow_inactive_versions: bool = False,
 ) -> tuple[str, str, int]:
     """返回 (zip_path, zip_filename, zip_size)。同时增加下载计数。
 
-    指定 version_id 时返回该版本的 zip（含非激活版本），否则返回 Skill 本体激活 zip。
+    指定 version_id 时返回该版本的 zip，否则返回 Skill 本体激活 zip。
+    激活版本是市场唯一可下载版本：非 admin 请求非激活版本按 404 拒绝。
     """
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
@@ -517,6 +514,8 @@ async def get_skill_zip(
             session, version_id, skill_id
         )
         if not version:
+            raise NotFoundError("skill_version", version_id)
+        if not allow_inactive_versions and not version.is_active:
             raise NotFoundError("skill_version", version_id)
         zip_path = version.zip_path
         if not zip_path or not os.path.exists(zip_path):
@@ -574,9 +573,6 @@ async def get_install_info(
 
 
 # ─── Skill Versions ──────────────────────────────────────────────────────────
-
-# 激活硬门控：必须通过安全审查（passed / attention_required）才允许激活新版本
-_ACTIVATE_ALLOWED_DECISIONS = ("passed", "attention_required")
 
 
 async def list_versions(
@@ -683,19 +679,11 @@ async def activate_version(
         latest_audit_map = await _latest_audit_map(session, [skill])
         return _serialize(skill, latest_audit_map)
 
-    # 状态守卫：draft / pending_review / published 可激活。
+    # 状态守卫：draft / published 可激活。
     # published 含历史已发布版本（is_active=False），允许回切为当前激活；
-    # scanning / yanked / rejected / deprecated 不可激活。
-    if version.lifecycle_status not in (DRAFT, PENDING_REVIEW, PUBLISHED):
+    # yanked / deprecated 不可激活。
+    if version.lifecycle_status not in (DRAFT, PUBLISHED):
         raise ValidationError(f"版本当前状态为 {version.lifecycle_status}，不可激活")
-
-    # 硬门控：必须通过安全审查（passed / attention_required）才可激活
-    security_ok = (
-        version.security_status == "completed"
-        and version.security_decision in _ACTIVATE_ALLOWED_DECISIONS
-    )
-    if not security_ok:
-        raise ValidationError("新版本未通过安全审查，不可激活")
 
     # 协议门控：SKILL.md 协议校验未通过不可激活（草稿容错，仅在激活时阻断）
     if not version.protocol_valid:
@@ -707,6 +695,10 @@ async def activate_version(
         raise ValidationError(
             f"版本协议校验未通过，不可激活：{detail or '存在协议合规错误'}"
         )
+
+    # 激活即发布：draft → published（安全审查退出审批后，激活是版本唯一发布动作）
+    if version.lifecycle_status == DRAFT:
+        version.lifecycle_status = PUBLISHED
 
     await versioning_service.activate_version(
         session,
@@ -795,7 +787,7 @@ async def restore_version(
     - 若已有 active 版本（多版本场景）→ published+inactive 候选，不抢夺当前激活。
 
     复用 versioning_service.activate_version 做指针翻转 + 快照，与 activate 一致；
-    版本撤回前已通过门控，撤回/恢复不改动 security/protocol 状态，故不重跑门控。
+    版本撤回前已是合法激活态，撤回/恢复不改动 protocol 状态，故不重跑门控。
     """
     skill = await skill_repo.find_by_id(session, skill_id)
     if not skill:
@@ -844,16 +836,7 @@ async def set_hidden(
     skill.hidden_by = actor_id if hidden else None
     # 治理下架/恢复需同步主 Key：下架后不进 published 列表，从所有主 Key 移除；
     # 恢复且满足公开可见条件时重新广播同步
-    from services import ai_key_service
-
-    if _is_list_visible_to_public(skill):
-        await ai_key_service.sync_public_resource_to_all_keys(
-            session, "skills", skill.id
-        )
-    else:
-        await ai_key_service.remove_public_resource_from_all_keys(
-            session, "skills", skill.id
-        )
+    await _sync_skill_visibility(session, skill)
     await session.commit()
     await session.refresh(skill)
     latest_audit_map = await _latest_audit_map(session, [skill])

@@ -245,3 +245,28 @@ def validate_skill_protocol(parsed: ParsedSkillContent) -> ProtocolValidationRes
         warnings=warnings,
         manifest=manifest,
     )
+
+
+def validate_skill_package_or_raise(zip_bytes: bytes, context_label: str) -> None:
+    """上传预检（贡献链路）：物理安全 + 协议双重校验，任一不过抛 ValidationError。
+
+    与草稿容错模型（errors 入库、激活时门控）相反，贡献上传走「拒绝优于留草稿」：
+    脏包不落库，保证后续自动激活必然成功。
+    """
+    from exceptions import ValidationError
+    from services import skill_content_service, skill_package_validator
+
+    physical = skill_package_validator.validate_skill_package(zip_bytes)
+    if not physical.valid:
+        lines = [f"Skill 包物理校验未通过（{context_label}）："]
+        for issue in physical.errors[:20]:
+            suffix = f"（文件：{issue.file_path}）" if issue.file_path else ""
+            lines.append(f"- {issue.message}{suffix}")
+        raise ValidationError("\n".join(lines))
+
+    parsed = skill_content_service.parse_skill_zip(zip_bytes)
+    result = validate_skill_protocol(parsed)
+    if result.valid:
+        return
+    detail = "；".join(i.message for i in result.errors)
+    raise ValidationError(f"Skill 协议校验未通过：{detail or '存在协议合规错误'}")

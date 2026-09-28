@@ -3,9 +3,9 @@
 覆盖：
 - repo find_all_by_creator / count_by_creator 仅返回创建者自己的 Skill
 - _require_owned：owner 通过，非 owner / 不存在 → 404
-- create 强制 is_published=False / requires_approval=True，并写 created_by
+- create 落库 is_published=False / requires_approval=False（免审批默认）并写 created_by
 - delete 拒绝已发布 Skill（409）
-- submit-review：owner 可提、非 owner 404、重复 409
+- submit-review：上传已自动提审（409）；非 owner 404
 - 路由契约：(method, path) 集合锁定
 """
 
@@ -63,7 +63,7 @@ async def _create_via_router(owner_id: int, name: str | None = None) -> dict:
             author="tester",
             agent_install_prompt="",
             usage_instructions="",
-            visibility_type="all",
+            visibility_type=None,
             source_url="",
             zip_file=_fake_zip(name),
             session=session,
@@ -126,13 +126,13 @@ async def test_require_owned_owner_passes_non_owner_404():
 
 
 @pytest.mark.asyncio
-async def test_create_forces_draft_and_sets_created_by():
+async def test_create_defaults_draft_no_approval_sets_created_by():
     owner, _ = await _two_user_ids()
     created = await _create_via_router(owner)
     skill_id = int(created["id"])
     try:
         assert created["is_published"] is False
-        assert created["requires_approval"] is True
+        assert created["requires_approval"] is False
         assert created["created_by"] == owner
     finally:
         await _cleanup_skill(skill_id)
@@ -166,40 +166,14 @@ async def test_delete_blocks_published_skill():
 
 
 @pytest.mark.asyncio
-async def test_submit_review_owner_non_owner_duplicate():
+async def test_submit_review_auto_submitted_non_owner_404():
+    """上传已自动提审：owner 重复提 → 409；非 owner 提 → 404。"""
     owner, other = await _two_user_ids()
     created = await _create_via_router(owner)
     skill_id = int(created["id"])
     try:
         session = _session()
-        review = await cs.submit_my_skill_review(
-            skill_id,
-            session=session,
-            current_user={
-                "id": owner,
-                "is_admin": False,
-                "permissions": ["skill:contribute"],
-            },
-        )
-        await session.close()
-        assert review["data"]["status"] == "pending"
-
-        session = _session()
         with pytest.raises(HTTPException) as exc:
-            await cs.submit_my_skill_review(
-                skill_id,
-                session=session,
-                current_user={
-                    "id": other,
-                    "is_admin": False,
-                    "permissions": ["skill:contribute"],
-                },
-            )
-        await session.close()
-        assert exc.value.status_code == 404
-
-        session = _session()
-        with pytest.raises(HTTPException) as exc2:
             await cs.submit_my_skill_review(
                 skill_id,
                 session=session,
@@ -210,7 +184,21 @@ async def test_submit_review_owner_non_owner_duplicate():
                 },
             )
         await session.close()
-        assert exc2.value.status_code == 409
+        assert exc.value.status_code == 409
+
+        session = _session()
+        with pytest.raises(HTTPException) as exc404:
+            await cs.submit_my_skill_review(
+                skill_id,
+                session=session,
+                current_user={
+                    "id": other,
+                    "is_admin": False,
+                    "permissions": ["skill:contribute"],
+                },
+            )
+        await session.close()
+        assert exc404.value.status_code == 404
     finally:
         await _cleanup_skill(skill_id)
 
@@ -223,6 +211,8 @@ def test_contributor_routes_contract():
         ("POST", "/contributor/skills"),
         ("PUT", "/contributor/skills/{skill_id}"),
         ("DELETE", "/contributor/skills/{skill_id}"),
+        ("GET", "/contributor/skills/{skill_id}/versions"),
         ("POST", "/contributor/skills/{skill_id}/versions"),
+        ("POST", "/contributor/skills/{skill_id}/versions/{version_id}/activate"),
         ("POST", "/contributor/skills/{skill_id}/submit-review"),
     }

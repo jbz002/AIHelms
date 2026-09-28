@@ -1080,12 +1080,6 @@ def _apply_security_success(target, audit: AiPoliciesAudit, score_result) -> Non
     target.security_severity = audit.severity
     target.security_risk_score = audit.risk_score
     target.latest_ai_policies_audit_id = audit.id
-    # S3 · 扫描通过回调：版本 scanning → pending_review；策略阻断（BLOCKED）→ rejected
-    if hasattr(target, "lifecycle_status"):
-        if getattr(audit, "verdict", "") == "BLOCKED":
-            target.lifecycle_status = "rejected"
-        elif target.lifecycle_status == "scanning":
-            target.lifecycle_status = "pending_review"
 
 
 def _apply_security_failure(target, audit: AiPoliciesAudit) -> None:
@@ -1093,9 +1087,6 @@ def _apply_security_failure(target, audit: AiPoliciesAudit) -> None:
     target.security_decision = "failed"
     target.security_severity = "unknown"
     target.latest_ai_policies_audit_id = audit.id
-    # S3 · 扫描失败回调：版本 scanning → draft（可重传重扫）
-    if hasattr(target, "lifecycle_status") and target.lifecycle_status == "scanning":
-        target.lifecycle_status = "draft"
 
 
 async def process_skill_audit(session: AsyncSession, audit_pk: int) -> None:
@@ -1114,9 +1105,6 @@ async def process_skill_audit(session: AsyncSession, audit_pk: int) -> None:
     audit.started_at = audit.started_at or _now()
     audit.error_message = ""
     target.security_status = "running"
-    # S3 · 扫描启动：版本由 draft → scanning（仅版本级审查，master 无 lifecycle_status）
-    if is_version and getattr(target, "lifecycle_status", None) == "draft":
-        target.lifecycle_status = "scanning"
     await _commit_progress(session, audit, 20, 1, "正在扫描 Skill")
     category_labels = await _category_labels(session)
 

@@ -31,6 +31,7 @@ const changeLog = ref('')
 const sourceMode = ref<'zip' | 'url'>('zip')
 const zipFile = ref<File | null>(null)
 const sourceUrl = ref('')
+const visibilityMode = ref<'department' | 'all'>('department')
 const saving = ref(false)
 
 const isVersion = computed(() => props.mode === 'version')
@@ -78,6 +79,7 @@ function resetCreate(): void {
   sourceMode.value = 'zip'
   zipFile.value = null
   sourceUrl.value = ''
+  visibilityMode.value = 'department'
 }
 
 async function loadCategories(): Promise<void> {
@@ -161,7 +163,7 @@ async function handleSubmit(): Promise<void> {
         version: version.value.trim(),
         tags: tagsText.value.split(',').map((s) => s.trim()).filter(Boolean),
         usage_instructions: usage.value,
-        visibility_type: 'all',
+        visibility_type: visibilityMode.value,
         zip_file: sourceMode.value === 'zip' ? zipFile.value : null,
         source_url: sourceMode.value === 'url' ? sourceUrl.value.trim() : '',
       })
@@ -223,6 +225,13 @@ async function handleSubmit(): Promise<void> {
           <div v-if="!isVersion">
             <label class="mb-1 block text-sm font-medium text-slate-700">{{ t('contributor.skill.field.usage') }}</label>
             <textarea v-model="usage" rows="2" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none" />
+          </div>
+          <div v-if="!isVersion">
+            <label class="mb-1 block text-sm font-medium text-slate-700">{{ t('contributor.skill.field.visibility') }}</label>
+            <div class="flex gap-4 text-sm">
+              <label class="flex items-center gap-1"><input v-model="visibilityMode" type="radio" value="department" /> {{ t('contributor.skill.visibility.department') }}</label>
+              <label class="flex items-center gap-1"><input v-model="visibilityMode" type="radio" value="all" /> {{ t('contributor.skill.visibility.all') }}</label>
+            </div>
           </div>
           <div v-if="isVersion || mode === 'create'">
             <label class="mb-1 block text-sm font-medium text-slate-700">{{ t('contributor.skill.field.source') }}</label>

@@ -3,8 +3,9 @@ import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast, getMyContributions, deleteContribution, submitContributionReview } from '@aihelms/shared'
 import type { Skill } from '@aihelms/shared'
-import { Pencil, Upload, Trash2, Send } from 'lucide-vue-next'
+import { Pencil, Upload, Trash2, Send, GitBranch } from 'lucide-vue-next'
 import WebSkillForm from './WebSkillForm.vue'
+import ContributionVersionDialog from './ContributionVersionDialog.vue'
 
 const emit = defineEmits<{ changed: [] }>()
 const { t } = useI18n()
@@ -14,6 +15,8 @@ const loading = ref(false)
 const formVisible = ref(false)
 const formMode = ref<'create' | 'edit' | 'version'>('create')
 const activeSkill = ref<Skill | null>(null)
+const versionSkill = ref<Skill | null>(null)
+const versionDialogVisible = ref(false)
 
 async function load(): Promise<void> {
   loading.value = true
@@ -45,9 +48,23 @@ function openVersion(skill: Skill): void {
   formVisible.value = true
 }
 
+function openVersionList(skill: Skill): void {
+  versionSkill.value = skill
+  versionDialogVisible.value = true
+}
+
+async function onVersionActivated(): Promise<void> {
+  await load()
+  emit('changed')
+}
+
 async function onSaved(): Promise<void> {
   formVisible.value = false
-  toast.success(t('contributor.msg.saved'))
+  toast.success(
+    formMode.value === 'create'
+      ? t('contributor.msg.uploaded')
+      : t('contributor.msg.saved'),
+  )
   await load()
   emit('changed')
 }
@@ -116,6 +133,7 @@ defineExpose({ refresh: load })
               <div class="flex items-center justify-end gap-1">
                 <button :title="t('contributor.action.edit')" class="rounded p-1.5 text-slate-500 hover:bg-slate-100" @click="openEdit(skill)"><Pencil class="h-4 w-4" /></button>
                 <button :title="t('contributor.action.version')" class="rounded p-1.5 text-slate-500 hover:bg-slate-100" @click="openVersion(skill)"><Upload class="h-4 w-4" /></button>
+                <button :title="t('contributor.action.versionList')" class="rounded p-1.5 text-slate-500 hover:bg-slate-100" @click="openVersionList(skill)"><GitBranch class="h-4 w-4" /></button>
                 <button v-if="!skill.is_published" :title="t('contributor.action.submitReview')" class="rounded p-1.5 text-purple-500 hover:bg-purple-50" @click="handleSubmitReview(skill)"><Send class="h-4 w-4" /></button>
                 <button v-if="!skill.is_published" :title="t('contributor.action.delete')" class="rounded p-1.5 text-red-500 hover:bg-red-50" @click="handleDelete(skill)"><Trash2 class="h-4 w-4" /></button>
               </div>
@@ -125,5 +143,6 @@ defineExpose({ refresh: load })
       </table>
     </div>
     <WebSkillForm :visible="formVisible" :mode="formMode" :skill="activeSkill" @close="formVisible = false" @saved="onSaved" />
+    <ContributionVersionDialog :visible="versionDialogVisible" :skill="versionSkill" @close="versionDialogVisible = false" @activated="onVersionActivated" />
   </div>
 </template>

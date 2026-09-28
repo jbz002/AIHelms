@@ -816,6 +816,42 @@ async def sync_public_resource_to_all_keys(
     return updated
 
 
+async def sync_public_resource_to_department_keys(
+    session: AsyncSession,
+    resource_type: str,
+    resource_id: str | int,
+    department_id: int,
+) -> int:
+    """将部门可见资源同步到部门成员的个人主 Key。返回更新的 Key 数量。
+
+    仅 append 目标资源数组（skills/agents 类平台资源不碰 LiteLLM），
+    移除仍走 remove_public_resource_from_all_keys（按引用清理，幂等）。
+    """
+    from repositories import department_repo
+
+    member_ids = await department_repo.find_user_ids_by_department(
+        session, department_id
+    )
+    if not member_ids:
+        return 0
+    keys = await ai_key_repo.find_personal_main_keys_for_model_sync(
+        session, user_ids=member_ids
+    )
+    updated = 0
+    for key in keys:
+        field = getattr(key, resource_type, None)
+        if field is None or resource_id in field:
+            continue
+        field.append(resource_id)
+        from sqlalchemy.orm.attributes import flag_modified
+
+        flag_modified(key, resource_type)
+        updated += 1
+    if updated:
+        await session.flush()
+    return updated
+
+
 async def remove_public_resource_from_all_keys(
     session: AsyncSession,
     resource_type: str,

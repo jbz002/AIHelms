@@ -60,7 +60,6 @@ const MAX_ZIP_SIZE = 100 * 1024 * 1024
 async function loadVersions(
   preserve = false,
   selectId: number | null = null,
-  withTags = true,
 ): Promise<void> {
   if (!props.skillId) return
   // 快照发起时的 skillId：切换 skill 后旧请求若晚于新请求完成，会 emit 旧 skill
@@ -68,10 +67,9 @@ async function loadVersions(
   const reqSkillId = props.skillId
   loading.value = true
   try {
-    // versions 与 tags 独立并行；withTags=false 用于轮询（tags 不随 security_status 变）
     const [data] = await Promise.all([
       getSkillVersions(reqSkillId, true),
-      withTags ? loadTags() : Promise.resolve(),
+      loadTags(),
     ])
     if (props.skillId !== reqSkillId) return
     versions.value = data
@@ -125,13 +123,10 @@ function tagsForVersion(v: SkillVersion): SkillTag[] {
   return tags.value.filter((t) => t.version_id === v.id)
 }
 
-// 激活前置：协议合规 + 安全审查通过/建议修改
+// 激活前置：协议合规
 function canActivate(v: SkillVersion): boolean {
   if (v.is_active || !v.protocol_valid) return false
-  return (
-    v.security_status === 'completed' &&
-    (v.security_decision === 'passed' || v.security_decision === 'attention_required')
-  )
+  return v.lifecycle_status === 'draft' || v.lifecycle_status === 'published'
 }
 
 type RowAction = {
@@ -158,7 +153,7 @@ function variantClass(variant: RowAction['variant']): string {
 
 function primaryActions(v: SkillVersion): RowAction[] {
   const busy = actingId.value === v.id
-  if (v.lifecycle_status === 'pending_review') {
+  if (v.lifecycle_status === 'draft') {
     if (canActivate(v)) {
       return [
         {
@@ -166,7 +161,7 @@ function primaryActions(v: SkillVersion): RowAction[] {
           label: busy ? '...' : '设为激活',
           variant: 'primary',
           disabled: busy,
-          title: '设为当前激活版本(需安全审查通过 + 协议校验)',
+          title: '设为当前激活版本(需协议校验通过)',
           run: () => handleActivate(v),
         },
       ]
@@ -224,19 +219,13 @@ function lifecycleBadge(v: SkillVersion): { cls: string; label: string } | null 
   switch (v.lifecycle_status) {
     case 'published':
       return v.is_active ? { cls: 'bg-green-50 text-green-600', label: '已激活' } : null
-    case 'pending_review':
-      return { cls: 'bg-amber-50 text-amber-600', label: '待激活' }
-    case 'scanning':
-      return { cls: 'bg-indigo-50 text-indigo-600', label: '扫描中' }
     case 'yanked':
       return { cls: 'bg-red-50 text-red-600', label: '已撤回' }
-    case 'rejected':
-      return { cls: 'bg-red-50 text-red-600', label: '已拒绝' }
     case 'deprecated':
       return { cls: 'bg-slate-100 text-slate-400 line-through', label: '已弃用' }
     case 'draft':
     default:
-      return { cls: 'bg-slate-100 text-slate-500', label: '待审核' }
+      return { cls: 'bg-amber-50 text-amber-600', label: '待激活' }
   }
 }
 
@@ -347,7 +336,7 @@ async function confirmResync(): Promise<void> {
   actingId.value = target.id
   try {
     const resynced = await resyncSkillVersion(props.skillId, target.id, resyncVersion.value.trim() || undefined)
-    toast.success('已创建新版本，请完成安全审查后再激活')
+    toast.success('已创建新版本，可在版本列表中激活')
     resyncTarget.value = null
     await loadVersions(false, resynced.id)
   } catch (e) {
@@ -431,7 +420,7 @@ async function handleCreate(): Promise<void> {
       change_log: form.value.change_log.trim(),
       zip_file: zipFile.value,
     })
-    toast.success('版本创建成功（未激活，需通过安全审查后才可激活）')
+    toast.success('版本创建成功（未激活）')
     showCreate.value = false
     await loadVersions(false, created.id)
   } catch (e) {
@@ -450,9 +439,8 @@ const overflowSelected = computed(() => (selectedVersion.value ? overflowActions
 const tagsSelected = computed(() => (selectedVersion.value ? tagsForVersion(selectedVersion.value) : []))
 const tagTargetTags = computed(() => (tagTarget.value ? tagsForVersion(tagTarget.value) : []))
 
-// 供父组件在安全审查提交后触发重载（保持当前选中版本，不跳回 active）。
-// withTags=false：审查/轮询不改 tags，跳过 tags 请求。
-defineExpose({ reload: () => loadVersions(true, null, false) })
+// 保持当前选中版本并重载版本列表。
+defineExpose({ reload: () => loadVersions(true) })
 </script>
 
 <template>
@@ -582,7 +570,7 @@ defineExpose({ reload: () => loadVersions(true, null, false) })
       <div class="w-full max-w-md rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-2 text-lg font-semibold text-slate-900">重新同步漂移版本</h3>
         <p class="mb-3 text-sm text-slate-500">
-          将重新拉取版本 <span class="font-mono">v{{ resyncTarget.version }}</span> 的源内容并作为新版本入库。新版本需通过安全审查后才能激活。
+          将重新拉取版本 <span class="font-mono">v{{ resyncTarget.version }}</span> 的源内容并作为新版本入库，入库后为草稿版本，可手动激活。
         </p>
         <div class="mb-4">
           <label class="mb-1 block text-xs font-medium text-slate-600">新版本号（留空自动 +patch）</label>

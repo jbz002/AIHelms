@@ -963,6 +963,11 @@ class Skill(Base):
     is_published: Mapped[bool] = mapped_column(Boolean, default=False)
     requires_approval: Mapped[bool] = mapped_column(Boolean, default=False)
     visibility_type: Mapped[str] = mapped_column(String(20), default="all")
+    visible_department_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey("aihelms.departments.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     hidden: Mapped[bool] = mapped_column(Boolean, default=False)
     hidden_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

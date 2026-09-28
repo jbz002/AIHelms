@@ -14,11 +14,11 @@ import pytest
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import delete, select
 
-from api.v1.cli import cli_publish_version
+from api.v1.cli import cli_create_skill, cli_publish_version
 from core.database import get_worker_session_factory
 from core.deps import require_cli_scope
 from exceptions import NotFoundError, ValidationError
-from models.db import AiKey, Permission, Skill, SkillVersion, User
+from models.db import AiKey, Permission, PublishReview, Skill, SkillVersion, User
 from repositories import ai_key_repo, skill_repo
 from services import cli_token_service, skill_service
 
@@ -341,7 +341,7 @@ def _upload(zip_bytes: bytes, filename: str = "skill.zip") -> UploadFile:
 
 
 @pytest.mark.asyncio
-async def test_cli_publish_creates_draft_version():
+async def test_cli_publish_auto_activates_version():
     uid = await _make_user("pub")
     sid, uuid_id = await _make_published_skill("pub")
     token_ids: list[int] = []
@@ -380,9 +380,77 @@ async def test_cli_publish_creates_draft_version():
 
         assert resp["code"] == 200
         version = resp["data"]["version"]
-        assert version["lifecycle_status"] == "draft"
+        assert version["is_active"] is True
+        assert version["lifecycle_status"] == "published"
     finally:
         await _cleanup_skills([sid])
+        await _cleanup_tokens(token_ids)
+        await _cleanup_users([uid])
+
+
+@pytest.mark.asyncio
+async def test_cli_create_skill_auto_activates_and_submits_review():
+    """外部系统程序化上传：创建 + 自动激活 + 自动提审，一次调用完成。"""
+    uid = await _make_user("crt")
+    token_ids: list[int] = []
+    created_skill_ids: list[int] = []
+    try:
+        session = _session()
+        try:
+            tdata, _raw = await cli_token_service.create_token(
+                session,
+                name="t_create_ok",
+                description="",
+                scopes=["skill:publish"],
+                owner_id=uid,
+            )
+        finally:
+            await session.close()
+        token_ids.append(tdata["id"])
+
+        name = f"cli-crt-{uuid.uuid4().hex[:8]}"
+        session = _session()
+        try:
+            resp = await cli_create_skill(
+                name=name,
+                description="d",
+                category="general",
+                version="1.0.0",
+                author="cli",
+                usage_instructions="",
+                visibility_type=None,
+                source_url="",
+                zip_file=_upload(_valid_zip(name), f"{name}.zip"),
+                session=session,
+                identity={
+                    "ai_key_id": tdata["id"],
+                    "owner_id": uid,
+                    "owner_type": "user",
+                    "scopes": ["skill:publish"],
+                },
+            )
+        finally:
+            await session.close()
+        assert resp["code"] == 200
+        skill_id = int(resp["data"]["id"])
+        created_skill_ids.append(skill_id)
+
+        async with _session() as s:
+            skill = await skill_repo.find_by_id(s, skill_id)
+            assert skill.requires_approval is False
+            assert skill.current_version_id is not None
+            v = await s.get(SkillVersion, skill.current_version_id)
+            assert v.is_active is True
+            assert v.lifecycle_status == "published"
+            reviews = await s.execute(
+                select(PublishReview).where(
+                    PublishReview.entity_type == "skill",
+                    PublishReview.entity_id == skill_id,
+                )
+            )
+            assert reviews.scalar_one().status == "pending"
+    finally:
+        await _cleanup_skills(created_skill_ids)
         await _cleanup_tokens(token_ids)
         await _cleanup_users([uid])
 

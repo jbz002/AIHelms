@@ -1,10 +1,11 @@
-"""贡献者 Skill router — 普通用户在 web 端贡献自己的 Skill 草稿。
+"""贡献者 Skill router — 普通用户在 web 端贡献自己的 Skill。
 
 与 admin 的 skills.py 正交：
 - 守卫统一 require_permission("skill:contribute")（admin 由 is_admin 放行，无需此码）。
 - 所有权强制：每个端点经 _require_owned 比对 Skill.created_by == 当前用户，404 非 403。
-- 草稿语义：create 硬编码 is_published=False / requires_approval=True，防绕审核直接发布。
-- 激活版本、安全审查、审核通过/驳回仍归 admin（skill:update / ai_policies:scan / publish_review:approve）。
+- 上传编排（skill_contribution_service）：预检 → 落库（部门可见默认 + 免审批）→
+  自动激活最新版 → 自动提交发布审核；多版本后 owner 可自行切换激活版本。
+- 审核通过/驳回仍归 admin（publish_review:approve）。
 """
 
 import json
@@ -16,7 +17,11 @@ from core.deps import get_db, require_permission
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import Skill
 from repositories import skill_repo
-from services import publish_review_service, skill_service
+from services import (
+    publish_review_service,
+    skill_contribution_service,
+    skill_service,
+)
 from services.skill_serializers import _serialize
 
 router = APIRouter(prefix="/contributor/skills", tags=["贡献者 Skill"])
@@ -62,7 +67,7 @@ async def get_my_skill(
     return {"code": 200, "message": "ok", "data": _serialize(skill)}
 
 
-@router.post("", summary="创建我的 Skill 草稿")
+@router.post("", summary="上传我的 Skill")
 async def create_my_skill(
     name: str = Form(...),
     icon: str = Form("📦"),
@@ -74,12 +79,17 @@ async def create_my_skill(
     author: str = Form(""),
     agent_install_prompt: str = Form(""),
     usage_instructions: str = Form(""),
-    visibility_type: str = Form("all"),
+    visibility_type: str | None = Form(None),
     source_url: str = Form(""),
     zip_file: UploadFile | None = File(None),
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("skill:contribute")),
 ):
+    """上传即发布申请：自动激活 v1 并提交发布审核。
+
+    visibility_type 不传按创建者部门默认（无部门 all）；web 表单显式传
+    all/department；程序化调用方同理（简化默认值，接口解耦）。
+    """
     try:
         tags_list = json.loads(tags) if tags else []
     except json.JSONDecodeError:
@@ -90,7 +100,7 @@ async def create_my_skill(
         zip_content = await zip_file.read()
         zip_filename = zip_file.filename
     try:
-        data = await skill_service.create_skill(
+        data = await skill_contribution_service.create_contribution_and_submit(
             session,
             name=name,
             icon=icon,
@@ -102,19 +112,17 @@ async def create_my_skill(
             author=author,
             agent_install_prompt=agent_install_prompt,
             usage_instructions=usage_instructions,
-            is_published=False,
-            requires_approval=True,
             visibility_type=visibility_type,
+            source_url=source_url or None,
             zip_content=zip_content,
             zip_filename=zip_filename,
-            source_url=source_url or None,
             created_by=current_user["id"],
         )
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"code": 200, "message": "Skill 草稿创建成功", "data": data}
+    return {"code": 200, "message": "Skill 已上传并提交发布审核", "data": data}
 
 
 @router.put("/{skill_id}", summary="更新我的 Skill 草稿")
@@ -177,7 +185,22 @@ async def update_my_skill(
     return {"code": 200, "message": "Skill 更新成功", "data": data}
 
 
-@router.post("/{skill_id}/versions", summary="创建我的 Skill 新版本")
+@router.get("/{skill_id}/versions", summary="我的 Skill 版本列表")
+async def list_my_skill_versions(
+    skill_id: int,
+    include_deprecated: bool = Query(False),
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_permission("skill:contribute")),
+):
+    await _require_owned(session, skill_id, current_user["id"])
+    try:
+        data = await skill_service.list_versions(session, skill_id, include_deprecated)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 不存在")
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.post("/{skill_id}/versions", summary="上传我的 Skill 新版本")
 async def create_my_skill_version(
     skill_id: int,
     version: str = Form(...),
@@ -187,6 +210,7 @@ async def create_my_skill_version(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("skill:contribute")),
 ):
+    """上传新版本并自动激活（激活版本始终跟随最新版）。"""
     await _require_owned(session, skill_id, current_user["id"])
     zip_content = None
     zip_filename = ""
@@ -194,15 +218,17 @@ async def create_my_skill_version(
         zip_content = await zip_file.read()
         zip_filename = zip_file.filename
     try:
-        data = await skill_service.create_version(
-            session,
-            skill_id,
-            version=version,
-            version_label=version_label,
-            change_log=change_log,
-            zip_content=zip_content,
-            zip_filename=zip_filename,
-            created_by=current_user["id"],
+        data = (
+            await skill_contribution_service.create_contribution_version_and_activate(
+                session,
+                skill_id,
+                version=version,
+                version_label=version_label,
+                change_log=change_log,
+                zip_content=zip_content,
+                zip_filename=zip_filename,
+                created_by=current_user["id"],
+            )
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")
@@ -210,7 +236,27 @@ async def create_my_skill_version(
         raise HTTPException(status_code=409, detail=str(e))
     except ValidationError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    return {"code": 200, "message": "Skill 版本创建成功", "data": data}
+    return {"code": 200, "message": "Skill 版本已上传并激活", "data": data}
+
+
+@router.post(
+    "/{skill_id}/versions/{version_id}/activate", summary="设为我的 Skill 激活版本"
+)
+async def activate_my_skill_version(
+    skill_id: int,
+    version_id: int,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(require_permission("skill:contribute")),
+):
+    """多版本共存时 owner 手动切换激活版本（市场可见与下载的唯一版本）。"""
+    await _require_owned(session, skill_id, current_user["id"])
+    try:
+        data = await skill_service.activate_version(session, skill_id, version_id)
+    except NotFoundError:
+        raise HTTPException(status_code=404, detail="Skill 或版本不存在")
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "Skill 版本已激活", "data": data}
 
 
 @router.delete("/{skill_id}", summary="删除我的 Skill 草稿")
@@ -237,6 +283,7 @@ async def submit_my_skill_review(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("skill:contribute")),
 ):
+    """上传已自动提审；本端点保留给被驳回后修正重提、或存量草稿补提场景。"""
     skill = await _require_owned(session, skill_id, current_user["id"])
     if skill.is_published:
         raise HTTPException(status_code=409, detail="Skill 已发布，无需重复提交审核")

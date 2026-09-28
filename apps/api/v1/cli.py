@@ -13,6 +13,7 @@ from core.deps import get_cli_token_identity, get_db, require_cli_scope
 from exceptions import ConflictError, NotFoundError, ValidationError
 from repositories import skill_repo, skill_version_repo
 from services import (
+    skill_contribution_service,
     skill_service,
     skill_tag_service,
     skill_view_service,
@@ -185,6 +186,54 @@ async def cli_list_tags(
     return {"code": 200, "message": "ok", "data": data}
 
 
+@router.post("/skills", summary="创建 Skill 并提交发布审核")
+async def cli_create_skill(
+    name: str = Form(...),
+    description: str = Form(""),
+    category: str = Form("general"),
+    version: str = Form("1.0.0"),
+    author: str = Form(""),
+    usage_instructions: str = Form(""),
+    visibility_type: str | None = Form(None),
+    source_url: str = Form(""),
+    zip_file: UploadFile | None = File(None),
+    session: AsyncSession = Depends(get_db),
+    identity: dict = Depends(require_cli_scope("skill:publish")),
+):
+    """外部系统程序化上传入口：与 web 贡献上传同一编排。
+
+    预检 → 落库（免审批 + 可见性默认按令牌 owner 部门）→ 自动激活 v1 →
+    自动提审；visibility_type 不传走默认，传 all/department 显式指定。
+    """
+    if identity["owner_type"] != "user":
+        raise HTTPException(status_code=403, detail="CLI publish 仅支持 user 类型令牌")
+    zip_content = None
+    zip_filename = ""
+    if zip_file is not None and zip_file.filename:
+        zip_content = await zip_file.read()
+        zip_filename = zip_file.filename
+    try:
+        data = await skill_contribution_service.create_contribution_and_submit(
+            session,
+            name=name,
+            description=description,
+            category=category,
+            version=version,
+            author=author,
+            usage_instructions=usage_instructions,
+            visibility_type=visibility_type,
+            source_url=source_url or None,
+            zip_content=zip_content,
+            zip_filename=zip_filename,
+            created_by=identity["owner_id"],
+        )
+    except ConflictError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ValidationError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"code": 200, "message": "Skill 已上传并提交发布审核", "data": data}
+
+
 @router.post("/skills/{identifier}/versions", summary="发布 Skill 版本")
 async def cli_publish_version(
     identifier: str,
@@ -201,15 +250,17 @@ async def cli_publish_version(
     zip_content = await zip_file.read()
     zip_filename = zip_file.filename or ""
     try:
-        vdata = await skill_service.create_version(
-            session,
-            skill.id,
-            version=version,
-            version_label=version_label,
-            change_log=change_log,
-            zip_content=zip_content,
-            zip_filename=zip_filename,
-            created_by=identity["owner_id"],
+        vdata = (
+            await skill_contribution_service.create_contribution_version_and_activate(
+                session,
+                skill.id,
+                version=version,
+                version_label=version_label,
+                change_log=change_log,
+                zip_content=zip_content,
+                zip_filename=zip_filename,
+                created_by=identity["owner_id"],
+            )
         )
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))
@@ -224,6 +275,6 @@ async def cli_publish_version(
     )
     return {
         "code": 200,
-        "message": "版本已发布，待安全审查后激活",
+        "message": "版本已上传并设为激活",
         "data": {"version": vdata},
     }

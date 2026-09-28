@@ -67,6 +67,30 @@ async def find_membership(
     return result.scalar_one_or_none()
 
 
+async def find_user_department_ids(
+    session: AsyncSession, user_id: int
+) -> list[int]:
+    """用户加入的全部部门 id，按加入先后排序（首元素即默认部门）。"""
+    result = await session.execute(
+        select(UserDepartment.department_id)
+        .where(UserDepartment.user_id == user_id)
+        .order_by(UserDepartment.joined_at, UserDepartment.id)
+    )
+    return [int(r) for r in result.scalars().all()]
+
+
+async def find_user_ids_by_department(
+    session: AsyncSession, department_id: int
+) -> list[int]:
+    """部门全部成员的 user id。"""
+    result = await session.execute(
+        select(UserDepartment.user_id).where(
+            UserDepartment.department_id == department_id
+        )
+    )
+    return [int(r) for r in result.scalars().all()]
+
+
 async def add_member(session: AsyncSession, user_id: int, dept_id: int) -> None:
     session.add(UserDepartment(user_id=user_id, department_id=dept_id))
     await session.flush()

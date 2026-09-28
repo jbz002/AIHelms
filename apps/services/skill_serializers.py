@@ -102,6 +102,7 @@ def _serialize(
         "is_published": skill.is_published,
         "requires_approval": skill.requires_approval,
         "visibility_type": skill.visibility_type,
+        "visible_department_id": skill.visible_department_id,
         "hidden": skill.hidden,
         "hidden_at": fmt_local_time(skill.hidden_at),
         "lifecycle_projection": projection,

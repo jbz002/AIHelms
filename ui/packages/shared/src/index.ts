@@ -56,6 +56,7 @@ export type { SkillFormFields } from './api/skill'
 export {
   getMyContributions, getMyContribution, createContribution, updateContribution,
   createContributionVersion, deleteContribution, submitContributionReview,
+  getContributionVersions, activateContributionVersion,
   getMyMcpContributions, getMyMcpContribution, createMcpContribution, updateMcpContribution,
   createMcpContributionVersion, deleteMcpContribution, submitMcpReview,
   getMyAgentContributions, getMyAgentContribution, createAgentContribution, updateAgentContribution,

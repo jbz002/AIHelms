@@ -105,8 +105,13 @@ async def list_published_skills(
 
     鉴权走 get_current_user_compat：本站登录（自有 JWT/平台 Key）之外，
     其他子应用用户持 AI Hub 签发凭证（方式六 introspect）亦可浏览——
-    ai-assistant 市场透传即此通道（2026-09-23）。
+    ai-assistant 市场透传即此通道（2026-09-23）。department 可见仅本部门成员。
     """
+    from repositories import department_repo
+
+    viewer_department_ids = await department_repo.find_user_department_ids(
+        session, current_user["id"]
+    )
     data = await skill_service.list_skills(
         session,
         page,
@@ -115,6 +120,7 @@ async def list_published_skills(
         is_published=True,
         viewer_id=current_user["id"],
         is_admin=current_user["is_admin"],
+        viewer_department_ids=viewer_department_ids,
     )
     return {"code": 200, "message": "ok", "data": data}
 
@@ -159,16 +165,26 @@ async def get_skill_market_detail(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user_compat),
 ):
-    """直链详情：all/selected/unlisted 登录可读，private 仅创建者+管理员。"""
+    """直链详情：all/selected/unlisted 登录可读，department 本部门可读，private 仅创建者+管理员。"""
     try:
         data = await skill_service.get_skill(session, skill_id)
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 不存在")
+    if not current_user["is_admin"]:
+        from repositories import department_repo
+
+        viewer_department_ids = await department_repo.find_user_department_ids(
+            session, current_user["id"]
+        )
+    else:
+        viewer_department_ids = None
     if not can_access(
         current_user["id"],
         current_user["is_admin"],
         data.get("visibility_type", "all"),
         data.get("created_by"),
+        viewer_department_ids=viewer_department_ids,
+        visible_department_id=data.get("visible_department_id"),
     ):
         raise HTTPException(status_code=403, detail="无权访问该资源")
     return {"code": 200, "message": "ok", "data": data}
@@ -195,8 +211,11 @@ async def get_skill_summary(
     skill_id: int,
     version_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(get_current_user_compat),
+    current_user: dict = Depends(get_current_user_compat),
 ):
+    # 激活版本 = 市场唯一可见版本：历史版本视图仅 admin 可取（同 download 收口）
+    if version_id is not None and not current_user["is_admin"]:
+        raise HTTPException(status_code=404, detail="仅激活版本可查看")
     try:
         data = await skill_view_service.get_skill_summary(session, skill_id, version_id)
     except NotFoundError:
@@ -209,8 +228,10 @@ async def get_skill_full(
     skill_id: int,
     version_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(get_current_user_compat),
+    current_user: dict = Depends(get_current_user_compat),
 ):
+    if version_id is not None and not current_user["is_admin"]:
+        raise HTTPException(status_code=404, detail="仅激活版本可查看")
     try:
         data = await skill_view_service.get_skill_full(session, skill_id, version_id)
     except NotFoundError:
@@ -374,7 +395,7 @@ async def resync_skill_version(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("skill:update")),
 ):
-    """把漂移版本当前源内容作为新版本入库（inactive + 未审查，需后续审查→激活）。"""
+    """把漂移版本当前源内容作为新版本入库（inactive 草稿，需手动激活）。"""
     try:
         data = await skill_drift_service.resync_as_new_version(
             session,
@@ -390,7 +411,7 @@ async def resync_skill_version(
         raise HTTPException(status_code=400, detail=str(e))
     return {
         "code": 200,
-        "message": "已创建新版本，请完成安全审查后再激活",
+        "message": "已创建新版本，可在版本列表中激活",
         "data": data,
     }
 
@@ -595,9 +616,13 @@ async def download_skill(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(require_permission("skill:read")),
 ):
+    """下载 Skill zip。激活版本是市场唯一可下载版本；历史版本仅 admin 可下。"""
     try:
         zip_path, download_name, _ = await skill_service.get_skill_zip(
-            session, skill_id, version_id=version_id
+            session,
+            skill_id,
+            version_id=version_id,
+            allow_inactive_versions=current_user["is_admin"],
         )
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 或 zip 文件不存在")

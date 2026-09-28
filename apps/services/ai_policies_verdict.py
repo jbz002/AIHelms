@@ -7,7 +7,7 @@
 4. 否则 max_severity == medium 或 risk_score > 0 → SUSPICIOUS
 5. 否则 → SAFE
 
-Verdict 映射到现有 decision，激活门控（_ACTIVATE_ALLOWED_DECISIONS）不改。
+Verdict 映射到现有 decision，仅供审计报告展示，不参与版本激活。
 """
 
 from services.ai_policies_denoise import SEVERITY_RANK, ScoreResult

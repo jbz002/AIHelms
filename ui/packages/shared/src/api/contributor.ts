@@ -45,6 +45,14 @@ export function createContributionVersion(skillId: number, params: CreateSkillVe
   return request<SkillVersion>(`${BASE}/${skillId}/versions`, { method: 'POST', body: fd })
 }
 
+export function getContributionVersions(skillId: number): Promise<SkillVersion[]> {
+  return request<SkillVersion[]>(`${BASE}/${skillId}/versions`)
+}
+
+export function activateContributionVersion(skillId: number, versionId: number): Promise<Skill> {
+  return request<Skill>(`${BASE}/${skillId}/versions/${versionId}/activate`, { method: 'POST' })
+}
+
 export function deleteContribution(id: number): Promise<null> {
   return request<null>(`${BASE}/${id}`, { method: 'DELETE' })
 }

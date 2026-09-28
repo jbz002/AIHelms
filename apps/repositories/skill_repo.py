@@ -39,6 +39,7 @@ async def find_all(
     is_active: bool | None = None,
     viewer_id: int | None = None,
     is_admin: bool = False,
+    viewer_department_ids: list[int] | None = None,
 ) -> list[Skill]:
     stmt = select(Skill).order_by(Skill.id.desc())
     if category:
@@ -47,7 +48,9 @@ async def find_all(
         stmt = stmt.where(Skill.is_published == is_published)
     if is_active is not None:
         stmt = stmt.where(Skill.is_active == is_active)
-    vis_clause = list_visibility_clause(Skill, viewer_id, is_admin)
+    vis_clause = list_visibility_clause(
+        Skill, viewer_id, is_admin, viewer_department_ids
+    )
     if vis_clause is not None:
         stmt = stmt.where(vis_clause)
     # S3 · 治理下架 overlay：非 admin（含匿名）不见 hidden Skill
@@ -66,6 +69,7 @@ async def count_all(
     is_active: bool | None = None,
     viewer_id: int | None = None,
     is_admin: bool = False,
+    viewer_department_ids: list[int] | None = None,
 ) -> int:
     stmt = select(func.count(Skill.id))
     if category:
@@ -74,7 +78,9 @@ async def count_all(
         stmt = stmt.where(Skill.is_published == is_published)
     if is_active is not None:
         stmt = stmt.where(Skill.is_active == is_active)
-    vis_clause = list_visibility_clause(Skill, viewer_id, is_admin)
+    vis_clause = list_visibility_clause(
+        Skill, viewer_id, is_admin, viewer_department_ids
+    )
     if vis_clause is not None:
         stmt = stmt.where(vis_clause)
     # S3 · 治理下架 overlay：非 admin（含匿名）不见 hidden Skill

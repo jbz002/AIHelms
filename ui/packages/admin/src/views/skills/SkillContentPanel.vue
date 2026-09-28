@@ -5,6 +5,7 @@ import {
   getSkillFull,
   getSkillIntegrity,
   checkSkillVersionDrift,
+  toast,
   usePermission,
   type SkillSummaryView,
   type SkillFullView,
@@ -13,10 +14,7 @@ import {
   type ManifestFile,
 } from '@aihelms/shared'
 import MarkdownRenderer from '@aihelms/shared/src/components/MarkdownRenderer.vue'
-import SkillSecurityPanel from './SkillSecurityPanel.vue'
-import VersionChip from './VersionChip.vue'
 import { ShieldCheck, CheckCircle2, AlertTriangle, XCircle, FileText, X } from 'lucide-vue-next'
-import { toast } from '@aihelms/shared'
 
 interface Props {
   skillId: number
@@ -24,7 +22,6 @@ interface Props {
 }
 
 const props = defineProps<Props>()
-const emit = defineEmits<{ audited: [] }>()
 const { hasPermission } = usePermission()
 
 type DisclosureLayer = 'overview' | 'summary'
@@ -216,11 +213,6 @@ watch(
         >
           <ShieldCheck class="h-3.5 w-3.5" /> 内容完整性
         </button>
-        <SkillSecurityPanel
-          :skill-id="skillId"
-          :version="version"
-          @audited="emit('audited')"
-        />
       </div>
     </div>
 

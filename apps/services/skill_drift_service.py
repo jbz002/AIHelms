@@ -3,7 +3,7 @@
 前序 04 声明了 drift 字段但无任何代码写入。本服务补落地：
 - check_single_drift：单个 url 源 active 版本重算 hash 比对、回写 drift 字段。
 - check_drift_batch：定时任务批量入口，逐版本独立持锁、单失败隔离。
-- resync_as_new_version：漂移后把当前源内容作为新版本入库（inactive，走既有审查→激活门控）。
+- resync_as_new_version：漂移后把当前源内容作为新版本入库（inactive 草稿，走激活门控）。
 
 并发幂等靠 Redis 分布式锁（version 级），覆盖 Celery 定时与 admin 手动两种触发。
 外链拉取必走 translate_repo_url → validate_url(default) → httpx 三步 SSRF 链路（与 create_skill 一致）。

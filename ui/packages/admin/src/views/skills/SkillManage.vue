@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import {
   createSkillCategory,
   deleteSkill,
@@ -42,7 +42,6 @@ watch(
     selectedSkillVersion.value = null
   },
 )
-const switcherRef = ref<InstanceType<typeof SkillVersionSwitcher> | null>(null)
 const showForm = ref(false)
 const editingSkill = ref<Skill | null>(null)
 const deleteTarget = ref<Skill | null>(null)
@@ -250,59 +249,6 @@ async function confirmDeleteCategory(): Promise<void> {
 }
 
 onMounted(loadData)
-
-// 安全审查异步跑在 celery，提交后 status=queued/running，扫描完成才落 DB。
-// 轮询版本状态直到终态，避免用户手动刷新页面才看到结果。
-let auditPollTimer: ReturnType<typeof setInterval> | null = null
-let auditPollCount = 0
-const AUDIT_POLL_INTERVAL = 4000
-const AUDIT_POLL_MAX = 75 // 75 * 4s = 5min 兜底
-
-function stopAuditPolling(): void {
-  if (auditPollTimer) {
-    clearInterval(auditPollTimer)
-    auditPollTimer = null
-  }
-  auditPollCount = 0
-}
-
-watch(
-  () => selectedSkillVersion.value?.security_status,
-  (status, prev) => {
-    // 终态到达：给一次完成/失败提示
-    if (prev && (prev === 'queued' || prev === 'running')) {
-      if (status === 'completed') {
-        const decision = selectedSkillVersion.value?.security_decision
-        const label =
-          decision === 'passed'
-            ? '审查通过'
-            : decision === 'attention_required'
-              ? '建议修改'
-              : decision === 'high_risk'
-                ? '高风险'
-                : '已完成'
-        toast.success(`安全审查完成：${label}`)
-      } else if (status === 'failed') {
-        toast.error('安全审查失败，请查看报告或重试')
-      }
-    }
-    // 进入审查中 → 启动轮询；否则停止
-    stopAuditPolling()
-    if (status === 'queued' || status === 'running') {
-      auditPollCount = 0
-      auditPollTimer = setInterval(async () => {
-        auditPollCount++
-        if (auditPollCount > AUDIT_POLL_MAX) {
-          stopAuditPolling()
-          return
-        }
-        await switcherRef.value?.reload()
-      }, AUDIT_POLL_INTERVAL)
-    }
-  },
-)
-
-onUnmounted(stopAuditPolling)
 </script>
 
 <template>
@@ -435,7 +381,6 @@ onUnmounted(stopAuditPolling)
           </div>
 
           <SkillVersionSwitcher
-            ref="switcherRef"
             :skill-id="selectedSkill.id"
             :active-version="selectedSkill.active_version ?? null"
             @select="selectedSkillVersion = $event"
@@ -524,11 +469,10 @@ onUnmounted(stopAuditPolling)
               </div>
             </div>
 
-            <!-- 内容：概览/摘要 + 完整指令/内容完整性/安全审查 抽屉 -->
+            <!-- 内容：概览/摘要 + 完整指令/内容完整性 抽屉 -->
             <SkillContentPanel
               :skill-id="selectedSkill.id"
               :version="selectedSkillVersion"
-              @audited="switcherRef?.reload()"
             />
 
             <!-- 使用统计 -->

@@ -743,6 +743,7 @@ CREATE TABLE IF NOT EXISTS aihelms.skills (
     is_published BOOLEAN DEFAULT false,
     requires_approval BOOLEAN DEFAULT false,
     visibility_type VARCHAR(20) DEFAULT 'all',
+    visible_department_id BIGINT REFERENCES aihelms.departments(id) ON DELETE SET NULL,
     hidden BOOLEAN DEFAULT false,                        -- 治理下架 overlay（独立于 lifecycle/visibility）
     hidden_at TIMESTAMPTZ,
     hidden_by BIGINT REFERENCES aihelms.users(id),
@@ -759,6 +760,7 @@ CREATE INDEX IF NOT EXISTS idx_skills_name ON aihelms.skills(name);
 CREATE INDEX IF NOT EXISTS idx_skills_published ON aihelms.skills(is_published);
 CREATE INDEX IF NOT EXISTS idx_skills_business_scenario ON aihelms.skills(business_scenario_id);
 CREATE INDEX IF NOT EXISTS idx_skills_visibility ON aihelms.skills(visibility_type);
+CREATE INDEX IF NOT EXISTS idx_skills_visible_department ON aihelms.skills(visible_department_id);
 CREATE INDEX IF NOT EXISTS idx_skills_hidden ON aihelms.skills(hidden) WHERE hidden = true;
 
 
@@ -859,7 +861,7 @@ CREATE TABLE IF NOT EXISTS aihelms.skill_versions (
     version VARCHAR(64) NOT NULL,
     version_label VARCHAR(128) NOT NULL DEFAULT '',
     is_active BOOLEAN NOT NULL DEFAULT false,
-    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'draft',  -- draft/scanning/pending_review/published/yanked/rejected/deprecated
+    lifecycle_status VARCHAR(20) NOT NULL DEFAULT 'draft',  -- draft/published/yanked/deprecated
     sunset_date TIMESTAMPTZ,
     source VARCHAR(20) NOT NULL DEFAULT 'manual',
     content_sha256 VARCHAR(64) NOT NULL DEFAULT '',

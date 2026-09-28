@@ -101,7 +101,7 @@ async function confirmAudit(): Promise<void> {
   submitting.value = true
   try {
     await createSkillVersionSecurityAudit(props.skillId, props.version.id, auditPolicy.value)
-    toast.success('已提交版本安全审查，完成后可激活')
+    toast.success('已提交版本安全审查')
     showAuditDialog.value = false
     auditDetail.value = null
     emit('audited')
@@ -152,9 +152,6 @@ async function confirmAudit(): Promise<void> {
           <div v-if="version" class="mb-4 flex flex-wrap items-center gap-2 text-xs">
             <span class="rounded px-1.5 py-0.5 font-medium" :class="badge!.cls">{{ badge!.label }}</span>
             <span v-if="running" class="text-slate-400">审查中…</span>
-            <span v-if="!version.security_status || version.security_status === 'not_scanned'" class="text-slate-400">
-              未审查版本不可激活
-            </span>
           </div>
           <div v-else class="py-8 text-center text-sm text-gray-400">暂无版本</div>
 
@@ -183,7 +180,7 @@ async function confirmAudit(): Promise<void> {
           AI Policies 安全审查 · v{{ version.version }}
         </h3>
         <p class="mb-3 text-xs text-slate-500">
-          选择审查策略，对版本 <span class="font-mono">v{{ version.version }}</span> 的 zip 内容执行 AI Policies 检查，通过后方可激活。
+          选择审查策略，对版本 <span class="font-mono">v{{ version.version }}</span> 的 zip 内容执行 AI Policies 检查，结果仅供安全评估参考。
         </p>
         <div class="mb-4 space-y-2">
           <label
