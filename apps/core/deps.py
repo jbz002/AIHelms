@@ -61,7 +61,10 @@ async def validate_api_key(token: str) -> dict:
     """校验平台 API Key，返回身份 dict。
 
     纯函数（不依赖 FastAPI Request），供 HTTP 鉴权与 MCP 鉴权共用。
-    失败抛 UnauthorizedError；id 为 api_key.id，user_id 为创建该 key 的 user.id。
+    失败抛 UnauthorizedError。
+
+    id 与 JWT / AI Hub 通道同形 = 创建者 user.id（各调用点一律按用户消费），
+    api_key.id 单独放在 api_key_id，供 MCP 审计等需要区分具体 key 的场景。
 
     is_admin 与 permissions 从创建者用户派生（而非硬编码 True）：admin 创建的 key
     仍为 admin，普通用户经 /api-keys/my 自创的 key 为最小权限，避免垂直越权。
@@ -83,8 +86,9 @@ async def validate_api_key(token: str) -> dict:
     asyncio.create_task(_update_last_used(api_key.id))
 
     return {
-        "id": api_key.id,
+        "id": user.id,
         "user_id": user.id,
+        "api_key_id": api_key.id,
         "username": user.username,
         "identity_type": "api_key",
         "is_admin": is_admin,
@@ -201,12 +205,18 @@ def require_permission_compat(permission_code: str):
     return checker
 
 
-async def get_ai_key_identity(
+async def get_skill_download_identity(
     request: Request,
     token: str | None = Query(None),
     session: AsyncSession = Depends(get_db),
 ) -> dict:
-    """从 query param ?token= 或 Authorization: Bearer 提取 AI Key，验证身份。"""
+    """资源下载端点鉴权：平台 Key（ak-）与 AI Key（sk-）双通道。
+
+    凭证从 query param ?token= 或 Authorization: Bearer 提取。平台 Key 权限更高，
+    按创建者用户判权：已授权资源取该用户个人主 Key 的数组（资源申请审批通过即授权
+    到主 Key）；AI Key 取该 Key 自身的数组。返回统一形状
+    {user_id, is_admin, skills, ai_key_id}，ai_key_id 仅 AI Key 通道有值。
+    """
     raw_token = token
     if not raw_token:
         auth_header = request.headers.get("Authorization")
@@ -214,7 +224,19 @@ async def get_ai_key_identity(
             raw_token = auth_header.split(" ", 1)[1]
 
     if not raw_token:
-        raise HTTPException(status_code=401, detail="未提供 AI Key 认证凭证")
+        raise HTTPException(status_code=401, detail="未提供认证凭证")
+
+    if looks_like_api_key(raw_token):
+        current_user = await _authenticate_api_key(raw_token)
+        main_key = await ai_key_repo.find_personal_main(
+            session, current_user["user_id"]
+        )
+        return {
+            "user_id": current_user["user_id"],
+            "is_admin": current_user["is_admin"],
+            "skills": list(main_key.skills or []) if main_key else [],
+            "ai_key_id": None,
+        }
 
     ai_key = await ai_key_repo.find_by_litellm_key_id(session, raw_token)
     if not ai_key:
@@ -225,11 +247,10 @@ async def get_ai_key_identity(
         raise HTTPException(status_code=401, detail="AI Key 已过期")
 
     return {
-        "ai_key_id": ai_key.id,
         "user_id": ai_key.owner_id,
-        "owner_type": ai_key.owner_type,
-        "owner_id": ai_key.owner_id,
-        "skills": ai_key.skills or [],
+        "is_admin": False,
+        "skills": list(ai_key.skills or []),
+        "ai_key_id": ai_key.id,
     }
 
 

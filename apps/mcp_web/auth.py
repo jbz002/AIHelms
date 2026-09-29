@@ -35,7 +35,7 @@ class UserKeyVerifier(TokenVerifier):
             subject=str(user_id),
             claims={
                 "user_id": user_id,
-                "api_key_id": ident["id"],
+                "api_key_id": ident["api_key_id"],
                 "username": user.username,
                 "is_admin": ident["is_admin"],
             },

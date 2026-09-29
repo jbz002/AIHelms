@@ -16,10 +16,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import (
-    get_ai_key_identity,
     get_current_user,
     get_current_user_compat,
     get_db,
+    get_skill_download_identity,
     require_permission,
 )
 from core.public_urls import resolve_platform_public_url
@@ -680,9 +680,9 @@ async def get_install_info(
 async def get_skill_zip_public(
     skill_id: int,
     session: AsyncSession = Depends(get_db),
-    identity: dict = Depends(get_ai_key_identity),
+    identity: dict = Depends(get_skill_download_identity),
 ):
-    """Agent 下载端点，通过 AI Key 认证。仅已发布的 Skill 可下载。"""
+    """Agent 下载端点，平台 Key（ak-）或 AI Key（sk-）认证。仅已发布的 Skill 可下载。"""
     try:
         zip_path, download_name, _ = await skill_service.get_skill_zip(
             session, skill_id, require_published=True
@@ -690,9 +690,10 @@ async def get_skill_zip_public(
     except NotFoundError:
         raise HTTPException(status_code=404, detail="Skill 或 zip 文件不存在")
 
-    # 权限检查：需审批的 Skill 必须在 Key 的 skills 列表中
+    # 权限检查：需审批的 Skill 必须已授权到调用者
+    # （ak- 通道按其创建者的个人主 Key 判权，admin 放行）
     skill_data = await skill_service.get_skill(session, skill_id)
-    if skill_data.get("requires_approval"):
+    if skill_data.get("requires_approval") and not identity["is_admin"]:
         if skill_id not in identity["skills"]:
             raise HTTPException(status_code=403, detail="请先申请使用该 Skill")
 
