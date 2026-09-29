@@ -1074,33 +1074,6 @@ class SkillVersion(Base):
     )
 
 
-class SkillTag(Base):
-    """S4 · 版本别名 Tag（beta/stable/latest）。
-
-    指向具体 version_id 的结构化指针；latest 为系统保留只读 tag，
-    由 skill_tag_service.refresh_latest_tag 在 publish/yank 时维护。
-    """
-
-    __tablename__ = "skill_tags"
-    __table_args__ = (
-        UniqueConstraint("skill_id", "tag_name", name="uq_skill_tags_skill_tag"),
-        {"schema": "aihelms"},
-    )
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    skill_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("aihelms.skills.id", ondelete="CASCADE")
-    )
-    tag_name: Mapped[str] = mapped_column(String(32), nullable=False)
-    version_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("aihelms.skill_versions.id", ondelete="CASCADE")
-    )
-    is_system: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-
-
 class AgentCategory(Base):
     __tablename__ = "agent_categories"
     __table_args__ = {"schema": "aihelms"}

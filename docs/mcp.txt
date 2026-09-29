@@ -169,4 +169,3 @@
      ├ mcp__aihelms-admin__admin_update_user_departments: 120 tokens
      ├ mcp__aihelms-admin__admin_update_user_projects: 118 tokens
      ├ mcp__aihelms-admin__admin_update_user_roles: 116 tokens
-     ├ mcp__aihelms-admin__admin_yank_skill_version: 111 tokens

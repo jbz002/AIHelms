@@ -40,7 +40,6 @@ export type {
   SkillLifecycleProjection,
   SkillSummaryView, SkillFullView, SkillIntegrityView,
   ManifestFile, ProtocolIssue,
-  SkillTag,
 } from './types/skill'
 export {
   getSkills, getSkillById, getSkillMarketDetail, createSkill, updateSkill, deleteSkill,
@@ -49,9 +48,8 @@ export {
   getSkillVersions, createSkillVersion, activateSkillVersion,
   deprecateSkillVersion, createSkillVersionSecurityAudit,
   checkSkillVersionDrift, resyncSkillVersion,
-  yankSkillVersion, restoreSkillVersion, setSkillHidden,
+  restoreSkillVersion, setSkillHidden,
   getSkillSummary, getSkillFull, getSkillIntegrity,
-  listSkillTags, createOrMoveSkillTag, deleteSkillTag,
 } from './api/skill'
 export type { SkillFormFields } from './api/skill'
 export {

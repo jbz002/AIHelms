@@ -5,11 +5,11 @@ Extracted from skill_service.py to keep it under the 500-line limit.
 
 from __future__ import annotations
 
+from core.time_utils import fmt_local_time
 from models.db import Skill, SkillVersion
 from repositories import ai_policies_repo
 from services.icon_url import resolve_icon_url
 from services.skill_lifecycle_projection import build_projection
-from core.time_utils import fmt_local_time
 
 
 async def _latest_audit_map(session, skills: list[Skill]) -> dict[int, str]:
@@ -24,7 +24,6 @@ async def _latest_audit_map(session, skills: list[Skill]) -> dict[int, str]:
 
 def _serialize_version(
     v: SkillVersion,
-    tags: list[str] | None = None,
     audit_code: str | None = None,
 ) -> dict:
     return {
@@ -34,7 +33,6 @@ def _serialize_version(
         "version_label": v.version_label,
         "is_active": v.is_active,
         "lifecycle_status": v.lifecycle_status,
-        "tags": tags or [],
         "sunset_date": v.sunset_date.isoformat() if v.sunset_date else None,
         "source": v.source,
         "source_type": v.source_type,
@@ -64,7 +62,6 @@ def _serialize_version(
 def _serialize(
     skill: Skill,
     latest_audit_map: dict[int, str] | None = None,
-    version_tags_map: dict[int, list[str]] | None = None,
 ) -> dict:
     latest_audit_map = latest_audit_map or {}
     latest_audit_code = (
@@ -74,10 +71,7 @@ def _serialize(
     )
     active = next((v for v in (skill.versions or []) if v.is_active), None)
     versions_sorted = sorted((skill.versions or []), key=lambda v: v.id, reverse=True)
-    serialized_versions = [
-        _serialize_version(v, version_tags_map.get(v.id) if version_tags_map else None)
-        for v in versions_sorted
-    ]
+    serialized_versions = [_serialize_version(v) for v in versions_sorted]
     projection = build_projection(
         serialized_versions, skill.current_version_id, skill.hidden
     )

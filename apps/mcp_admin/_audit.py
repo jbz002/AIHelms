@@ -104,7 +104,6 @@ TOOL_ACTIONS: dict[str, str] = {
     "admin_create_skill_version": "创建 Skill 版本",
     "admin_activate_skill_version": "激活 Skill 版本",
     "admin_deprecate_skill_version": "弃用 Skill 版本",
-    "admin_yank_skill_version": "下架 Skill 版本",
     "admin_restore_skill_version": "恢复 Skill 版本",
     "admin_create_skill_category": "创建 Skill 分类",
     "admin_delete_skill_category": "删除 Skill 分类",

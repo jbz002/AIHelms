@@ -10,7 +10,6 @@ import type {
   SkillSummaryView,
   SkillFullView,
   SkillIntegrityView,
-  SkillTag,
 } from '../types/skill'
 import type { AiPolicyAudit } from '../types/aiPolicies'
 
@@ -166,13 +165,6 @@ export function resyncSkillVersion(
   )
 }
 
-export function yankSkillVersion(skillId: number, versionId: number): Promise<Skill> {
-  return request<Skill>(
-    `/api/v1/skills/${skillId}/versions/${versionId}/yank`,
-    { method: 'POST' },
-  )
-}
-
 export function restoreSkillVersion(skillId: number, versionId: number): Promise<Skill> {
   return request<Skill>(
     `/api/v1/skills/${skillId}/versions/${versionId}/restore`,
@@ -227,27 +219,4 @@ export function getSkillIntegrity(
 ): Promise<SkillIntegrityView> {
   const qs = versionId ? `?version_id=${versionId}` : ''
   return request<SkillIntegrityView>(`/api/v1/skills/${skillId}/integrity${qs}`)
-}
-
-// ─── S4 · 版本别名 Tag ─────────────────────────────────────────────
-
-export function listSkillTags(skillId: number): Promise<SkillTag[]> {
-  return request<SkillTag[]>(`/api/v1/skills/${skillId}/tags`)
-}
-
-export function createOrMoveSkillTag(
-  skillId: number,
-  tagName: string,
-  versionId: number,
-): Promise<SkillTag> {
-  return request<SkillTag>(`/api/v1/skills/${skillId}/tags`, {
-    method: 'POST',
-    body: { tag_name: tagName, version_id: versionId },
-  })
-}
-
-export function deleteSkillTag(skillId: number, tagName: string): Promise<null> {
-  return request<null>(`/api/v1/skills/${skillId}/tags/${encodeURIComponent(tagName)}`, {
-    method: 'DELETE',
-  })
 }

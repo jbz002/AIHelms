@@ -932,19 +932,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_skill_review_tasks_pending
 CREATE INDEX IF NOT EXISTS idx_skill_review_tasks_status
     ON aihelms.skill_review_tasks(status);
 
--- S4 · Skill 版本别名 Tag（latest 为系统保留只读指针）
-CREATE TABLE IF NOT EXISTS aihelms.skill_tags (
-    id BIGSERIAL PRIMARY KEY,
-    skill_id BIGINT NOT NULL REFERENCES aihelms.skills(id) ON DELETE CASCADE,
-    tag_name VARCHAR(32) NOT NULL,
-    version_id BIGINT NOT NULL REFERENCES aihelms.skill_versions(id) ON DELETE CASCADE,
-    is_system BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT uq_skill_tags_skill_tag UNIQUE (skill_id, tag_name)
-);
-CREATE INDEX IF NOT EXISTS idx_skill_tags_skill ON aihelms.skill_tags(skill_id);
-CREATE INDEX IF NOT EXISTS idx_skill_tags_version ON aihelms.skill_tags(version_id);
-
 -- ai_policies_audits.skill_version_id：版本绑定安全审查指针
 ALTER TABLE aihelms.ai_policies_audits
     ADD COLUMN IF NOT EXISTS skill_version_id BIGINT

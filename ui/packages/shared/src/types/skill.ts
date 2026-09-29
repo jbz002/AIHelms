@@ -105,16 +105,6 @@ export interface SkillVersion {
   latest_ai_policies_audit_code?: string | null
   created_by: number | null
   created_at: string | null
-  tags?: string[]
-}
-
-export interface SkillTag {
-  id: number
-  skill_id: number
-  tag_name: string
-  version_id: number
-  is_system: boolean
-  created_at: string | null
 }
 
 export interface CreateSkillVersionParams {

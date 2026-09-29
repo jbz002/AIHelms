@@ -416,25 +416,6 @@ async def resync_skill_version(
     }
 
 
-@router.post("/{skill_id}/versions/{version_id}/yank", summary="撤回Skill版本")
-async def yank_skill_version(
-    skill_id: int,
-    version_id: int,
-    session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permission("skill:update")),
-):
-    """撤回已发布版本（published→yanked），命中当前指针则重算次新 published。"""
-    try:
-        data = await skill_service.yank_version(session, skill_id, version_id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Skill 或版本不存在")
-    except ValidationError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except ConflictError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    return {"code": 200, "message": "Skill 版本已撤回", "data": data}
-
-
 @router.post("/{skill_id}/versions/{version_id}/restore", summary="恢复Skill版本")
 async def restore_skill_version(
     skill_id: int,

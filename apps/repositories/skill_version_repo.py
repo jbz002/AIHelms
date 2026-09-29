@@ -46,21 +46,6 @@ async def find_owned_by_skill(
     return result.scalar_one_or_none()
 
 
-async def find_latest_published(
-    session: AsyncSession, skill_id: int, exclude_version_id: int | None = None
-) -> SkillVersion | None:
-    """S3 · Yank 指针重算：查次新 published 版本（排除指定版本，按 id 倒序）。"""
-    stmt = select(SkillVersion).where(
-        SkillVersion.skill_id == skill_id,
-        SkillVersion.lifecycle_status == "published",
-    )
-    if exclude_version_id is not None:
-        stmt = stmt.where(SkillVersion.id != exclude_version_id)
-    stmt = stmt.order_by(SkillVersion.id.desc()).limit(1)
-    result = await session.execute(stmt)
-    return result.scalar_one_or_none()
-
-
 async def find_by_skill_and_version(
     session: AsyncSession, skill_id: int, version: str
 ) -> SkillVersion | None:

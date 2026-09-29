@@ -56,14 +56,6 @@ export interface SkillVersion {
   created_at: string | null
 }
 
-export interface SkillTag {
-  id: number
-  tag_name: string
-  version_id: number
-  is_system: boolean
-  created_at: string | null
-}
-
 export interface PublishVersionFields {
   version: string
   version_label?: string
@@ -105,10 +97,6 @@ export class AihelmsClient {
 
   async listVersions(skillId: string): Promise<SkillVersion[]> {
     return this.getJson(`/skills/${skillId}/versions`)
-  }
-
-  async listTags(skillId: string): Promise<SkillTag[]> {
-    return this.getJson(`/skills/${skillId}/tags`)
   }
 
   async download(skillId: string, version?: string): Promise<Response> {

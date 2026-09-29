@@ -7,17 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from core.database import async_session
-from core.distributed_lock import redis_lock
 from exceptions import ConflictError, NotFoundError, ValidationError
 from models.db import Skill, SkillCategory, SkillUsageLog, SkillVersion
 from repositories import (
     ai_policies_repo,
     skill_repo,
-    skill_tag_repo,
     skill_version_repo,
     storage_deletion_compensation_repo,
 )
-from services import skill_tag_service, versioning_service, visibility_service
+from services import versioning_service, visibility_service
 from services.icon_url import normalize_hosted_icon_path
 from services.skill_content_service import ParsedSkillContent
 from services.skill_lifecycle_service import (
@@ -131,23 +129,7 @@ async def get_skill(session: AsyncSession, skill_id: int) -> dict:
     if not skill:
         raise NotFoundError("skill", skill_id)
     latest_audit_map = await _latest_audit_map(session, [skill])
-    version_tags_map = await _build_version_tags_map(session, skill.id)
-    return _serialize(
-        skill,
-        latest_audit_map,
-        version_tags_map=version_tags_map,
-    )
-
-
-async def _build_version_tags_map(
-    session: AsyncSession, skill_id: int
-) -> dict[int, list[str]]:
-    """单 skill 详情：按 version_id 分组的 tag_name 映射。"""
-    tags = await skill_tag_repo.find_by_skill(session, skill_id)
-    mapping: dict[int, list[str]] = {}
-    for tag in tags:
-        mapping.setdefault(tag.version_id, []).append(tag.tag_name)
-    return mapping
+    return _serialize(skill, latest_audit_map)
 
 
 async def create_skill(
@@ -265,9 +247,6 @@ async def create_skill(
 
     skill.current_version_id = v1.id
     await session.commit()
-    await session.refresh(skill)
-    await skill_tag_service.refresh_latest_tag(session, skill.id)
-    # tag 刷新内部 commit 会过期 skill，序列化前重新加载，避免懒加载触发 MissingGreenlet
     await session.refresh(skill)
     return _serialize(skill)
 
@@ -740,7 +719,6 @@ async def activate_version(
         on_sync=_noop_sync,
         apply_snapshot=_apply_version_snapshot_to_skill,
     )
-    await skill_tag_service.refresh_latest_tag(session, skill_id)
     await session.refresh(skill)
     latest_audit_map = await _latest_audit_map(session, [skill])
     return _serialize(skill, latest_audit_map)
@@ -769,51 +747,13 @@ async def deprecate_version(
 # ─── S3 · 生命周期状态机精细化 ────────────────────────────────────────────────
 
 
-async def yank_version(session: AsyncSession, skill_id: int, version_id: int) -> dict:
-    """撤回已发布版本：published → yanked，命中 current_version_id 则重算次新 published。"""
-    skill = await skill_repo.find_by_id(session, skill_id)
-    if not skill:
-        raise NotFoundError("skill", skill_id)
-    version = await skill_version_repo.find_by_id(session, version_id)
-    if not version or version.skill_id != skill_id:
-        raise NotFoundError("skill_version", version_id)
-
-    async with redis_lock(f"aihelms:lock:skill_yank:{skill_id}"):
-        version = await skill_version_repo.find_by_id(session, version_id)
-        if version.lifecycle_status != PUBLISHED:
-            raise ValidationError(
-                f"版本当前状态为 {version.lifecycle_status}，仅 published 可撤回"
-            )
-        version.lifecycle_status = YANKED
-        version.is_active = False
-        # 先落 yanked 翻转，避免重算时与 single-active 部分唯一索引冲突
-        await session.flush()
-
-        # 命中当前 published 指针 → 重算次新 published，回滚主表快照
-        if skill.current_version_id == version_id:
-            new_latest = await skill_version_repo.find_latest_published(
-                session, skill_id, exclude_version_id=version_id
-            )
-            if new_latest:
-                new_latest.is_active = True
-                skill.current_version_id = new_latest.id
-                await _apply_version_snapshot_to_skill(skill, new_latest)
-            else:
-                skill.current_version_id = None
-        await session.commit()
-        await skill_tag_service.refresh_latest_tag(session, skill_id)
-    await session.refresh(skill)
-    latest_audit_map = await _latest_audit_map(session, [skill])
-    return _serialize(skill, latest_audit_map)
-
-
 async def restore_version(
     session: AsyncSession, skill_id: int, version_id: int
 ) -> dict:
     """恢复已撤回版本：yanked → published，撤销 yank 全部副作用。
 
     - 若 skill 当前无激活版本（current_version_id 为 None，单版本撤回场景）→
-      重新激活本版本（is_active=True、current 回指、快照回主表、刷 tag），
+      重新激活本版本（is_active=True、current 回指、快照回主表），
       回到撤回前的激活态。
     - 若已有 active 版本（多版本场景）→ published+inactive 候选，不抢夺当前激活。
 
@@ -844,7 +784,6 @@ async def restore_version(
             on_sync=_noop_sync,
             apply_snapshot=_apply_version_snapshot_to_skill,
         )
-        await skill_tag_service.refresh_latest_tag(session, skill_id)
     else:
         await session.commit()
     await session.refresh(skill)

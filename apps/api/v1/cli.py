@@ -15,7 +15,6 @@ from repositories import skill_repo, skill_version_repo
 from services import (
     skill_contribution_service,
     skill_service,
-    skill_tag_service,
     skill_view_service,
 )
 from services.skill_serializers import _serialize_version
@@ -169,20 +168,6 @@ async def cli_list_versions(
         session, skill.id, include_deprecated=False
     )
     data = [_serialize_version(v) for v in versions]
-    return {"code": 200, "message": "ok", "data": data}
-
-
-@router.get("/skills/{identifier}/tags")
-async def cli_list_tags(
-    identifier: str,
-    session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_cli_scope("skill:tag:read")),
-):
-    skill = await _resolve_skill(session, identifier)
-    try:
-        data = await skill_tag_service.list_tags(session, skill.id)
-    except NotFoundError:
-        raise HTTPException(status_code=404, detail="Skill 不存在")
     return {"code": 200, "message": "ok", "data": data}
 
 

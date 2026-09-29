@@ -1,6 +1,6 @@
 """Skill 资源治理深化工具（M5）：更新/发布/隐藏/版本/分类。
 
-drift/标签在 skill_drift_service/skill_tag_service（本批未覆盖，记偏差）。
+drift 在 skill_drift_service（本批未覆盖，记偏差）。
 """
 
 from pydantic import BaseModel, Field
@@ -186,20 +186,6 @@ async def admin_deprecate_skill_version(params: SkillVersionIdInput) -> str:
     async with async_session() as session:
         try:
             data = await skill_service.deprecate_version(
-                session, params.skill_id, params.version_id
-            )
-        except (NotFoundError, ConflictError, ValidationError) as e:
-            return error_text(e)
-    return json_dumps(data)
-
-
-@mcp.tool(name="admin_yank_skill_version", annotations=WRITE)
-@audited_tool("admin_yank_skill_version")
-async def admin_yank_skill_version(params: SkillVersionIdInput) -> str:
-    """下架 Skill 指定版本（不可安装，可恢复）。返回更新后详情。"""
-    async with async_session() as session:
-        try:
-            data = await skill_service.yank_version(
                 session, params.skill_id, params.version_id
             )
         except (NotFoundError, ConflictError, ValidationError) as e:
