@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 
 from sqlalchemy import String, func, select, text, update
@@ -147,6 +148,29 @@ async def get_litellm_model_access(
     )
     actual_by_token = {row[0]: set(row[1] or []) for row in result.all()}
     return actual_by_token
+
+
+async def set_litellm_models(
+    session: AsyncSession,
+    models_by_token_hash: dict[str, list[str]],
+) -> int:
+    """Overwrite LiteLLM key model whitelists in one statement.
+
+    Direct write to public."LiteLLM_VerificationToken".models (text[]),
+    keyed by token (sha256 of the raw key).
+    """
+    if not models_by_token_hash:
+        return 0
+    result = await session.execute(
+        text(
+            'UPDATE public."LiteLLM_VerificationToken" AS t '
+            "SET models = ARRAY(SELECT jsonb_array_elements_text(v.models)) "
+            "FROM jsonb_each(CAST(:payload AS jsonb)) AS v(token, models) "
+            "WHERE t.token = v.token"
+        ),
+        {"payload": json.dumps(models_by_token_hash)},
+    )
+    return result.rowcount
 
 
 async def find_all_main_keys(session: AsyncSession) -> list[AiKey]:

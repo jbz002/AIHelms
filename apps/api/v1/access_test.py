@@ -9,6 +9,7 @@ from repositories import model_repo
 from services import access_test_service, access_tool_probe
 from services.access_test_error_mapper import build_error_detail, build_failure
 from services.access_test_precheck import precheck_access_test
+from services.model_service import ANTHROPIC_MODEL_SUFFIX
 
 router = APIRouter(prefix="/access-test", tags=["access-test"])
 
@@ -47,9 +48,6 @@ class ToolProbeRequest(BaseModel):
     )
 
 
-ANTHROPIC_SUFFIX = "(Anthropic)"
-
-
 class TestRerankRequest(BaseModel):
     model: str = Field(..., min_length=1, description="Rerank 模型 ID")
     query: str = Field(default="什么是人工智能？", description="查询文本")
@@ -70,12 +68,8 @@ async def test_access(
     current_user: dict = Depends(get_current_user),
 ):
     # 自动判断模型类型
-    model_id = req.model
-    model_obj = await model_repo.find_by_model_id(session, model_id)
-    if not model_obj and "/" in model_id:
-        model_obj = await model_repo.find_by_model_id(session, model_id.split("/")[-1])
+    model_obj, test_model, base_model = await _resolve_model(session, req.model)
     category = model_obj.category if model_obj else "chat"
-    test_model = model_obj.model_id if model_obj and model_obj.model_id else model_id
     if model_obj and model_obj.mode in {
         "image_generation",
         "audio_speech",
@@ -91,7 +85,7 @@ async def test_access(
         session,
         current_user["id"],
         model_obj,
-        test_model,
+        base_model,
         is_admin=current_user["is_admin"],
     )
     if error_detail:
@@ -174,8 +168,8 @@ async def tool_probe(
 ):
     """带 tools 的真实请求，校验响应含结构化工具调用（拦路由前缀错配导致的静默打平）。"""
     group_name = req.model.strip()
-    if group_name.endswith(ANTHROPIC_SUFFIX):
-        bare_name = group_name[: -len(ANTHROPIC_SUFFIX)]
+    if group_name.endswith(ANTHROPIC_MODEL_SUFFIX):
+        bare_name = group_name[: -len(ANTHROPIC_MODEL_SUFFIX)]
         protocol = "anthropic"
     else:
         bare_name = group_name
@@ -215,12 +209,19 @@ async def tool_probe(
 
 async def _resolve_model(
     session: AsyncSession, model_id: str
-) -> tuple[Model | None, str]:
-    model_obj = await model_repo.find_by_model_id(session, model_id)
-    if not model_obj and "/" in model_id:
-        model_obj = await model_repo.find_by_model_id(session, model_id.split("/")[-1])
-    test_model = model_obj.model_id if model_obj and model_obj.model_id else model_id
-    return model_obj, test_model
+) -> tuple[Model | None, str, str]:
+    """返回 (平台模型, 实际调用的模型名, 用于授权校验的平台 model_id)。
+
+    Anthropic 部署以 `xxx(Anthropic)` 调用，但平台模型和 Key 授权只认 `xxx`。
+    """
+    is_anthropic = model_id.endswith(ANTHROPIC_MODEL_SUFFIX)
+    lookup_id = model_id.removesuffix(ANTHROPIC_MODEL_SUFFIX)
+    model_obj = await model_repo.find_by_model_id(session, lookup_id)
+    if not model_obj and "/" in lookup_id:
+        model_obj = await model_repo.find_by_model_id(session, lookup_id.split("/")[-1])
+    base_model = model_obj.model_id if model_obj and model_obj.model_id else lookup_id
+    test_model = f"{base_model}{ANTHROPIC_MODEL_SUFFIX}" if is_anthropic else base_model
+    return model_obj, test_model, base_model
 
 
 @router.post("/test-embedding", summary="Embedding 测试")
@@ -229,12 +230,12 @@ async def test_embedding(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    model_obj, test_model = await _resolve_model(session, req.model)
+    model_obj, test_model, base_model = await _resolve_model(session, req.model)
     user_api_key, error_detail = await precheck_access_test(
         session,
         current_user["id"],
         model_obj,
-        test_model,
+        base_model,
         is_admin=current_user["is_admin"],
     )
     if error_detail:
@@ -257,12 +258,12 @@ async def test_rerank(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    model_obj, test_model = await _resolve_model(session, req.model)
+    model_obj, test_model, base_model = await _resolve_model(session, req.model)
     user_api_key, error_detail = await precheck_access_test(
         session,
         current_user["id"],
         model_obj,
-        test_model,
+        base_model,
         is_admin=current_user["is_admin"],
     )
     if error_detail:
@@ -305,12 +306,12 @@ async def test_image_generation(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    model_obj, test_model = await _resolve_model(session, req.model)
+    model_obj, test_model, base_model = await _resolve_model(session, req.model)
     user_api_key, error_detail = await precheck_access_test(
         session,
         current_user["id"],
         model_obj,
-        test_model,
+        base_model,
         is_admin=current_user["is_admin"],
     )
     if error_detail:
@@ -333,12 +334,12 @@ async def test_audio_speech(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    model_obj, test_model = await _resolve_model(session, req.model)
+    model_obj, test_model, base_model = await _resolve_model(session, req.model)
     user_api_key, error_detail = await precheck_access_test(
         session,
         current_user["id"],
         model_obj,
-        test_model,
+        base_model,
         is_admin=current_user["is_admin"],
     )
     if error_detail:
@@ -361,12 +362,12 @@ async def test_audio_transcription(
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
-    model_obj, test_model = await _resolve_model(session, req.model)
+    model_obj, test_model, base_model = await _resolve_model(session, req.model)
     user_api_key, error_detail = await precheck_access_test(
         session,
         current_user["id"],
         model_obj,
-        test_model,
+        base_model,
         is_admin=current_user["is_admin"],
     )
     if error_detail:
