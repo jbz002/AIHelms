@@ -556,7 +556,7 @@ onMounted(loadDepartments)
     <ConfirmDialog
       :visible="!!deleteCategoryTarget"
       title="删除分类"
-      :message="`确认删除分类 ${deleteCategoryTarget?.name}？该分类下的 Skill 不会被删除，但需重新设置分类。`"
+      :message="`确认删除分类 ${deleteCategoryTarget?.name}？若该分类下仍有 Skill 将无法删除（分类为平台有效枚举，需先改换这些 Skill 的分类）。`"
       @confirm="confirmDeleteCategory"
       @cancel="deleteCategoryTarget = null"
     />
@@ -573,7 +573,7 @@ onMounted(loadDepartments)
           <input
             v-model="categoryFormName"
             class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
-            placeholder="如：legal / dev / office"
+            placeholder="如：编程开发 / 数据分析"
           />
         </div>
         <div class="mb-4">

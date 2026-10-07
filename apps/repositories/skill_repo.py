@@ -222,6 +222,16 @@ async def find_category_by_name(
     return result.scalar_one_or_none()
 
 
+async def count_skills_by_category(session: AsyncSession, category: str) -> int:
+    """统计引用某分类名的 Skill 数（delete_category 引用检查）。"""
+    from sqlalchemy import func as sa_func
+
+    result = await session.execute(
+        select(sa_func.count()).select_from(Skill).where(Skill.category == category)
+    )
+    return int(result.scalar_one())
+
+
 async def create_category(
     session: AsyncSession, category: SkillCategory
 ) -> SkillCategory:
