@@ -109,9 +109,9 @@ conda activate aihelms
 ./dev/start-api
 ```
 
-- API 监听 `http://localhost:8000`，代码修改自动重载
+- API 监听 `http://localhost:8100`，代码修改自动重载
 - Celery Worker 同时启动，处理异步任务
-- 验证：`curl http://localhost:8000/api/health` 返回 `{"status":"ok"}`
+- 验证：`curl http://localhost:8100/api/health` 返回 `{"status":"ok"}`
 - 路由层在 `apps/api/v1/`，业务逻辑在 `apps/services/`
 
 ### 前端开发

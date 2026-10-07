@@ -18,7 +18,7 @@ npm link --workspace=@aihelms/cli
 AIHelms 为私有化部署，无固定公共 registry。首次使用需指定 registry 与 CLI 令牌：
 
 ```bash
-aihelms login --registry http://localhost:8000 --token sk_cli_xxxxxxxx
+aihelms login --registry http://localhost:8100 --token sk_cli_xxxxxxxx
 ```
 
 令牌在 admin 后台「CLI 令牌」页面创建（Scoped Token，带 `skill:search` / `skill:read` / `skill:install` / `skill:publish` 等 scope）。
@@ -26,7 +26,7 @@ aihelms login --registry http://localhost:8000 --token sk_cli_xxxxxxxx
 也可用环境变量：
 
 ```bash
-export AIHELMS_REGISTRY=http://localhost:8000
+export AIHELMS_REGISTRY=http://localhost:8100
 export AIHELMS_TOKEN=sk_cli_xxxxxxxx
 ```
 

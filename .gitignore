@@ -74,6 +74,9 @@ dev/test0525
 # Test reports (local only)
 dev/test/
 
+# Local DB backups (upgrade rollback safety)
+dev/backups
+
 # Local task artifacts (not source)
 task-record-*.png
 docs/测试.docx

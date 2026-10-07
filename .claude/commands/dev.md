@@ -41,7 +41,7 @@ docker compose -f docker-compose.middleware.yaml -p aihelms ps
 ./dev/start-api
 ```
 
-Verify: `curl http://localhost:8000/api/health` returns `{"status":"ok"}`
+Verify: `curl http://localhost:8100/api/health` returns `{"status":"ok"}`
 
 Note: `start-api` simultaneously starts uvicorn (hot reload) and Celery worker.
 
@@ -59,7 +59,7 @@ Unified access via Nginx: `http://<NGINX_SERVER_NAME>:<WEB_PORT>/admin` and `htt
 
 | Service | Port | Description |
 |---------|------|-------------|
-| FastAPI | 8000 | Backend API |
+| FastAPI | 8100 | Backend API (dev native; 8000 taken by ai-assistant) |
 | Vue Admin | 4001 | Admin dev server |
 | Vue Web | 4002 | User app dev server |
 | Nginx | WEB_PORT (default 80) | Unified gateway (dev + prod) |
@@ -96,7 +96,7 @@ npm install
 
 ### Port already in use
 ```bash
-lsof -i :8000
+lsof -i :8100
 lsof -i :4001
 lsof -i :4002
 ```

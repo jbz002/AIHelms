@@ -14,7 +14,7 @@ export const commands = {
   login: {
     summary: 'Save registry and CLI token',
     usage: 'aihelms login --registry <url> --token <sk_cli_...> [--json]',
-    examples: ['aihelms login --registry http://localhost:8000 --token sk_cli_xxx'],
+    examples: ['aihelms login --registry http://localhost:8100 --token sk_cli_xxx'],
   },
   logout: {
     summary: 'Remove local token',

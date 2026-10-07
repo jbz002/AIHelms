@@ -30,18 +30,22 @@ docker/         — Docker configs
 dev/roadmap/    — Development roadmap, task tracking per module (local only, not committed)
 Dockerfile      — Production image (gunicorn)
 docker-compose.yml              — Production deployment
-docker-compose.middleware.yaml  — Dev middleware (db, redis, litellm)
+docker-compose.middleware.yaml  — Dev middleware (db, redis, litellm, openresty, skillspector)
 ```
 
 ## Development Environment
 
 Dev mode: Docker runs middleware only, application code runs on host.
 
+Docling / docs-mcp do NOT run locally — both reuse the prod instances (same posture as codeapi):
+`.env` `DOCLING_SERVE_URL=http://131.131.2.10:30740` (2026-10-07). To debug docling itself,
+rebuild the local stack in `D:\project\docling-serve` and point the URL back to `localhost:5001`.
+
 ```bash
 # First-time setup (copy env, install deps)
 ./dev/setup
 
-# Start middleware (db + redis + litellm + nginx)
+# Start middleware (db + redis + litellm + skillspector)
 ./dev/start-docker-compose
 
 # Start backend + celery worker (separate terminal)
@@ -102,6 +106,7 @@ docker compose up -d
 - New env variables must be added to `.env.example`
 - Backend reads config via `core/config.py`, never use `os.getenv()`
 - Internal container ports are fixed and not configurable (aihelms:8000, litellm:4000)
+- Dev native backend port is 8100 (8000 is taken by ai-assistant backend on the same Windows host)
 
 ## Git 推送策略
 

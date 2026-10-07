@@ -133,6 +133,7 @@ Pagination: `data` contains `items`, `total`, `page`, `page_size`.
 - docker-compose.yml references images, no `build:` directive
 - docker-compose.middleware.yaml for dev middleware (db, redis, litellm)
 - Internal container ports are fixed (aihelms:8000, litellm:4000), not configurable
+- Dev native backend port is 8100 (8000 is taken by ai-assistant backend on the same Windows host)
 - External mapping ports controlled via env vars (LITELLM_PORT, WEB_PORT, DB_PORT, REDIS_PORT)
 - Only Nginx and LiteLLM expose ports externally in production
 
