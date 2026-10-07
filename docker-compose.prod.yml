@@ -9,13 +9,13 @@
 #
 # 说明:
 #   - aihelms 本地 build（含本地二开，不用 0.1.19 预构建镜像）
-#   - litellm 需先按指南 retag：ghcr.nju.edu.cn/berriai/litellm:v1.93.0 → ghcr.io/berriai/litellm:v1.93.0
+#   - litellm 需先按指南 retag：ghcr.nju.edu.cn/berriai/litellm:v1.103.0 → ghcr.io/berriai/litellm:v1.103.0
 #   - skillspector 用 8010（对齐 aihelms 默认 AI_POLICIES_SCANNER_URL，内部不对外）
 #   - docling-serve / docs-mcp-server 见各自 compose，独立部署
 
 services:
   litellm:
-    image: ghcr.io/berriai/litellm:v1.93.0
+    image: ghcr.io/berriai/litellm:v1.103.0
     container_name: aihelms-litellm
     restart: unless-stopped
     network_mode: host

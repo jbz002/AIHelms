@@ -70,7 +70,7 @@ services:
       retries: 5
 
   litellm:
-    image: ghcr.io/berriai/litellm:v1.93.0
+    image: ghcr.io/berriai/litellm:v1.103.0
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-aihelms}:${POSTGRES_PASSWORD:-aihelms}@db:5432/${POSTGRES_DB:-aihelms}?schema=public
@@ -97,6 +97,7 @@ services:
     restart: unless-stopped
     environment:
       BACKEND_HOST: ${AIHELMS_BACKEND_HOST:-host.docker.internal}
+      BACKEND_PORT: ${AIHELMS_BACKEND_PORT:-8100}
     volumes:
       - ./docker/openresty/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf:ro
       - ./docker/openresty/model_rewrite.lua:/etc/openresty/model_rewrite.lua:ro
@@ -137,6 +138,7 @@ services:
       - "${WEB_PORT:-80}:80"
     environment:
       NGINX_SERVER_NAME: ${NGINX_SERVER_NAME:-_}
+      AIHELMS_API_PORT: ${AIHELMS_API_PORT:-8100}
       NGINX_WORKER_PROCESSES: ${NGINX_WORKER_PROCESSES:-auto}
       NGINX_CLIENT_MAX_BODY_SIZE: ${NGINX_CLIENT_MAX_BODY_SIZE:-100M}
       NGINX_PROXY_READ_TIMEOUT: ${NGINX_PROXY_READ_TIMEOUT:-300s}

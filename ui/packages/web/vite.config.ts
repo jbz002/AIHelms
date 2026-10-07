@@ -9,9 +9,9 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: "http://localhost:8100",
         changeOrigin: true,
-        // changeOrigin 会把 Host 改写成 localhost:8000，后端拿不到用户实际访问的主机名
+        // changeOrigin 会把 Host 改写成 localhost:8100，后端拿不到用户实际访问的主机名
         // （如局域网 IP）。透传原始 Host 到 X-Forwarded-Host，后端按它解析接入指南地址。
         configure: (proxy) => {
           proxy.on("proxyReq", (proxyReq, req) => {

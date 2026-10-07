@@ -12,19 +12,18 @@ if defined WSL_IP (
     set REDIS_HOST=%WSL_IP%
     set LITELLM_HOST=%WSL_IP%
     set AI_POLICIES_SCANNER_URL=http://%WSL_IP%:8010
-    set DOCS_MCP_SERVER_URL=http://%WSL_IP%:8080
-    set DOCS_MCP_SERVER_WEB_URL=http://%WSL_IP%:6281
+    set DOCS_MCP_SERVER_URL=http://131.131.2.10:30750
 ) else (
     echo WSL2 IP 未获取到，使用 localhost 转发
     set DB_HOST=localhost
     set REDIS_HOST=localhost
     set LITELLM_HOST=localhost
     set AI_POLICIES_SCANNER_URL=http://localhost:8010
-    set DOCS_MCP_SERVER_URL=http://localhost:8080
-    set DOCS_MCP_SERVER_WEB_URL=http://localhost:6281
+    set DOCS_MCP_SERVER_URL=http://131.131.2.10:30750
 )
 
 :: 开发环境日志目录
 set LOG_DIR=%~dp0..\logs
 
-uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
+:: dev 端口 8100：8000 已被 ai-assistant backend（Windows 本机 dev 循环）占用
+uv run uvicorn main:app --reload --host 0.0.0.0 --port 8100

@@ -46,8 +46,8 @@ local function fetch_map(premature)
     local target = resolve_host(host)
     local sock = ngx.socket.tcp()
     sock:settimeout(5000)
-    -- BACKEND_PORT: prod=aihelms 监听端口(30720), dev 默认 8000
-    local bport = tonumber(os.getenv("BACKEND_PORT") or "8000")
+    -- BACKEND_PORT: prod=aihelms 监听端口(30720), dev 默认 8100（8000 已被 ai-assistant backend 占用）
+    local bport = tonumber(os.getenv("BACKEND_PORT") or "8100")
     local ok, err = sock:connect(target, bport)
     if not ok then
         ngx.log(ngx.WARN, "C1: connect backend " .. host .. " failed: " .. tostring(err))

@@ -1,5 +1,5 @@
 upstream aihelms_api {
-    server host.docker.internal:8000;
+    server host.docker.internal:${AIHELMS_API_PORT};
 }
 
 upstream admin_dev {

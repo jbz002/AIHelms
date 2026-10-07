@@ -10,7 +10,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: "http://localhost:8100",
         changeOrigin: true,
       },
       // 平台内置图标只在 web/public/icons/v1（生产由 nginx 从 web dist 统一 serve）。
