@@ -946,11 +946,12 @@ class Skill(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     skill_id: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
-    name: Mapped[str] = mapped_column(String(128), nullable=False)
+    # 单名称契约：name ≡ SKILL.md frontmatter name，全局唯一（索引由 090 迁移管）
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     icon: Mapped[str] = mapped_column(String(20), default="📦")
     icon_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     description: Mapped[str] = mapped_column(Text, default="")
-    category: Mapped[str] = mapped_column(String(50), default="general")
+    category: Mapped[str] = mapped_column(String(50), default="通用")
     business_scenario_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("aihelms.business_scenarios.id", ondelete="SET NULL"),

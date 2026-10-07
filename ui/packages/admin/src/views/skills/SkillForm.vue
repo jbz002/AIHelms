@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import {
   createSkill,
   updateSkill,
@@ -29,7 +29,7 @@ const form = ref({
   icon_url: '/icons/v1/default.svg',
   description: '',
   author: '',
-  category: 'general',
+  category: '通用',
   version: '1.0.0',
   tags: '',
   usage_instructions: '',
@@ -42,13 +42,21 @@ const saving = ref(false)
 const zipFileError = ref('')
 const sourceUrlError = ref('')
 
+// 编辑回填值可能不在注册表（历史遗留/改名前孤儿值）——前置显示，不再空白；
+// 保存时服务端硬枚举兜底（遗留别名自动归一，未知值 400 带有效分类清单）。
+const categoryOptions = computed(() => {
+  const names = props.categories.map((c) => c.name)
+  if (!form.value.category || names.includes(form.value.category)) return names
+  return [form.value.category, ...names]
+})
+
 function resetForm(): void {
   form.value = {
     name: '',
     icon_url: '/icons/v1/default.svg',
     description: '',
     author: '',
-    category: props.categories[0]?.name || 'general',
+    category: props.categories[0]?.name || '通用',
     version: '1.0.0',
     tags: '',
     usage_instructions: '',
@@ -106,7 +114,9 @@ function handleZipChange(event: Event): void {
 
 async function handleSubmit(): Promise<void> {
   error.value = ''
-  if (!form.value.name.trim()) {
+  // 单名称契约：新建 name 由包内 SKILL.md frontmatter 决定（服务端权威），
+  // 表单不再收 name；编辑时 name 即改名入口（重写包内 SKILL.md + 重算 hash）
+  if (props.editing && !form.value.name.trim()) {
     error.value = '请填写名称'
     return
   }
@@ -120,7 +130,7 @@ async function handleSubmit(): Promise<void> {
       ? form.value.tags.split(',').map((t) => t.trim()).filter(Boolean)
       : []
     const payload = {
-      name: form.value.name.trim(),
+      ...(props.editing ? { name: form.value.name.trim() } : {}),
       icon_url: form.value.icon_url,
       description: form.value.description,
       author: form.value.author,
@@ -165,12 +175,21 @@ async function handleSubmit(): Promise<void> {
       </div>
 
       <div class="grid grid-cols-2 gap-4">
-        <div>
+        <div v-if="editing">
           <label class="mb-1 block text-sm font-medium text-slate-700">名称 *</label>
           <input
             v-model="form.name"
             class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
           />
+          <p class="mt-1 text-xs text-slate-400">
+            kebab-case（如 data-analysis）；改名会同步重写包内 SKILL.md 并触发已装端更新
+          </p>
+        </div>
+        <div v-else>
+          <label class="mb-1 block text-sm font-medium text-slate-700">名称</label>
+          <p class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+            取自包内 SKILL.md frontmatter 的 name（kebab-case），无需填写
+          </p>
         </div>
         <div>
           <IconPicker v-model="form.icon_url" label="图标" />
@@ -188,7 +207,7 @@ async function handleSubmit(): Promise<void> {
             v-model="form.category"
             class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
           >
-            <option v-for="c in categories" :key="c.id" :value="c.name">{{ c.name }}</option>
+            <option v-for="c in categoryOptions" :key="c" :value="c">{{ c }}</option>
           </select>
         </div>
         <div>
@@ -206,7 +225,7 @@ async function handleSubmit(): Promise<void> {
           <input
             v-model="form.tags"
             class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
-            placeholder="legal, ocr, markdown"
+            placeholder="合同审查, OCR, 报销"
           />
         </div>
         <div class="col-span-2">

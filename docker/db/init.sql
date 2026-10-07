@@ -716,10 +716,14 @@ CREATE TABLE IF NOT EXISTS aihelms.skill_categories (
 );
 
 INSERT INTO aihelms.skill_categories (name, sort_order) VALUES
-    ('general', 0),
-    ('legal', 10),
-    ('dev', 20),
-    ('office', 30)
+    ('通用', 0),
+    ('编程开发', 10),
+    ('办公效率', 20),
+    ('数据分析', 30),
+    ('文档处理', 40),
+    ('设计创作', 50),
+    ('法律', 60),
+    ('搜索', 70)
 ON CONFLICT (name) DO NOTHING;
 
 -- Skill 主表
@@ -730,7 +734,7 @@ CREATE TABLE IF NOT EXISTS aihelms.skills (
     icon VARCHAR(20) DEFAULT '📦',
     icon_url VARCHAR(500),
     description TEXT DEFAULT '',
-    category VARCHAR(50) DEFAULT 'general',
+    category VARCHAR(50) DEFAULT '通用',
     business_scenario_id BIGINT REFERENCES aihelms.business_scenarios(id) ON DELETE SET NULL,
     version VARCHAR(20) DEFAULT '1.0.0',
     tags JSONB DEFAULT '[]',
@@ -757,7 +761,8 @@ CREATE TABLE IF NOT EXISTS aihelms.skills (
 );
 
 CREATE INDEX IF NOT EXISTS idx_skills_category ON aihelms.skills(category);
-CREATE INDEX IF NOT EXISTS idx_skills_name ON aihelms.skills(name);
+-- 单名称契约：name 全局唯一（≡ SKILL.md frontmatter name），见 090 迁移
+CREATE UNIQUE INDEX IF NOT EXISTS uq_skills_name ON aihelms.skills(name);
 CREATE INDEX IF NOT EXISTS idx_skills_published ON aihelms.skills(is_published);
 CREATE INDEX IF NOT EXISTS idx_skills_business_scenario ON aihelms.skills(business_scenario_id);
 CREATE INDEX IF NOT EXISTS idx_skills_visibility ON aihelms.skills(visibility_type);

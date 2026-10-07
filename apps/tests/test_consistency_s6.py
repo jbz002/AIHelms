@@ -8,8 +8,10 @@
 - 审计：AdminAuditLog 的 request_id / detail 字段持久化
 """
 
+import io
 import shutil
 import uuid
+import zipfile
 from datetime import datetime
 
 import pytest
@@ -50,14 +52,19 @@ async def _real_user_id() -> int:
 
 
 async def _make_skill() -> int:
-    name = f"test_s6_{uuid.uuid4().hex[:8]}"
+    # 单名称契约（2026-10）：name 必须 kebab 且 ≡ zip 内 SKILL.md frontmatter name
+    name = f"test-s6-{uuid.uuid4().hex[:8]}"
+    skill_md = f"---\nname: {name}\ndescription: s6 test\n---\n# {name}\n"
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(f"{name}/SKILL.md", skill_md)
     session = _session()
     try:
         data = await skill_service.create_skill(
             session,
             name=name,
             version="1.0.0",
-            zip_content=b"PK\x03\x04fake-s6",
+            zip_content=buf.getvalue(),
             zip_filename=f"{name}.zip",
         )
     finally:

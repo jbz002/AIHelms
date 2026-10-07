@@ -70,11 +70,11 @@ async def get_my_skill(
 
 @router.post("", summary="上传我的 Skill")
 async def create_my_skill(
-    name: str = Form(...),
+    name: str = Form(""),
     icon: str = Form("📦"),
     icon_url: str | None = Form(None, max_length=500),
     description: str = Form(""),
-    category: str = Form("general"),
+    category: str = Form("通用"),
     version: str = Form("1.0.0"),
     tags: str = Form("[]"),
     author: str = Form(""),

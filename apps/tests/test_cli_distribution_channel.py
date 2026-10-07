@@ -38,7 +38,8 @@ def _valid_zip(name: str = "cli-skill") -> bytes:
 
 
 async def _make_published_skill(suffix: str | None = None) -> tuple[int, str]:
-    name = f"test_cli_{(suffix or uuid.uuid4().hex)[:8]}"
+    # 单名称契约（2026-10）：name 必须 kebab（下划线会被 400 拒）
+    name = f"test-cli-{(suffix or uuid.uuid4().hex)[:8]}"
     session = _session()
     try:
         data = await skill_service.create_skill(

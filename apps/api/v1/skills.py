@@ -56,8 +56,14 @@ class SetHiddenRequest(BaseModel):
 @router.get("/categories")
 async def list_categories(
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permission("skill:read")),
+    _: dict = Depends(get_current_user_compat),
 ):
+    """分类枚举清单（name/description/sort_order，无敏感性）。
+
+    鉴权走 get_current_user_compat（同 /published 先例）：本站登录之外，
+    其他子应用用户持 AI Hub 签发凭证（方式六 introspect）亦可读——
+    ai-assistant 上传弹窗的类别下拉即此通道。
+    """
     data = await skill_service.list_categories(session)
     return {"code": 200, "message": "ok", "data": data}
 
@@ -452,11 +458,11 @@ async def set_skill_hidden(
 
 @router.post("", summary="创建 Skill")
 async def create_skill(
-    name: str = Form(...),
+    name: str = Form(""),
     icon: str = Form("📦"),
     icon_url: str | None = Form(None, max_length=500),
     description: str = Form(""),
-    category: str = Form("general"),
+    category: str = Form("通用"),
     version: str = Form("1.0.0"),
     tags: str = Form("[]"),
     author: str = Form(""),

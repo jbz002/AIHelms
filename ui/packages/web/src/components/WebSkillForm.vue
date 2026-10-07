@@ -22,7 +22,7 @@ const name = ref('')
 const iconUrl = ref('')
 const description = ref('')
 const author = ref('')
-const category = ref('general')
+const category = ref('通用')
 const categoryList = ref<SkillCategory[]>([])
 const version = ref('1.0.0')
 const tagsText = ref('')
@@ -52,7 +52,7 @@ watch(
       iconUrl.value = props.skill.icon_url ?? ''
       description.value = props.skill.description ?? ''
       author.value = props.skill.author ?? ''
-      category.value = props.skill.category ?? 'general'
+      category.value = props.skill.category ?? '通用'
       version.value = props.skill.version ?? '1.0.0'
       tagsText.value = (props.skill.tags ?? []).join(', ')
       usage.value = props.skill.usage_instructions ?? ''
@@ -72,7 +72,7 @@ function resetCreate(): void {
   iconUrl.value = ''
   description.value = ''
   author.value = ''
-  category.value = 'general'
+  category.value = '通用'
   version.value = '1.0.0'
   tagsText.value = ''
   usage.value = ''
@@ -89,7 +89,7 @@ async function loadCategories(): Promise<void> {
     categoryList.value = []
   }
   const names = categoryList.value.map((c) => c.name)
-  if (names.length && category.value === 'general' && props.mode === 'create') {
+  if (names.length && !names.includes(category.value) && props.mode === 'create') {
     category.value = names[0]
   }
 }
@@ -119,7 +119,9 @@ function validate(): string | null {
     if (!version.value.trim()) return t('contributor.skill.msg.versionRequired')
     return null
   }
-  if (!name.value.trim()) return t('contributor.skill.msg.nameRequired')
+  // 单名称契约：新建 name 由包内 SKILL.md frontmatter 决定（服务端权威），
+  // 不再收 name；编辑草稿时 name 即改名入口
+  if (props.mode === 'edit' && !name.value.trim()) return t('contributor.skill.msg.nameRequired')
   if (props.mode === 'create') {
     if (sourceMode.value === 'zip' && !zipFile.value) return t('contributor.skill.msg.sourceRequired')
     if (sourceMode.value === 'url' && !sourceUrl.value.trim()) return t('contributor.skill.msg.sourceRequired')
@@ -155,7 +157,6 @@ async function handleSubmit(): Promise<void> {
       })
     } else {
       await createContribution({
-        name: name.value.trim(),
         icon_url: iconUrl.value,
         description: description.value,
         author: author.value,
@@ -187,10 +188,17 @@ async function handleSubmit(): Promise<void> {
           <div v-if="!isVersion" class="flex items-center gap-3">
             <IconPicker v-model="iconUrl" :label="t('contributor.skill.field.icon')" />
           </div>
-          <div>
+          <div v-if="mode === 'edit'">
             <label class="mb-1 block text-sm font-medium text-slate-700">{{ t('contributor.skill.field.name') }}</label>
-            <input v-model="name" type="text" :placeholder="t('contributor.skill.placeholder.name')" :disabled="isVersion"
-              class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none disabled:bg-slate-50" />
+            <input v-model="name" type="text" :placeholder="t('contributor.skill.placeholder.name')"
+              class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none" />
+            <p class="mt-1 text-xs text-slate-400">kebab-case；改名会同步重写包内 SKILL.md（仅未发布草稿可改）</p>
+          </div>
+          <div v-else-if="mode === 'create'">
+            <label class="mb-1 block text-sm font-medium text-slate-700">{{ t('contributor.skill.field.name') }}</label>
+            <p class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
+              取自包内 SKILL.md frontmatter 的 name（kebab-case），无需填写
+            </p>
           </div>
           <div v-if="!isVersion" class="grid grid-cols-2 gap-3">
             <div>
@@ -202,7 +210,11 @@ async function handleSubmit(): Promise<void> {
               <select v-if="categoryList.length" v-model="category" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none">
                 <option v-for="c in categoryOptions" :key="c" :value="c">{{ c }}</option>
               </select>
-              <input v-else v-model="category" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none" />
+              <!-- 分类为平台硬枚举（服务端校验），列表加载失败时禁选、保持「通用」默认可提交 -->
+              <select v-else v-model="category" disabled class="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500">
+                <option :value="category">{{ category }}</option>
+              </select>
+              <p v-if="!categoryList.length" class="mt-1 text-xs text-slate-400">分类列表加载失败，默认使用「通用」</p>
             </div>
           </div>
           <div>

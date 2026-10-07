@@ -27,16 +27,16 @@ async def _real_user_id() -> int:
         return int(row)
 
 
-def _fake_zip_bytes() -> bytes:
-    """合法 skill 包（含 SKILL.md，frontmatter name 为 kebab-case），过物理校验。"""
+def _fake_zip_bytes(name: str) -> bytes:
+    """合法 skill 包（SKILL.md frontmatter name = 入参，单名称契约下与 DB name 一致）。"""
     import io
     import zipfile
 
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(
-            "pub-review-skill/SKILL.md",
-            "---\nname: pub-review-skill\ndescription: test\n---\n# t\n\ntest body\n",
+            f"{name}/SKILL.md",
+            f"---\nname: {name}\ndescription: test\n---\n# t\n\ntest body\n",
         )
     return buf.getvalue()
 
@@ -49,7 +49,7 @@ async def _make_skill() -> int:
             session,
             name=name,
             version="1.0.0",
-            zip_content=_fake_zip_bytes(),
+            zip_content=_fake_zip_bytes(name),
             zip_filename=f"{name}.zip",
         )
     finally:

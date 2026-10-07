@@ -173,7 +173,7 @@ async def cli_list_versions(
 
 @router.post("/skills", summary="创建 Skill 并发布（门控自决）")
 async def cli_create_skill(
-    name: str = Form(...),
+    name: str = Form(""),
     description: str = Form(""),
     category: str = Form("general"),
     version: str = Form("1.0.0"),
