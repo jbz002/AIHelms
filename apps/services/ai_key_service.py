@@ -177,7 +177,8 @@ async def create_key(
     await _save_rate_limits(session, ai_key.id, rate_limits or [])
 
     # Sync to LiteLLM
-    litellm_duration = budget_duration if budget_duration and budget_limit else duration
+    # 注意：budget_duration 是预算重置周期，不是 key 有效期；误传 LiteLLM duration
+    # 会导致带预算的 key 在一个预算周期后被 LiteLLM 判过期（401 expired_key）
     litellm_models, _ = await _expand_models_with_anthropic(session, models or [], None)
     litellm_models = _to_litellm_models(litellm_models)
     mcp_server_names = await _resolve_mcp_server_names(session, mcps or [])
@@ -187,7 +188,7 @@ async def create_key(
         team_id=team_id,
         models=litellm_models,
         metadata=await _build_key_metadata(session, ai_key),
-        duration=litellm_duration,
+        duration=duration,
         allowed_mcp_servers=mcp_server_names if mcp_server_names else None,
         tpm_limit=ai_key.tpm_limit,
         rpm_limit=ai_key.rpm_limit,

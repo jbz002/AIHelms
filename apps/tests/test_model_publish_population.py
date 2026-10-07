@@ -103,7 +103,8 @@ class PublicationCase:
     session: AsyncMock
 
     def ordinary_keys(self) -> list[AiKey]:
-        return [key for key in self.population.keys if key.id <= 1343]
+        # 个人主 Key 全量（含管理员 1344/1345）；范围外 Key（1346+）按 key_type 排除
+        return [key for key in self.population.keys if key.key_type == "personal_main"]
 
     def holders(self) -> set[int]:
         return {key.id for key in self.ordinary_keys() if MODEL_NAME in key.models}
@@ -187,13 +188,14 @@ def publication_case(monkeypatch: pytest.MonkeyPatch) -> PublicationCase:
 
 
 @pytest.mark.asyncio
-async def test_publish_all_grants_1303_enabled_members(
+async def test_publish_all_grants_1305_enabled_members_including_admins(
     publication_case: PublicationCase,
 ) -> None:
     case = publication_case
     changed = await case.publish(None)
-    assert changed == 1303
-    assert len(case.holders()) == 1303
+    assert changed == 1305
+    assert len(case.holders()) == 1305
+    assert all(MODEL_NAME in key.models for key in case.ordinary_keys()[1343:])
     assert all(MODEL_NAME not in key.models for key in case.population.keys[1300:1340])
     assert all(OTHER_MODEL in key.models for key in case.population.keys)
 
@@ -208,30 +210,30 @@ async def test_publish_a_only_grants_703_members(
 
 
 @pytest.mark.asyncio
-async def test_expand_a_to_ab_grants_600_additional_members(
+async def test_expand_a_to_ab_grants_602_additional_members(
     publication_case: PublicationCase,
 ) -> None:
     case = publication_case
     await case.publish(case.population.department_a)
     changed = await case.publish(None)
-    assert changed == 600
-    assert len(case.holders()) == 1303
+    assert changed == 602
+    assert len(case.holders()) == 1305
     assert all(key.models.count(MODEL_NAME) <= 1 for key in case.population.keys)
 
 
 @pytest.mark.asyncio
-async def test_shrink_ab_to_a_revokes_600_b_only_members(
+async def test_shrink_ab_to_a_revokes_602_nonmembers_including_admins(
     publication_case: PublicationCase,
 ) -> None:
     case = publication_case
     await case.publish(None)
     changed = await case.publish(case.population.department_a)
-    assert changed == 600
+    assert changed == 602
     assert case.holders() == set(range(1, 701)) | {1341, 1342, 1343}
 
 
 @pytest.mark.asyncio
-async def test_unpublish_revokes_1343_but_preserves_admins_and_other_keys(
+async def test_unpublish_revokes_all_personal_mains_including_admins(
     publication_case: PublicationCase,
 ) -> None:
     case = publication_case
@@ -239,11 +241,12 @@ async def test_unpublish_revokes_1343_but_preserves_admins_and_other_keys(
         key.models = [OTHER_MODEL, MODEL_NAME]
         case.litellm_models[token_hash(key)].add(MODEL_NAME)
     changed = await case.publish([])
-    assert changed == 1343
+    assert changed == 1345
     assert case.holders() == set()
     for key in case.ordinary_keys():
+        assert MODEL_NAME not in key.models
         assert MODEL_NAME not in case.litellm_models[token_hash(key)]
-    for key in case.population.keys[1343:]:
+    for key in case.population.keys[1345:]:
         assert MODEL_NAME in key.models
         assert MODEL_NAME in case.litellm_models[token_hash(key)]
 

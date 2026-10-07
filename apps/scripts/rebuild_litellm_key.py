@@ -44,9 +44,6 @@ async def rebuild(session, key_id: int) -> bool:
         team_id=team_id,
         models=litellm_models,
         metadata=metadata,
-        duration=(
-            key.budget_duration if key.budget_duration and key.budget_limit else None
-        ),
         allowed_mcp_servers=mcp_names if mcp_names else None,
         tpm_limit=key.tpm_limit,
         rpm_limit=key.rpm_limit,

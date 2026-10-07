@@ -71,13 +71,15 @@ async def find_personal_main_keys_for_model_sync(
     user_ids: list[int] | None = None,
     include_inactive: bool = False,
 ) -> list[AiKey]:
+    # 管理员主 Key 与普通用户同一逻辑：发布授予/取消发布撤销一视同仁。
+    # 历史上曾排除管理员（User.is_admin.is_(False)），导致旧代码授予的模型
+    # 在取消发布后永久残留管理员 Key（含 LiteLLM 白名单），可继续调用未发布模型。
     stmt = (
         select(AiKey)
         .join(User, User.id == AiKey.owner_id)
         .where(
             AiKey.key_type == "personal_main",
             AiKey.owner_type == "user",
-            User.is_admin.is_(False),
         )
         .order_by(AiKey.id)
     )
