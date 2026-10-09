@@ -114,9 +114,7 @@ function handleZipChange(event: Event): void {
 
 async function handleSubmit(): Promise<void> {
   error.value = ''
-  // 单名称契约：新建 name 由包内 SKILL.md frontmatter 决定（服务端权威），
-  // 表单不再收 name；编辑时 name 即改名入口（重写包内 SKILL.md + 重算 hash）
-  if (props.editing && !form.value.name.trim()) {
+  if (!form.value.name.trim()) {
     error.value = '请填写名称'
     return
   }
@@ -130,7 +128,7 @@ async function handleSubmit(): Promise<void> {
       ? form.value.tags.split(',').map((t) => t.trim()).filter(Boolean)
       : []
     const payload = {
-      ...(props.editing ? { name: form.value.name.trim() } : {}),
+      name: form.value.name.trim(),
       icon_url: form.value.icon_url,
       description: form.value.description,
       author: form.value.author,
@@ -175,21 +173,12 @@ async function handleSubmit(): Promise<void> {
       </div>
 
       <div class="grid grid-cols-2 gap-4">
-        <div v-if="editing">
+        <div>
           <label class="mb-1 block text-sm font-medium text-slate-700">名称 *</label>
           <input
             v-model="form.name"
             class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
           />
-          <p class="mt-1 text-xs text-slate-400">
-            kebab-case（如 data-analysis）；改名会同步重写包内 SKILL.md 并触发已装端更新
-          </p>
-        </div>
-        <div v-else>
-          <label class="mb-1 block text-sm font-medium text-slate-700">名称</label>
-          <p class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-            取自包内 SKILL.md frontmatter 的 name（kebab-case），无需填写
-          </p>
         </div>
         <div>
           <IconPicker v-model="form.icon_url" label="图标" />

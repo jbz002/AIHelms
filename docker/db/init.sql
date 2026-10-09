@@ -761,8 +761,7 @@ CREATE TABLE IF NOT EXISTS aihelms.skills (
 );
 
 CREATE INDEX IF NOT EXISTS idx_skills_category ON aihelms.skills(category);
--- 单名称契约：name 全局唯一（≡ SKILL.md frontmatter name），见 090 迁移
-CREATE UNIQUE INDEX IF NOT EXISTS uq_skills_name ON aihelms.skills(name);
+CREATE INDEX IF NOT EXISTS idx_skills_name ON aihelms.skills(name);
 CREATE INDEX IF NOT EXISTS idx_skills_published ON aihelms.skills(is_published);
 CREATE INDEX IF NOT EXISTS idx_skills_business_scenario ON aihelms.skills(business_scenario_id);
 CREATE INDEX IF NOT EXISTS idx_skills_visibility ON aihelms.skills(visibility_type);

@@ -22,10 +22,7 @@ class SkillIdInput(BaseModel):
 
 class CreateSkillFromUrlInput(BaseModel):
     model_config = {"str_strip_whitespace": True}
-    name: str | None = Field(
-        default=None,
-        description="Skill 名称（可选；服务端以包内 SKILL.md frontmatter name 为准）",
-    )
+    name: str = Field(..., description="Skill 名称")
     source_url: str = Field(
         ..., description="git/zip 仓库 URL，服务端会转换并校验后下载"
     )
@@ -103,7 +100,7 @@ async def admin_create_skill_from_url(params: CreateSkillFromUrlInput) -> str:
         try:
             data = await skill_service.create_skill(
                 session,
-                name=params.name or "",
+                name=params.name,
                 description=params.description,
                 category=params.category,
                 version=params.version,

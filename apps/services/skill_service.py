@@ -3,7 +3,6 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
@@ -165,7 +164,7 @@ async def _validate_category(session: AsyncSession, category: str) -> str:
 
 async def create_skill(
     session: AsyncSession,
-    name: str = "",
+    name: str,
     icon: str = "📦",
     icon_url: str | None = None,
     description: str = "",
@@ -186,21 +185,6 @@ async def create_skill(
 ) -> dict:
     if not zip_content and not source_url:
         raise ValidationError("请上传 zip 包或提供仓库 URL")
-    if source_url and not zip_content:
-        zip_content, zip_filename = await fetch_skill_zip_from_url(source_url)
-
-    # 单名称契约：name 唯一权威来源 = zip 内 SKILL.md frontmatter（缺失/非法一律
-    # 400，H1 中文回填名自然被挡）。form name 可选，传了且不一致 → 400 fail-fast。
-    from services import skill_content_service, skill_protocol_service
-
-    parsed = skill_content_service.parse_skill_zip(zip_content)
-    fm_name = skill_protocol_service.require_valid_frontmatter_name(parsed)
-    if name and name != fm_name:
-        raise ValidationError(
-            f"name '{name}' 与包内 SKILL.md frontmatter name '{fm_name}' 不一致，"
-            "name 以 SKILL.md frontmatter 为准（可不传）"
-        )
-    name = fm_name
 
     visibility_service.validate_write_visibility(visibility_type)
     if visibility_type == visibility_service.DEPARTMENT and not visible_department_id:
@@ -210,6 +194,9 @@ async def create_skill(
     existing = await skill_repo.find_by_name(session, name)
     if existing:
         raise ConflictError(f"Skill 名称 '{name}' 已存在")
+
+    if source_url and not zip_content:
+        zip_content, zip_filename = await fetch_skill_zip_from_url(source_url)
 
     sid = str(uuid.uuid4())
     zip_path = ""
@@ -284,10 +271,9 @@ async def create_skill(
     )
     v1 = await skill_version_repo.create(session, v1)
 
-    # 解析 SKILL.md 内容 + 协议合规校验（write-time，零查询期开销；复用入口已
-    # parse 的结果，避免双解析）
+    # 解析 SKILL.md 内容 + 协议合规校验（write-time，零查询期开销）
     if zip_content:
-        _parse_validate_and_apply(v1, zip_content, parsed=parsed)
+        parsed = _parse_validate_and_apply(v1, zip_content)
         skill.frontmatter = parsed.frontmatter
         skill.summary_text = parsed.summary_text
 
@@ -362,9 +348,6 @@ async def update_skill(
     was_published = skill.is_published
     # visible_department_id 语义特殊（None=不变，0=清空），不能走通用 setattr 循环
     visible_department_id = kwargs.pop("visible_department_id", None)
-    # name 同样特殊：改名走 _rename_skill（单名称契约，重写 zip + 重算 hash），
-    # 不能走通用 setattr（那会只改 DB 不改包，退回双名状态）
-    new_name = kwargs.pop("name", None)
     if "visibility_type" in kwargs:
         visibility_service.validate_write_visibility(kwargs["visibility_type"])
     if "category" in kwargs:
@@ -376,9 +359,6 @@ async def update_skill(
     for key, value in kwargs.items():
         if hasattr(skill, key) and value is not None:
             setattr(skill, key, value)
-
-    if new_name is not None and new_name != skill.name:
-        await _rename_skill(session, skill, new_name)
 
     if visible_department_id is not None:
         from repositories import department_repo
@@ -415,69 +395,9 @@ async def update_skill(
     # 满足公开列表可见条件才广播同步到主 Key，否则移除（覆盖下架/隐藏/可见性变更）
     await _sync_skill_visibility(session, skill)
 
-    try:
-        await session.commit()
-    except IntegrityError:
-        # 并发改名撞唯一索引 uq_skills_name 的兜底（服务层 find_by_name 竞态窗口）
-        await session.rollback()
-        raise ConflictError(f"Skill 名称 '{skill.name}' 已存在")
+    await session.commit()
     await session.refresh(skill)
     return _serialize(skill)
-
-
-async def _rename_skill(session: AsyncSession, skill: Skill, new_name: str) -> None:
-    """改名（DB → markdown 方向，单名称契约）：kebab 校验 + 全局唯一校验 +
-    重写存量 zip 内 SKILL.md frontmatter name（顶层目录同步改名）+ 重算 hash。
-
-    - 主表与共享同一 zip_path 的版本行一并同步（v1 与主表共享 {uuid}.zip）。
-    - 非激活旧版本 zip 不强改：激活该版本时快照自然回写 name（markdown→DB 方向）。
-    - 协议结果按草稿容错模型重存（name 已保证合法；description 等其余 error
-      不阻断改名，维持 _parse_validate_and_apply 语义）。
-    - 改名即内容变更：composite_hash 变化，已装客户端会看到一次「有更新」。
-    """
-    from services import skill_content_service, skill_protocol_service
-
-    name = skill_protocol_service.validate_skill_name_string(new_name)
-    other = await skill_repo.find_by_name(session, name)
-    if other and other.id != skill.id:
-        raise ConflictError(f"Skill 名称 '{name}' 已存在")
-
-    old_zip_path = skill.zip_path
-    if not old_zip_path or not os.path.exists(old_zip_path):
-        raise ValidationError("存量包缺失（zip 文件不存在），无法改名")
-    with open(old_zip_path, "rb") as f:
-        zip_bytes = f.read()
-
-    rewritten = skill_content_service.rewrite_zip_skill_name(zip_bytes, name)
-    if rewritten is None:
-        raise ValidationError("存量包内缺少 SKILL.md，无法改名")
-
-    # 盘上覆写前先重算解析 + 协议校验；frontmatter name 必须 == 目标名（防御
-    # 重写函数失效），否则不动文件直接报错
-    parsed = skill_content_service.parse_skill_zip(rewritten.new_bytes)
-    if str((parsed.frontmatter or {}).get("name", "")) != name:
-        raise ValidationError("SKILL.md frontmatter name 重写结果异常，已取消改名")
-    protocol = skill_protocol_service.validate_skill_protocol(parsed)
-
-    tmp_path = old_zip_path + ".tmp"
-    with open(tmp_path, "wb") as f:
-        f.write(rewritten.new_bytes)
-    os.replace(tmp_path, old_zip_path)
-
-    skill.name = name
-    skill.zip_size = len(rewritten.new_bytes)
-    skill.frontmatter = parsed.frontmatter
-    skill.summary_text = parsed.summary_text
-
-    for version in await skill_version_repo.list_versions(session, skill.id):
-        if version.zip_path != old_zip_path:
-            continue
-        skill_content_service.apply_parsed_to_version(version, parsed)
-        version.file_hashes = protocol.manifest
-        version.protocol_valid = protocol.valid
-        version.protocol_errors = protocol.to_storage_list()
-        version.last_validated_at = datetime.now(timezone.utc)
-        version.zip_size = len(rewritten.new_bytes)
 
 
 async def set_published(session: AsyncSession, skill_id: int, value: bool) -> None:
@@ -498,19 +418,16 @@ def _version_zip_dir(skill_uuid: str) -> str:
 
 
 def _parse_validate_and_apply(
-    version: SkillVersion,
-    zip_bytes: bytes,
-    parsed: ParsedSkillContent | None = None,
+    version: SkillVersion, zip_bytes: bytes
 ) -> ParsedSkillContent:
     """解析 SKILL.md + 协议校验 + 写内容与协议字段到版本 ORM。
 
     草稿容错：errors 入库不阻断注册，由 activate_version 门控。
     file_hashes 用 manifest 结果覆盖（含 content_type/category）。
-    ``parsed`` 可传入已完成的解析结果（创建路径入口已 parse 过），避免双解析。
     """
     from services import skill_content_service, skill_protocol_service
 
-    parsed = parsed or skill_content_service.parse_skill_zip(zip_bytes)
+    parsed = skill_content_service.parse_skill_zip(zip_bytes)
     skill_content_service.apply_parsed_to_version(version, parsed)
     result = skill_protocol_service.validate_skill_protocol(parsed)
     version.file_hashes = result.manifest
@@ -823,10 +740,6 @@ async def activate_version(
             f"版本协议校验未通过，不可激活：{detail or '存在协议合规错误'}"
         )
 
-    # 单名称契约（markdown→DB）：激活版本的 frontmatter name 将回写 skill.name，
-    # 撞他人现名直接 409（先处理占名者再激活）
-    await _assert_activation_name_free(session, skill, version)
-
     # 激活即发布：draft → published（安全审查退出审批后，激活是版本唯一发布动作）
     if version.lifecycle_status == DRAFT:
         version.lifecycle_status = PUBLISHED
@@ -896,8 +809,6 @@ async def restore_version(
     await session.flush()
     # 撤回导致 skill 无激活版本 → 恢复即重新激活（撤销 yank 副作用）
     if skill.current_version_id is None:
-        # 单名称契约：恢复激活同样会把 frontmatter name 回写 skill.name，先查撞名
-        await _assert_activation_name_free(session, skill, version)
         await versioning_service.activate_version(
             session,
             version,
@@ -940,21 +851,6 @@ async def _noop_sync(skill: Skill, version: SkillVersion) -> None:
     """Skill 不进 LiteLLM，激活无外部系统同步。"""
 
 
-async def _assert_activation_name_free(
-    session: AsyncSession, skill: Skill, version: SkillVersion
-) -> None:
-    """单名称契约预检：激活版本的 frontmatter name 将回写 skill.name，
-    与其他 Skill 现名相同时抛 ConflictError（409）。"""
-    fm_name = str((version.frontmatter or {}).get("name") or "").strip()
-    if not fm_name or fm_name == skill.name:
-        return
-    other = await skill_repo.find_by_name(session, fm_name)
-    if other and other.id != skill.id:
-        raise ConflictError(
-            f"版本 frontmatter name '{fm_name}' 已被其他 Skill 占用，无法激活"
-        )
-
-
 async def _apply_version_snapshot_to_skill(skill: Skill, version: SkillVersion) -> None:
     """把 active 版本的内容/安全快照拷贝到主表（主表 = active 版本冗余快照）。"""
     skill.zip_path = version.zip_path
@@ -970,9 +866,6 @@ async def _apply_version_snapshot_to_skill(skill: Skill, version: SkillVersion) 
     skill.latest_ai_policies_audit_id = version.latest_ai_policies_audit_id
     skill.frontmatter = version.frontmatter
     skill.summary_text = version.summary_text
-    # 单名称契约（markdown→DB）：激活版本的 frontmatter name 即 skill.name；
-    # 空值兜底保留现名（防御脏数据，正常包 activate 门控已保证 name 合法）
-    skill.name = str((version.frontmatter or {}).get("name") or "") or skill.name
 
 
 # ─── Categories ──────────────────────────────────────────────────────────────

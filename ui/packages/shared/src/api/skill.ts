@@ -34,9 +34,7 @@ export function getSkillMarketDetail(id: number): Promise<Skill> {
 }
 
 export interface SkillFormFields {
-  // 单名称契约：name 可选——创建时由包内 SKILL.md frontmatter 决定（服务端权威），
-  // 仅编辑/改名时提交
-  name?: string
+  name: string
   icon?: string
   icon_url?: string
   description?: string
@@ -55,7 +53,7 @@ export interface SkillFormFields {
 
 export function buildSkillFormData(fields: SkillFormFields): FormData {
   const fd = new FormData()
-  if (fields.name !== undefined) fd.append('name', fields.name)
+  fd.append('name', fields.name)
   if (fields.icon !== undefined) fd.append('icon', fields.icon)
   if (fields.icon_url !== undefined) fd.append('icon_url', fields.icon_url)
   if (fields.description !== undefined) fd.append('description', fields.description)

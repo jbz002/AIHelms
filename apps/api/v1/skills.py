@@ -458,7 +458,7 @@ async def set_skill_hidden(
 
 @router.post("", summary="创建 Skill")
 async def create_skill(
-    name: str = Form(""),
+    name: str = Form(...),
     icon: str = Form("📦"),
     icon_url: str | None = Form(None, max_length=500),
     description: str = Form(""),

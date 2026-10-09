@@ -51,7 +51,7 @@ async def _resolve_visibility(
 async def create_contribution_and_submit(
     session: AsyncSession,
     *,
-    name: str = "",
+    name: str,
     icon: str = "📦",
     icon_url: str | None = None,
     description: str = "",
@@ -77,9 +77,7 @@ async def create_contribution_and_submit(
             source_url
         )
     if zip_content:
-        validate_skill_package_or_raise(
-            zip_content, f"contribution create {name or '<zip>'}"
-        )
+        validate_skill_package_or_raise(zip_content, f"contribution create {name}")
 
     effective_visibility, department_id = await _resolve_visibility(
         session, visibility_type, created_by

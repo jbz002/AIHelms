@@ -119,9 +119,7 @@ function validate(): string | null {
     if (!version.value.trim()) return t('contributor.skill.msg.versionRequired')
     return null
   }
-  // 单名称契约：新建 name 由包内 SKILL.md frontmatter 决定（服务端权威），
-  // 不再收 name；编辑草稿时 name 即改名入口
-  if (props.mode === 'edit' && !name.value.trim()) return t('contributor.skill.msg.nameRequired')
+  if (!name.value.trim()) return t('contributor.skill.msg.nameRequired')
   if (props.mode === 'create') {
     if (sourceMode.value === 'zip' && !zipFile.value) return t('contributor.skill.msg.sourceRequired')
     if (sourceMode.value === 'url' && !sourceUrl.value.trim()) return t('contributor.skill.msg.sourceRequired')
@@ -157,6 +155,7 @@ async function handleSubmit(): Promise<void> {
       })
     } else {
       await createContribution({
+        name: name.value.trim(),
         icon_url: iconUrl.value,
         description: description.value,
         author: author.value,
@@ -188,17 +187,10 @@ async function handleSubmit(): Promise<void> {
           <div v-if="!isVersion" class="flex items-center gap-3">
             <IconPicker v-model="iconUrl" :label="t('contributor.skill.field.icon')" />
           </div>
-          <div v-if="mode === 'edit'">
+          <div>
             <label class="mb-1 block text-sm font-medium text-slate-700">{{ t('contributor.skill.field.name') }}</label>
-            <input v-model="name" type="text" :placeholder="t('contributor.skill.placeholder.name')"
-              class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none" />
-            <p class="mt-1 text-xs text-slate-400">kebab-case；改名会同步重写包内 SKILL.md（仅未发布草稿可改）</p>
-          </div>
-          <div v-else-if="mode === 'create'">
-            <label class="mb-1 block text-sm font-medium text-slate-700">{{ t('contributor.skill.field.name') }}</label>
-            <p class="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-500">
-              取自包内 SKILL.md frontmatter 的 name（kebab-case），无需填写
-            </p>
+            <input v-model="name" type="text" :placeholder="t('contributor.skill.placeholder.name')" :disabled="isVersion"
+              class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:border-purple-500 focus:outline-none disabled:bg-slate-50" />
           </div>
           <div v-if="!isVersion" class="grid grid-cols-2 gap-3">
             <div>

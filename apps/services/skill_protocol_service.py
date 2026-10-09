@@ -130,34 +130,6 @@ def _skill_root_prefix(paths: list[str]) -> str:
     return ""
 
 
-def validate_skill_name_string(name: str) -> str:
-    """单名称契约共享出口：name 字符串硬校验（创建/改名同规则），非法抛 ValidationError。
-
-    与 validate_skill_protocol 的 name 分支同文案同规则（必填/长度/禁--/kebab），
-    但直接吃字符串——创建时从 frontmatter 抽出后走这里，改名（DB→markdown 方向）
-    的入参 name 也走这里。
-    """
-    from exceptions import ValidationError
-
-    name = str(name or "").strip()
-    if not name:
-        raise ValidationError("SKILL.md frontmatter 缺少必填字段 name")
-    if len(name) > _NAME_MAX_LENGTH:
-        raise ValidationError(f"name 长度不能超过 {_NAME_MAX_LENGTH} 个字符")
-    if "--" in name:
-        raise ValidationError("name 不能包含连续连字符 '--'")
-    if not _NAME_PATTERN.match(name):
-        raise ValidationError(
-            f"name 必须为 kebab-case（仅小写字母、数字、单连字符），当前 '{name}'"
-        )
-    return name
-
-
-def require_valid_frontmatter_name(parsed: ParsedSkillContent) -> str:
-    """从解析结果抽 frontmatter name 做硬校验（创建路径），返回合法 name。"""
-    return validate_skill_name_string(str((parsed.frontmatter or {}).get("name", "")))
-
-
 def validate_skill_protocol(parsed: ParsedSkillContent) -> ProtocolValidationResult:
     """校验解析结果，返回 (valid, errors, warnings, manifest)。"""
     errors: list[ProtocolIssue] = []

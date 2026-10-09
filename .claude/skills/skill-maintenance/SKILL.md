@@ -71,6 +71,7 @@ curl -s -o my-skill.zip "<data.download_url>"
 
 ```bash
 curl -s -X POST -H "Authorization: Bearer $AK" \
+  -F "name=我的技能" \
   -F "description=一句话说明" \
   -F "category=通用" \
   -F "version=1.0.0" \
@@ -81,14 +82,13 @@ curl -s -X POST -H "Authorization: Bearer $AK" \
   "$BASE/api/v1/contributor/skills"
 ```
 
-- **单名称契约（2026-10 起）**：skill 名称唯一权威来源 = 包内 SKILL.md frontmatter 的 `name`（kebab-case，全局唯一）。`name` 表单字段已可选——传了且与 frontmatter 不一致 → 400；不传（推荐）→ 服务端直接取 frontmatter name
 - 权限码 `skill:contribute`（全员开放；走跨应用兼容鉴权，AI Hub 凭证亦可）
 - **发布态由平台发布门控自决**，看返回 message 判断：
   - 「Skill 已上传并发布」→ 门控关，已直接上架
   - 「Skill 已上传并提交发布审核」→ 门控开，处于待审
 - 上传即自动激活 v1；`requires_approval` 为 false（不再强制走使用审批）
 - `visibility_type` 只接受 `all` / `department`；不传则按创建者部门默认（无部门即 `all`）
-- 名称重复 → 409「Skill 名称 'xxx' 已存在」（frontmatter name 撞已有 skill；上传前先 `GET $BASE/api/v1/contributor/skills` 查已有贡献防撞名）
+- 名称重复 → 409「Skill 名称 'xxx' 已存在」（上传前先 `GET $BASE/api/v1/contributor/skills` 查已有贡献防撞名）
 - 必须有 zip 或 `source_url`（Git 仓库地址，平台代拉）
 - zip 结构：顶层目录 `<frontmatter.name>/SKILL.md`，frontmatter 必含 `name`、`description`（建议 ≤200 字，超长仅 warning）；物理校验失败整包 400 不落盘
 
@@ -153,7 +153,6 @@ curl -s -X POST -H "Authorization: Bearer $AK" \
 ```
 
 - 已发布的 skill 不能删（409），元数据也不能改——迭代只能靠新版本
-- **改名（PUT `name=...`，仅草稿）= 重操作**：服务端会重写包内 SKILL.md frontmatter name（顶层目录同步改）+ 重算 composite_hash——已装端（ai-assistant 等）会看到一次「有更新」。新 kebab 名撞他人 → 409。版本激活时 frontmatter name 与现名不同会回写主表（markdown→DB 方向）
 
 ## 5. 提交发布审核
 
@@ -187,7 +186,7 @@ curl -s -X POST -H "Authorization: Bearer $AK" \
    - 修法：字段值先写 UTF-8 文件，用 `-F "name=<C:/path/f.txt"`（`<` 让 curl 读文件原始字节）；JSON 用 `--data-binary @C:/path/body.json`
    - `category=通用` 这类看着像枚举常量的中文值同样中招——**所有含中文的表单字段一律文件化**
    - zip 内文件不受影响（二进制传输）
-3. 元数据（name/description 等）用 PUT 改；zip 内容只能走「新版本」接口换包。**name 已不由表单定**：创建取包内 frontmatter name，改名走 PUT（同步重写 SKILL.md + 重算 hash）——中文标题名进不了 name，人类可读描述放 description
+3. 元数据（name/description 等）用 PUT 改；zip 内容只能走「新版本」接口换包
 4. zip 顶层目录名与 frontmatter `name` 保持一致，避免协议校验报错
 5. `/skills/published`、`/market-detail` 走跨应用兼容鉴权（自有 JWT / 平台 Key / AI Hub 凭证均可）
 6. 平台 Key 权限继承创建者角色，别假设它是 superuser；只有 `skill:contribute` 的角色照样能搜市场、能用 `/zip` 下载（下载不校验权限码）

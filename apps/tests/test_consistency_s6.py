@@ -52,7 +52,7 @@ async def _real_user_id() -> int:
 
 
 async def _make_skill() -> int:
-    # 单名称契约（2026-10）：name 必须 kebab 且 ≡ zip 内 SKILL.md frontmatter name
+    # 真 zip（含 SKILL.md frontmatter）——create_skill 会做包体物理校验，假字节过不去
     name = f"test-s6-{uuid.uuid4().hex[:8]}"
     skill_md = f"---\nname: {name}\ndescription: s6 test\n---\n# {name}\n"
     buf = io.BytesIO()
