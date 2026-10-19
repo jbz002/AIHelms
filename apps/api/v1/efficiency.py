@@ -11,6 +11,7 @@ from services import (
     efficiency_budget_service,
     efficiency_cost_service,
     efficiency_health_service,
+    efficiency_model_stats_service,
     efficiency_report_service,
     efficiency_service,
 )
@@ -84,6 +85,28 @@ async def get_trend(
     bucket = granularity or group_by
     user_id = current_user["id"] if scope == "self" else None
     data = await efficiency_service.get_trend(session, start, end, bucket, user_id)
+    return {"code": 200, "message": "ok", "data": data}
+
+
+@router.get("/model-stats")
+async def get_model_stats(
+    period: str | None = Query(None),
+    start_date: date | None = Query(None),
+    end_date: date | None = Query(None),
+    scope: str = Query("self"),
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    if scope != "self":
+        raise HTTPException(status_code=403, detail="仅支持查询本人数据")
+    if start_date and end_date:
+        start, end = start_date, end_date
+    else:
+        start, end = _parse_period(period)
+    data = await efficiency_model_stats_service.get_user_model_stats(
+        session, start, end, current_user["id"]
+    )
+    data["freshness"] = await efficiency_service.get_freshness(session)
     return {"code": 200, "message": "ok", "data": data}
 
 
@@ -227,6 +250,7 @@ async def get_cost_detail(
     department: str = Query(""),
     scope_id: str = Query(""),
     scope_ids: str = Query(""),
+    user_id: int | None = Query(None),
     session: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
@@ -239,7 +263,7 @@ async def get_cost_detail(
     dept_id = selected_scopes if dimension == "department" else None
     project_id = selected_scopes if dimension == "project" else None
     data = await efficiency_cost_service.get_cost_detail(
-        session, start, end, tab, cost_type, dept_id, dimension, project_id
+        session, start, end, tab, cost_type, dept_id, dimension, project_id, user_id
     )
     return {"code": 200, "message": "ok", "data": data}
 

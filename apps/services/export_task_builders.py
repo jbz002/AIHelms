@@ -415,6 +415,11 @@ async def _build_efficiency_rows(
         scope_ids = _ids(params, "scope_ids", "scope_id", "department")
         department_id = scope_ids if dimension == "department" else None
         project_id = scope_ids if dimension == "project" else None
+        user_id = (
+            int(params["user_id"])
+            if str(params.get("user_id") or "").isdigit()
+            else None
+        )
         detail = await efficiency_cost_service.get_cost_detail(
             session,
             start,
@@ -424,6 +429,7 @@ async def _build_efficiency_rows(
             department_id,
             dimension,
             project_id,
+            user_id,
         )
         if tab == "model":
             header = [
@@ -612,6 +618,44 @@ async def _build_efficiency_rows(
                     row["cost_diff"],
                 ]
                 for row in detail.get("attribution", [])
+            ]
+        if tab == "user":
+            return [
+                "姓名",
+                "部门",
+                "LLM内部成本(元)",
+                "MCP内部成本(元)",
+                "内部总成本(元)",
+                "外部总成本(元)",
+                "差额(元)",
+                "请求数",
+                "成功请求数",
+                "输入Token",
+                "输出Token",
+                "缓存读Token",
+                "缓存写Token",
+                "真实消耗Token",
+            ], [
+                [
+                    row["user_name"],
+                    row["department"],
+                    row["llm_cost"],
+                    row["mcp_cost"],
+                    row["internal_cost"],
+                    row["external_cost"],
+                    row["cost_diff"],
+                    row["requests"],
+                    row["successful_requests"],
+                    row["input_tokens"],
+                    row["output_tokens"],
+                    row["cache_read_tokens"],
+                    row["cache_creation_tokens"],
+                    row["fresh_input_tokens"]
+                    + row["output_tokens"]
+                    + row["cache_creation_tokens"]
+                    + row["cache_read_tokens"],
+                ]
+                for row in detail.get("user", [])
             ]
         scope_key = "department"
         return [

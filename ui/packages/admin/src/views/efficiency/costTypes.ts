@@ -200,4 +200,22 @@ export interface AttributionRow {
   server_id?: number | null
 }
 
-export type DetailTab = 'department' | 'model' | 'mcp' | 'date' | 'attribution'
+export interface UserDetailRow {
+  user_id: number
+  user_name: string
+  department: string
+  llm_cost: number
+  mcp_cost: number
+  internal_cost: number
+  external_cost: number
+  cost_diff: number
+  requests: number
+  successful_requests: number
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_creation_tokens: number
+  fresh_input_tokens: number
+}
+
+export type DetailTab = 'department' | 'model' | 'mcp' | 'date' | 'attribution' | 'user'

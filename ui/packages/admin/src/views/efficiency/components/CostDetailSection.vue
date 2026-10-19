@@ -4,8 +4,9 @@ import { ChevronRight, Download } from 'lucide-vue-next'
 import GlassCard from './GlassCard.vue'
 import TooltipIcon from '../../../components/TooltipIcon.vue'
 import Pagination from '../../../components/Pagination.vue'
+import UserDetailTable from './UserDetailTable.vue'
 import { formatCost, formatNumber, formatChange } from '../utils'
-import type { AttributionRow, DateDetailRow, DetailTab, McpDetailRow, McpToolRow, ModelCredentialRow, ModelDetailRow, ScopeDetailRow, ScopeUserCostRow } from '../costTypes'
+import type { AttributionRow, DateDetailRow, DetailTab, McpDetailRow, McpToolRow, ModelCredentialRow, ModelDetailRow, ScopeDetailRow, ScopeUserCostRow, UserDetailRow } from '../costTypes'
 
 const props = defineProps<{
   activeDetailTab: DetailTab
@@ -18,6 +19,8 @@ const props = defineProps<{
   mcpDetail: McpDetailRow[]
   dateDetail: DateDetailRow[]
   attributionDetail: AttributionRow[]
+  userDetail: UserDetailRow[]
+  userFilterName: string
   expandedScopeId: number | null
   scopeUsers: ScopeUserCostRow[]
   scopeUsersLoading: boolean
@@ -33,9 +36,12 @@ const emit = defineEmits<{
   openMcpToolLogs: [row: McpDetailRow, tool: McpToolRow]
   openDateLogs: [tab: 'llm' | 'mcp', date: string]
   openAttributionLogs: [row: AttributionRow]
+  drillUser: [row: UserDetailRow]
+  openUserLogs: [row: UserDetailRow]
+  clearUserFilter: []
 }>()
 
-const { activeDetailTab, detailTabs, isDetailLoading, exporting, dimensionLabel, scopeDetail, modelDetail, mcpDetail, dateDetail, attributionDetail, expandedScopeId, scopeUsers, scopeUsersLoading } = toRefs(props)
+const { activeDetailTab, detailTabs, isDetailLoading, exporting, dimensionLabel, scopeDetail, modelDetail, mcpDetail, dateDetail, attributionDetail, userDetail, userFilterName, expandedScopeId, scopeUsers, scopeUsersLoading } = toRefs(props)
 const pageSize = ref(20)
 const detailPage = ref(1)
 watch(pageSize, () => { detailPage.value = 1 })
@@ -49,6 +55,7 @@ const activeRows = computed(() => {
   if (activeDetailTab.value === 'mcp') return mcpDetail.value
   if (activeDetailTab.value === 'date') return dateDetail.value
   if (activeDetailTab.value === 'attribution') return attributionDetail.value
+  if (activeDetailTab.value === 'user') return userDetail.value
   return scopeDetail.value
 })
 const pageStart = computed(() => (detailPage.value - 1) * pageSize.value)
@@ -57,6 +64,7 @@ const pagedModelDetail = computed(() => modelDetail.value.slice(pageStart.value,
 const pagedMcpDetail = computed(() => mcpDetail.value.slice(pageStart.value, pageStart.value + pageSize.value))
 const pagedDateDetail = computed(() => dateDetail.value.slice(pageStart.value, pageStart.value + pageSize.value))
 const pagedAttributionDetail = computed(() => attributionDetail.value.slice(pageStart.value, pageStart.value + pageSize.value))
+const pagedUserDetail = computed(() => userDetail.value.slice(pageStart.value, pageStart.value + pageSize.value))
 
 function handleDetailTabChange(tab: DetailTab) { emit('tabChange', tab) }
 function exportDetail() { emit('exportDetail') }
@@ -67,6 +75,8 @@ function openMcpLogs(row: McpDetailRow) { emit('openMcpLogs', row) }
 function openMcpToolLogs(row: McpDetailRow, tool: McpToolRow) { emit('openMcpToolLogs', row, tool) }
 function openDateLogs(tab: 'llm' | 'mcp', date: string) { emit('openDateLogs', tab, date) }
 function openAttributionLogs(row: AttributionRow) { emit('openAttributionLogs', row) }
+function drillUser(row: UserDetailRow) { emit('drillUser', row) }
+function openUserLogs(row: UserDetailRow) { emit('openUserLogs', row) }
 
 function formatTokenCount(value: number | null | undefined): string {
   return Math.round(value || 0).toLocaleString()
@@ -115,6 +125,14 @@ function toggleMcpExpanded(row: McpDetailRow) {
 
         <div class="mb-3 flex gap-1 rounded-lg bg-slate-100 p-1">
           <button v-for="tab in detailTabs" :key="tab.key" class="rounded-md px-3 py-1.5 text-xs transition-colors" :class="activeDetailTab === tab.key ? 'bg-white font-medium text-blue-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'" @click="handleDetailTabChange(tab.key)">{{ tab.label }}</button>
+        </div>
+
+        <div v-if="userFilterName" class="mb-3 flex items-center gap-2">
+          <span class="inline-flex items-center gap-1 rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+            用户: {{ userFilterName }}
+            <button type="button" class="text-blue-400 hover:text-blue-700" @click="emit('clearUserFilter')">×</button>
+          </span>
+          <span class="text-xs text-slate-400">明细已按该用户过滤，指标卡不受影响</span>
         </div>
 
         <div v-if="isDetailLoading" class="flex items-center justify-center py-10">
@@ -420,6 +438,8 @@ function toggleMcpExpanded(row: McpDetailRow) {
                 <tr v-if="attributionDetail.length === 0"><td colspan="23" class="py-12 text-center text-sm text-slate-400">暂无数据</td></tr>
               </tbody>
             </table>
+
+            <UserDetailTable v-else-if="activeDetailTab === 'user'" :rows="pagedUserDetail" @drill-user="drillUser" @open-user-logs="openUserLogs" />
 
             <table v-else class="min-w-[980px] w-full text-sm">
               <thead class="sticky top-0 z-10 bg-white">

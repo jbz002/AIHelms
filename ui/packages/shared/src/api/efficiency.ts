@@ -8,12 +8,19 @@ import type {
   KeyTypeItem,
   RankingItem,
   TrendItem,
+  UserModelStat,
 } from '../types/efficiency'
 
 type Params = Record<string, string | number | boolean | undefined>
 
 export function getEfficiencyOverview<T = EfficiencyKpi>(params?: Params) {
   return request<T>('/api/v1/efficiency/overview', { params })
+}
+
+export function getEfficiencyModelStats(params?: Params) {
+  return request<{ items: UserModelStat[]; freshness?: unknown }>(
+    '/api/v1/efficiency/model-stats', { params },
+  )
 }
 
 export function getEfficiencyTrend(params?: Params) {

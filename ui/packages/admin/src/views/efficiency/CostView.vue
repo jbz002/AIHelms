@@ -14,7 +14,7 @@ import CostDetailSection from './components/CostDetailSection.vue'
 import { formatCost, formatCostShort, formatNumber, formatChange, presetToRange, submitEfficiencyRefresh, keepRefreshIndicator } from './utils'
 import { useScopeFilter } from './useScopeFilter'
 
-import type { AttributionRow, CostComposition, CostKpi, CostTrendItem, DateDetailRow, DetailTab, McpDetailRow, McpToolRow, ModelCredentialRow, ModelDetailRow, PerCapitaItem, ScopeDetailRow, ScopeUserCostRow, UserTop10Row } from './costTypes'
+import type { AttributionRow, CostComposition, CostKpi, CostTrendItem, DateDetailRow, DetailTab, McpDetailRow, McpToolRow, ModelCredentialRow, ModelDetailRow, PerCapitaItem, ScopeDetailRow, ScopeUserCostRow, UserDetailRow, UserTop10Row } from './costTypes'
 
 const TIME_PRESETS = [
   { key: 'today', label: '今天' },
@@ -70,6 +70,9 @@ const modelDetail = ref<ModelDetailRow[]>([])
 const mcpDetail = ref<McpDetailRow[]>([])
 const dateDetail = ref<DateDetailRow[]>([])
 const attributionDetail = ref<AttributionRow[]>([])
+const userDetail = ref<UserDetailRow[]>([])
+const userFilterId = ref<number | null>(null)
+const userFilterName = ref('')
 
 const dimensionLabel = computed(() => (dimension.value === 'project' ? '项目' : '部门'))
 const scopeRows = computed(() => composition.value.by_scope || composition.value.by_department || [])
@@ -78,6 +81,7 @@ const dimensionCostNote = '跨部门、跨项目归属的成本会在对应维�
 const detailTabs = computed(() => [
   { key: 'department' as const, label: `按${dimensionLabel.value}` },
   { key: 'model' as const, label: '按模型' },
+  { key: 'user' as const, label: '按用户' },
   { key: 'mcp' as const, label: '按MCP' },
   { key: 'date' as const, label: '按日期' },
   { key: 'attribution' as const, label: '成本流水' },
@@ -117,10 +121,10 @@ function pushLogs(tab: 'llm' | 'mcp', params: Record<string, string | number | u
 function openModelLogs(row: ModelDetailRow) {
   const routeModels = Array.from(new Set(row.credentials.map((item) => item.route_model).filter(Boolean)))
   if (routeModels.length > 1) {
-    pushLogs('llm', { models: routeModels.join(',') })
+    pushLogs('llm', { models: routeModels.join(','), user_id: userFilterId.value ?? undefined })
     return
   }
-  pushLogs('llm', { model: routeModels[0] || row.model_id || row.model })
+  pushLogs('llm', { model: routeModels[0] || row.model_id || row.model, user_id: userFilterId.value ?? undefined })
 }
 
 function openModelCredentialLogs(row: ModelCredentialRow) {
@@ -149,6 +153,23 @@ function openAttributionLogs(row: AttributionRow) {
     model: tab === 'llm' ? row.model || row.cost_object : undefined,
     server_id: tab === 'mcp' ? row.server_id || undefined : undefined,
   })
+}
+
+function handleUserDrill(row: UserDetailRow) {
+  userFilterId.value = row.user_id
+  userFilterName.value = row.user_name
+  activeDetailTab.value = 'model'
+  loadDetail()
+}
+
+function clearUserFilter() {
+  userFilterId.value = null
+  userFilterName.value = ''
+  loadDetail()
+}
+
+function openUserLogs(row: UserDetailRow) {
+  pushLogs('llm', { user_id: row.user_id })
 }
 
 function formatResourceName(name: string): string {
@@ -228,11 +249,16 @@ async function loadDetail() {
     const res = await getEfficiencyCostDetail<{
       department?: ScopeDetailRow[]
       model?: ModelDetailRow[]
+      user?: UserDetailRow[]
       mcp?: McpDetailRow[]
       date?: DateDetailRow[]
       attribution?: AttributionRow[]
       freshness?: { last_updated_at: string | null; last_updated_label: string }
-    }>({ ...getBaseParams(), tab: activeDetailTab.value })
+    }>({
+      ...getBaseParams(),
+      tab: activeDetailTab.value,
+      ...(userFilterId.value !== null ? { user_id: userFilterId.value } : {}),
+    })
     if (res.department) {
       scopeDetail.value = res.department
       expandedScopeId.value = null
@@ -241,6 +267,7 @@ async function loadDetail() {
     if (res.model) {
       modelDetail.value = res.model
     }
+    if (res.user) userDetail.value = res.user
     if (res.mcp) {
       mcpDetail.value = res.mcp
     }
@@ -314,7 +341,10 @@ async function exportDetail() {
       source: 'efficiency',
       export_type: `cost_${activeDetailTab.value}`,
       task_name: `成本分析-${detailTabs.value.find((tab) => tab.key === activeDetailTab.value)?.label || '明细'}`,
-      params: getBaseParams(),
+      params: {
+        ...getBaseParams(),
+        ...(userFilterId.value !== null ? { user_id: String(userFilterId.value) } : {}),
+      },
     })
     exportNotice.value = '导出任务已创建，请到资源审计 > 导出任务下载表格'
   } catch (e) {
@@ -457,6 +487,8 @@ onMounted(() => {
         :mcp-detail="mcpDetail"
         :date-detail="dateDetail"
         :attribution-detail="attributionDetail"
+        :user-detail="userDetail"
+        :user-filter-name="userFilterName"
         :expanded-scope-id="expandedScopeId"
         :scope-users="scopeUsers"
         :scope-users-loading="scopeUsersLoading"
@@ -469,6 +501,9 @@ onMounted(() => {
         @open-mcp-tool-logs="openMcpToolLogs"
         @open-date-logs="openDateLogs"
         @open-attribution-logs="openAttributionLogs"
+        @drill-user="handleUserDrill"
+        @open-user-logs="openUserLogs"
+        @clear-user-filter="clearUserFilter"
       />
     </template>
     <ScopePickerDialog v-model:open="isScopePickerOpen" v-model="selectedScopeIds" :dimension="dimension" :department-tree="departmentTree" :project-options="projectOptions" @confirm="handleScopeConfirm" />

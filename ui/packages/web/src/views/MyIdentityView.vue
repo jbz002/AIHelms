@@ -10,6 +10,7 @@ import type { McpServer } from '@aihelms/shared/src/types/mcp'
 import type { Skill } from '@aihelms/shared/src/types/skill'
 import { Copy, Check, Cpu, Server, Sparkles, Clock, CheckCircle2, XCircle, Eye, EyeOff } from 'lucide-vue-next'
 import ProviderIcon from '../components/ProviderIcon.vue'
+import ModelUsageStats from '../components/ModelUsageStats.vue'
 
 import VChart from 'vue-echarts'
 import { use } from 'echarts/core'
@@ -432,11 +433,11 @@ onMounted(async () => {
             <div v-if="totalBudget" class="mt-0.5 text-xs text-slate-400">¥{{ periodBudgetUsed.toFixed(2) }}</div>
           </div>
           <div class="rounded-xl bg-slate-50/80 px-4 py-3">
-            <div class="text-xs text-slate-400">已花费</div>
+            <div class="text-xs text-slate-400">{{ t('identity.overview.spent') }}</div>
             <div class="mt-1 text-lg font-semibold text-slate-900">¥{{ (kpi.total_cost ?? 0).toFixed(2) }}</div>
           </div>
           <div class="rounded-xl bg-slate-50/80 px-4 py-3">
-            <div class="text-xs text-slate-400">调用次数</div>
+            <div class="text-xs text-slate-400">{{ t('identity.overview.requests') }}</div>
             <div class="mt-1 text-lg font-semibold text-slate-900">{{ (kpi.total_requests ?? 0).toLocaleString() }}</div>
           </div>
           <div class="rounded-xl bg-slate-50/80 px-4 py-3">
@@ -460,6 +461,8 @@ onMounted(async () => {
         <div v-if="trend.length" class="mt-5">
           <VChart :option="chartOption" style="height: 200px; width: 100%" autoresize />
         </div>
+        <!-- 模型用量明细（cc-switch 口径） -->
+        <ModelUsageStats :start="monthMeta.start" :end="monthMeta.end" :overview="kpi" :model-icons="modelIconUrls" />
       </section>
 
       <!-- 我的申请 -->

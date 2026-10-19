@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from repositories import efficiency_cost_repo as efficiency_repo
+from repositories import efficiency_model_stats_repo
 
 
 def _calc_change(current: float, previous: float) -> float | None:
@@ -118,11 +119,17 @@ async def get_cost_detail(
     department_id: int | None = None,
     dimension: str = "department",
     project_id: int | None = None,
+    user_id: int | None = None,
 ) -> dict:
     ct = None if cost_type == "all" else cost_type
+    if tab == "user":
+        items = await efficiency_model_stats_repo.get_cost_detail_by_user(
+            session, start_date, end_date, ct, department_id, project_id
+        )
+        return {"user": items}
     if tab == "model":
         raw = await efficiency_repo.get_cost_detail_by_model(
-            session, start_date, end_date, ct, department_id, project_id
+            session, start_date, end_date, ct, department_id, project_id, user_id
         )
         grouped: dict[str, dict] = {}
         for item in raw:

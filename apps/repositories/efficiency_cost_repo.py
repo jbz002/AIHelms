@@ -45,11 +45,15 @@ def _build_cost_filters(
     department_id,
     table_alias: str = "",
     project_id=None,
+    user_id: int | None = None,
 ) -> tuple[str, dict]:
     prefix = f"{table_alias}." if table_alias else ""
     user_col = f"{prefix}user_id"
     filters = f"WHERE {prefix}summary_date >= :start AND {prefix}summary_date <= :end"
     params: dict = {"start": start_date, "end": end_date}
+    if user_id is not None:
+        filters += f" AND {user_col} = :filter_user_id"
+        params["filter_user_id"] = user_id
     if cost_type and cost_type != "all":
         filters += f" AND {prefix}cost_type = :cost_type"
         params["cost_type"] = cost_type
@@ -351,9 +355,10 @@ async def get_cost_detail_by_model(
     cost_type: str | None = None,
     department_id: int | None = None,
     project_id: int | None = None,
+    user_id: int | None = None,
 ) -> list[dict]:
     filters, params = _build_cost_filters(
-        start_date, end_date, cost_type, department_id, "c", project_id
+        start_date, end_date, cost_type, department_id, "c", project_id, user_id
     )
     sql = text(
         f"SELECT"

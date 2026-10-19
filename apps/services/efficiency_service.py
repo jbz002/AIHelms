@@ -1,7 +1,5 @@
 """AI 效能 Service 层。"""
 
-from core.time_utils import fmt_local_time
-
 import logging
 from datetime import date, datetime, timedelta
 
@@ -10,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from celery_app import celery_app
 from core.config import settings
+from core.time_utils import fmt_local_time
 from repositories import dashboard_repo, efficiency_repo
 from services.efficiency_adoption_service import (
     get_adoption_agents,
@@ -314,10 +313,22 @@ async def get_user_overview(
 
     from models.db import CostSummaryDaily
 
+    fresh_input = func.greatest(
+        func.coalesce(CostSummaryDaily.input_tokens, 0)
+        - func.coalesce(CostSummaryDaily.cache_read_tokens, 0),
+        0,
+    )
     result = await session.execute(
         select(
             func.coalesce(func.sum(CostSummaryDaily.total_requests), 0),
             func.coalesce(func.sum(CostSummaryDaily.internal_cost), 0),
+            func.coalesce(func.sum(CostSummaryDaily.successful_requests), 0),
+            func.coalesce(func.sum(CostSummaryDaily.input_tokens), 0),
+            func.coalesce(func.sum(CostSummaryDaily.output_tokens), 0),
+            func.coalesce(func.sum(CostSummaryDaily.cache_read_tokens), 0),
+            func.coalesce(func.sum(CostSummaryDaily.cache_creation_tokens), 0),
+            func.coalesce(func.sum(fresh_input), 0),
+            func.coalesce(func.sum(CostSummaryDaily.total_duration_ms), 0),
         ).where(
             CostSummaryDaily.user_id == user_id,
             CostSummaryDaily.summary_date >= start_date,
@@ -327,10 +338,41 @@ async def get_user_overview(
     row = result.one()
     total_requests = int(row[0])
     total_cost = float(row[1])
+    successful_requests = int(row[2])
+    input_tokens = int(row[3])
+    output_tokens = int(row[4])
+    cache_read_tokens = int(row[5])
+    cache_creation_tokens = int(row[6])
+    fresh_input_tokens = int(row[7])
+    total_duration_ms = int(row[8])
+    real_total_tokens = (
+        fresh_input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens
+    )
+    cacheable = fresh_input_tokens + cache_creation_tokens + cache_read_tokens
 
     return {
         "total_cost": total_cost,
         "total_requests": total_requests,
+        "successful_requests": successful_requests,
+        "success_rate": (
+            round(successful_requests / total_requests * 100, 1)
+            if total_requests > 0
+            else None
+        ),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "cache_read_tokens": cache_read_tokens,
+        "cache_creation_tokens": cache_creation_tokens,
+        "fresh_input_tokens": fresh_input_tokens,
+        "real_total_tokens": real_total_tokens,
+        "cache_hit_rate": (
+            round(cache_read_tokens / cacheable * 100, 1) if cacheable > 0 else None
+        ),
+        "avg_latency_ms": (
+            round(total_duration_ms / successful_requests, 1)
+            if successful_requests > 0
+            else None
+        ),
     }
 
 

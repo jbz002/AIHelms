@@ -5,6 +5,38 @@ export interface EfficiencyKpi {
   avg_cost_per_user: number
   cost_change: number | null
   requests_change: number | null
+  successful_requests?: number
+  success_rate?: number | null
+  input_tokens?: number
+  output_tokens?: number
+  cache_read_tokens?: number
+  cache_creation_tokens?: number
+  fresh_input_tokens?: number
+  real_total_tokens?: number
+  cache_hit_rate?: number | null
+  avg_latency_ms?: number | null
+}
+
+export interface UserModelStat {
+  model: string
+  platform_model_name: string
+  platform_model_id: string
+  request_count: number
+  successful_requests: number
+  success_rate: number | null
+  input_tokens: number
+  output_tokens: number
+  cache_read_tokens: number
+  cache_creation_tokens: number
+  fresh_input_tokens: number
+  real_total_tokens: number
+  cache_hit_rate: number | null
+  internal_cost: number
+  avg_cost_per_request: number | null
+  avg_latency_ms: number | null
+  speed_tokens_per_sec: number | null
+  speed_sample_count: number
+  first_token_ms: number | null
 }
 
 export interface TrendItem {

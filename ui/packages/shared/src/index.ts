@@ -118,10 +118,10 @@ export type { SchemaRow } from './utils/schemaFlatten'
 export type {
   EfficiencyKpi, TrendItem, CompositionItem, KeyTypeItem, RankingItem,
   AnalysisItem, BudgetOverview, EfficiencyReport, EfficiencySuggestion,
-  CreateReportParams, DateRangeQuery,
+  CreateReportParams, DateRangeQuery, UserModelStat,
 } from './types/efficiency'
 export {
-  getEfficiencyOverview, getEfficiencyTrend, getEfficiencyComposition,
+  getEfficiencyOverview, getEfficiencyModelStats, getEfficiencyTrend, getEfficiencyComposition,
   getKeyTypeComparison, getEfficiencyRanking, getEfficiencyAnalysis,
   getBudgetOverview, getEfficiencyReports, getEfficiencyReport, createEfficiencyReport,
   refreshEfficiencyData, getEfficiencyAdoption, getEfficiencyAdoptionAgents,
