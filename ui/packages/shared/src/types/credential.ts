@@ -4,7 +4,7 @@ export interface Credential {
   provider_id: number | null
   provider_name: string | null
   provider_type: string | null
-  credential_values: Record<string, string | null>
+  credential_values: Record<string, string | Record<string, string> | null>
   credential_info: Record<string, unknown>
   litellm_synced: boolean
   is_active: boolean
@@ -15,13 +15,13 @@ export interface Credential {
 
 export interface CreateCredentialParams {
   credential_name: string
-  credential_values: Record<string, string>
+  credential_values: Record<string, string | Record<string, string>>
   provider_id: number
   credential_info?: Record<string, unknown> | null
 }
 
 export interface UpdateCredentialParams {
-  credential_values?: Record<string, string>
+  credential_values?: Record<string, string | Record<string, string>>
   provider_id?: number | null
   credential_info?: Record<string, unknown> | null
   is_active?: boolean

@@ -15,7 +15,7 @@ import {
   type Credential,
 } from '@aihelms/shared'
 import { usePermission } from '@aihelms/shared'
-import { Eye, EyeOff } from 'lucide-vue-next'
+import { Eye, EyeOff, X } from 'lucide-vue-next'
 import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import AccessTestDialog from '../../components/AccessTestDialog.vue'
 import ProviderIcon from '../../components/ProviderIcon.vue'
@@ -61,6 +61,7 @@ const credFormApiBase = ref('')
 const credFormApiKey = ref('')
 const showApiKey = ref(false)
 const maskedApiKey = ref('')
+const credFormHeaders = ref<Array<{ key: string; value: string }>>([])
 
 // 按模型定价（已移除，模型关联统一在模型管理操作）
 
@@ -230,6 +231,7 @@ function handleCreateCred(): void {
   credFormApiKey.value = ''
   showApiKey.value = false
   maskedApiKey.value = ''
+  credFormHeaders.value = []
   credError.value = ''
   showCredForm.value = true
 }
@@ -240,11 +242,33 @@ function handleEditCred(cred: Credential): void {
   credFormName.value = cred.credential_name
   credFormFormat.value = (cred.credential_info?.format as string) || (cred.credential_info?.custom_llm_provider as string) || ''
   credFormApiBase.value = (cred.credential_info?.api_base as string) || ''
-  credFormApiKey.value = cred.credential_values?.api_key || ''
+  const storedApiKey = cred.credential_values?.api_key
+  credFormApiKey.value = typeof storedApiKey === 'string' ? storedApiKey : ''
   showApiKey.value = false
-  maskedApiKey.value = cred.credential_values?.api_key || ''
+  maskedApiKey.value = typeof storedApiKey === 'string' ? storedApiKey : ''
+  const storedHeaders = cred.credential_values?.extra_headers
+  credFormHeaders.value = typeof storedHeaders === 'object' && storedHeaders !== null
+    ? Object.entries(storedHeaders).map(([key, value]) => ({ key, value: String(value) }))
+    : []
   credError.value = ''
   showCredForm.value = true
+}
+
+function handleAddHeaderRow(): void {
+  credFormHeaders.value.push({ key: '', value: '' })
+}
+
+function handleRemoveHeaderRow(index: number): void {
+  credFormHeaders.value.splice(index, 1)
+}
+
+function buildExtraHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {}
+  for (const row of credFormHeaders.value) {
+    const name = row.key.trim()
+    if (name) headers[name] = row.value
+  }
+  return headers
 }
 
 function getLitellmProvider(format: string): string {
@@ -267,11 +291,15 @@ async function handleSubmitCred(): Promise<void> {
     return
   }
 
-  const credValues: Record<string, string> = {}
+  const credValues: Record<string, string | Record<string, string>> = {}
   if (credFormApiKey.value && credFormApiKey.value !== maskedApiKey.value) {
     credValues.api_key = credFormApiKey.value
   }
   if (credFormApiBase.value) credValues.api_base = credFormApiBase.value
+  const extraHeaders = buildExtraHeaders()
+  if (Object.keys(extraHeaders).length > 0 || isEditingCred.value) {
+    credValues.extra_headers = extraHeaders
+  }
 
   const credInfo: Record<string, unknown> = {
     custom_llm_provider: getLitellmProvider(credFormFormat.value),
@@ -612,6 +640,39 @@ onMounted(() => {
                 <Eye v-else class="h-4 w-4" />
               </button>
             </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">自定义请求头</label>
+            <div v-for="(row, index) in credFormHeaders" :key="index" class="mb-2 flex items-center gap-2">
+              <input
+                v-model="row.key"
+                placeholder="头名称，如 x-opencode-session"
+                class="flex h-10 w-2/5 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+              />
+              <input
+                v-model="row.value"
+                placeholder="值"
+                class="flex h-10 flex-1 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+              />
+              <button
+                type="button"
+                class="shrink-0 rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600"
+                @click="handleRemoveHeaderRow(index)"
+              >
+                <X class="h-4 w-4" />
+              </button>
+            </div>
+            <button
+              type="button"
+              class="rounded-lg border border-dashed border-slate-300 px-3 py-1.5 text-sm text-slate-500 transition-colors hover:border-purple-300 hover:text-purple-600"
+              @click="handleAddHeaderRow"
+            >
+              + 添加请求头
+            </button>
+            <p class="mt-1.5 text-xs leading-5 text-slate-500">
+              追加到发往上游供应商的每个请求，适用于有强制请求头要求的网关（如 x-opencode-session）。
+            </p>
           </div>
 
           <p v-if="credError" class="mb-3 text-sm text-red-500">{{ credError }}</p>

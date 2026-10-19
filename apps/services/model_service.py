@@ -994,12 +994,16 @@ def _apply_credential_to_litellm_params(litellm_params: dict, credential) -> dic
         litellm_params["api_base"] = cred_api_base
     else:
         litellm_params.pop("api_base", None)
-    # 上游端点认证风格差异（如 ollama.com anthropic 端点只认 Bearer 不认 x-api-key）
-    # 通过凭证级 extra_headers 透传；凭证缺失时保留部署行里已有的副本，避免 UI 整体
-    # 覆写 credential_values 后静默丢认证头
+    # 上游端点认证风格差异（如 ollama.com anthropic 端点只认 Bearer 不认 x-api-key，
+    # opencode zen 强制 x-opencode-session）通过凭证级 extra_headers 透传。
+    # 三态语义：非空 dict 覆盖部署行副本；显式空 dict（UI 清空）移除部署行副本；
+    # 凭证无该 key（编辑未涉及）保留部署行已有副本，避免静默丢认证头。
     extra_headers = cred_values.get("extra_headers")
-    if isinstance(extra_headers, dict) and extra_headers:
-        litellm_params["extra_headers"] = dict(extra_headers)
+    if isinstance(extra_headers, dict):
+        if extra_headers:
+            litellm_params["extra_headers"] = dict(extra_headers)
+        else:
+            litellm_params.pop("extra_headers", None)
     return litellm_params
 
 

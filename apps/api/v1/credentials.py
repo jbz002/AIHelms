@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.deps import get_db, require_permission
@@ -9,11 +9,27 @@ from services import credential_service, litellm_client, model_service
 router = APIRouter(prefix="/credentials", tags=["credentials"])
 
 
+def _validate_extra_headers(values: dict | None) -> dict | None:
+    if values is None or "extra_headers" not in values:
+        return values
+    extra_headers = values["extra_headers"]
+    if not isinstance(extra_headers, dict):
+        raise ValueError("extra_headers 必须为头名称到字符串值的对象")
+    for name, value in extra_headers.items():
+        if not str(name).strip():
+            raise ValueError("extra_headers 的头名称不能为空")
+        if not isinstance(value, str):
+            raise ValueError(f"extra_headers 头 {name} 的值必须为字符串")
+    return values
+
+
 class CreateCredentialRequest(BaseModel):
     credential_name: str = Field(..., min_length=1, max_length=128)
     credential_values: dict = Field(..., description="认证信息（api_key, api_base 等）")
     provider_id: int = Field(..., description="归属供应商 ID")
     credential_info: dict | None = None
+
+    _check_headers = field_validator("credential_values")(_validate_extra_headers)
 
 
 class UpdateCredentialRequest(BaseModel):
@@ -21,6 +37,8 @@ class UpdateCredentialRequest(BaseModel):
     provider_id: int | None = None
     credential_info: dict | None = None
     is_active: bool | None = None
+
+    _check_headers = field_validator("credential_values")(_validate_extra_headers)
 
 
 @router.get("")
