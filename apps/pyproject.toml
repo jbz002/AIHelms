@@ -27,6 +27,13 @@ dependencies = [
 [tool.uv]
 package = false
 
+# 默认 PyPI 镜像（国内）。uv.lock 会把每个包的 source.registry 钉在这里的 URL 上，
+# --frozen 同步按 lock 记录的源下载；只设 UV_INDEX_URL 环境变量对 frozen 安装无效
+# （prod 构建曾因此直连 files.pythonhosted.org，跨境链路抖动时 uv sync 拖到 10+ 分钟）。
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",

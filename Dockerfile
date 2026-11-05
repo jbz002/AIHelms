@@ -30,16 +30,16 @@ RUN npm run build --workspace=@aihelms/shared \
 FROM python:3.11-slim-bookworm
 
 ARG APT_MIRROR=mirrors.aliyun.com
-ARG PIP_INDEX=https://mirrors.aliyun.com/pypi/simple/
 
 COPY --from=ghcr.io/astral-sh/uv:0.9.26 /uv /uvx /bin/
 
 WORKDIR /app
 
+# PyPI 镜像源在 apps/pyproject.toml 的 [[tool.uv.index]] 声明并已写入 uv.lock
+# （--frozen 按 lock 的 registry URL 下载，环境变量方式对它无效，勿再加 UV_INDEX_URL）
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
     UV_PYTHON_DOWNLOADS=0 \
-    UV_INDEX_URL=${PIP_INDEX} \
     PATH="/app/apps/.venv/bin:$PATH"
 
 # Install Python dependencies from lockfile (uv project mode, no dev group)
