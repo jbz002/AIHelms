@@ -20,6 +20,11 @@ import ConfirmDialog from '../../components/ConfirmDialog.vue'
 import AccessTestDialog from '../../components/AccessTestDialog.vue'
 import ProviderIcon from '../../components/ProviderIcon.vue'
 import { useRegistryMeta } from '../../composables/useRegistryMeta'
+import {
+  providerAccessPresets,
+  providerPresetGroups,
+  type ProviderAccessPreset,
+} from '../../config/providerAccessPresets'
 
 const { providerOptions } = useRegistryMeta()
 
@@ -39,6 +44,31 @@ const formName = ref('')
 const formType = ref('openai')
 const formFormats = ref<string[]>([])
 const formDescription = ref('')
+// 快速接入预设：选中后自动填充表单，保存时随 config.preset_id 落库供凭证表单预填
+const formPresetId = ref('')
+
+const groupedPresetOptions = computed(() =>
+  providerPresetGroups.map((g) => ({
+    ...g,
+    items: providerAccessPresets.filter((p) => p.group === g.key),
+  })),
+)
+
+// 当前供应商所选预设（按创建/编辑时落库的 config.preset_id 匹配）
+const selectedPreset = computed<ProviderAccessPreset | null>(() => {
+  const presetId = (selectedProvider.value?.config as Record<string, unknown> | undefined)?.preset_id
+  return providerAccessPresets.find((p) => p.id === presetId) || null
+})
+
+function handleApplyPreset(presetId: string): void {
+  formPresetId.value = presetId
+  const preset = providerAccessPresets.find((p) => p.id === presetId)
+  if (!preset) return
+  formName.value = preset.name
+  formType.value = preset.providerType
+  formFormats.value = [...preset.formats]
+  formDescription.value = preset.description
+}
 
 // --- Credentials ---
 const providerCredentials = ref<Credential[]>([])
@@ -62,10 +92,13 @@ const credFormApiKey = ref('')
 const showApiKey = ref(false)
 const maskedApiKey = ref('')
 const credFormHeaders = ref<Array<{ key: string; value: string }>>([])
+// anthropic 方言专用：上游认证风格（默认 x-api-key）/ 客户端指纹（默认不注入）
+const credFormAuthStyle = ref('')
+const credFormIdentity = ref('')
 
 // 按模型定价（已移除，模型关联统一在模型管理操作）
 
-// 平台手工维护的供应商类型（registry 中不存在，需显式列出才可选）
+// 平台手工维护的供应商类型（registry 中不存在，用于存量类型 label 兜底）
 const LEGACY_PROVIDER_TYPES = [
   { value: 'google', label: 'Google' },
   { value: 'zhipu', label: '智谱' },
@@ -78,26 +111,83 @@ const LEGACY_PROVIDER_TYPES = [
   { value: 'other', label: '其他' },
 ]
 
-// 供应商选项 = registry 动态派生（~99）+ 手工维护类型（去重）。
-// 路由前缀由后端 provider_prefix_map 覆盖表 + registry normalize 派生，前端不再维护 prefix_map。
+// 供应商类型下拉精选（官方云 + 国内大厂 + 常用国际 + 本地推理，31 家）。
+// registry 全集（123 家，多为海外垂直供应商）仅服务后端前缀派生与模型查库，不整包进下拉。
+// 约束：必须覆盖 providerAccessPresets 引用的全部 providerType，否则预设填充后下拉显示空白。
+const CORE_PROVIDER_TYPES = [
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'azure', label: 'Azure OpenAI' },
+  { value: 'google', label: 'Google Gemini' },
+  { value: 'bedrock', label: 'AWS Bedrock' },
+  { value: 'vertex_ai', label: 'Google Vertex AI' },
+  { value: 'deepseek', label: 'DeepSeek' },
+  { value: 'moonshot', label: 'Moonshot（Kimi）' },
+  { value: 'zhipu', label: '智谱' },
+  { value: 'dashscope', label: '阿里云百炼' },
+  { value: 'volcengine', label: '火山方舟' },
+  { value: 'minimax', label: 'MiniMax' },
+  { value: 'siliconflow', label: 'SiliconFlow' },
+  { value: 'xiaomi_mimo', label: '小米 MiMo' },
+  { value: 'tencent', label: '腾讯混元' },
+  { value: 'xunfei', label: '讯飞星火' },
+  { value: 'openrouter', label: 'OpenRouter' },
+  { value: 'xai', label: 'xAI' },
+  { value: 'groq', label: 'Groq' },
+  { value: 'mistral', label: 'Mistral' },
+  { value: 'fireworks_ai', label: 'Fireworks AI' },
+  { value: 'deepinfra', label: 'DeepInfra' },
+  { value: 'novita', label: 'Novita AI' },
+  { value: 'baseten', label: 'Baseten' },
+  { value: 'nebius', label: 'Nebius' },
+  { value: 'sambanova', label: 'SambaNova' },
+  { value: 'ollama', label: 'Ollama' },
+  { value: 'lmstudio', label: 'LM Studio' },
+  { value: 'vllm', label: 'vLLM' },
+  { value: 'sglang', label: 'SGLang' },
+  { value: 'other', label: '其他' },
+]
+
+// 类型下拉 = 精选白名单 + 存量供应商实际使用的白名单外类型（避免编辑时显示空白）。
+// 路由前缀仍由后端 provider_prefix_map 覆盖表 + registry normalize 派生，与下拉无关。
 const providerTypes = computed(() => {
-  const registryItems = providerOptions.value.map(p => ({ value: p.value, label: p.label }))
-  const present = new Set(registryItems.map(i => i.value))
-  const legacy = LEGACY_PROVIDER_TYPES.filter(l => !present.has(l.value))
-  return [...registryItems, ...legacy]
+  const coreValues = new Set(CORE_PROVIDER_TYPES.map(t => t.value))
+  const registryLabels = new Map(providerOptions.value.map(p => [p.value, p.label]))
+  const legacyLabels = new Map(LEGACY_PROVIDER_TYPES.map(l => [l.value, l.label]))
+  const usedExtras = [...new Set(providers.value.map(p => p.provider_type))]
+    .filter(v => !coreValues.has(v))
+    .map(v => ({ value: v, label: registryLabels.get(v) || legacyLabels.get(v) || v }))
+  return [...CORE_PROVIDER_TYPES, ...usedExtras]
 })
 
+// 凭证方言（接入协议）只有两种；本地推理供应商（LM Studio / Ollama）的差异归 provider_type，
+// 不再混入方言位（对齐 cc-switch apiFormat 与 category/providerType 分离）。
 const accessFormats = [
   { value: 'openai', label: 'OpenAI', needsKey: true },
   { value: 'anthropic', label: 'Anthropic', needsKey: true },
-  { value: 'lmstudio', label: 'LM Studio', needsKey: true },
-  { value: 'ollama', label: 'Ollama', needsKey: false },
 ]
+
+// 存量数据方言词汇归一：lmstudio/ollama → openai（Ollama 官方 /v1 即 OpenAI 方言端点）
+const LEGACY_FORMAT_ALIASES: Record<string, string> = { lmstudio: 'openai', ollama: 'openai' }
+
+function normalizeFormat(fmt: string | undefined | null): string {
+  const value = fmt || ''
+  return LEGACY_FORMAT_ALIASES[value] || value
+}
 
 const availableFormats = computed(() => {
   if (!selectedProvider.value) return []
-  const formats = (selectedProvider.value.config?.supported_formats as string[]) || []
-  return accessFormats.filter(f => formats.includes(f.value))
+  const formats = ((selectedProvider.value.config?.supported_formats as string[]) || [])
+    .map((f) => normalizeFormat(f))
+  const deduped = [...new Set(formats)]
+  return accessFormats.filter(f => deduped.includes(f.value))
+})
+
+const selectedProviderFormats = computed(() => {
+  if (!selectedProvider.value) return []
+  const formats = ((selectedProvider.value.config?.supported_formats as string[]) || [])
+    .map((f) => normalizeFormat(f))
+  return [...new Set(formats)]
 })
 
 const selectedFormatNeedsKey = computed(() => {
@@ -111,7 +201,7 @@ function getProviderTypeLabel(type: string): string {
 }
 
 function getFormatLabel(format: string): string {
-  const item = accessFormats.find(f => f.value === format)
+  const item = accessFormats.find(f => f.value === normalizeFormat(format))
   return item?.label || format
 }
 
@@ -147,6 +237,7 @@ function handleCreateProvider(): void {
   formType.value = 'openai'
   formFormats.value = []
   formDescription.value = ''
+  formPresetId.value = ''
   providerError.value = ''
   showProviderForm.value = true
 }
@@ -158,7 +249,10 @@ function handleEditProvider(): void {
   formName.value = selectedProvider.value.name
   formType.value = selectedProvider.value.provider_type
   formFormats.value = [...((selectedProvider.value.config?.supported_formats as string[]) || [])]
+    .map((f) => normalizeFormat(f))
+    .filter((f, i, arr) => arr.indexOf(f) === i)
   formDescription.value = selectedProvider.value.description || ''
+  formPresetId.value = ((selectedProvider.value.config as Record<string, unknown> | undefined)?.preset_id as string) || ''
   providerError.value = ''
   showProviderForm.value = true
 }
@@ -178,7 +272,10 @@ async function handleSubmitProvider(): Promise<void> {
       name: formName.value,
       provider_type: formType.value,
       description: formDescription.value || undefined,
-      config: { supported_formats: formFormats.value },
+      config: {
+        supported_formats: formFormats.value,
+        ...(formPresetId.value ? { preset_id: formPresetId.value } : {}),
+      },
     }
     if (isEditingProvider.value && editingProviderId.value) {
       await updateProvider(editingProviderId.value, params)
@@ -221,6 +318,29 @@ async function handleConfirmDeleteProvider(): Promise<void> {
 
 // --- Credential methods ---
 
+// 凭证预填：按供应商预设带出 api_base / 认证风格 / 客户端指纹建议。
+// 用户已手改的值（api_base 不等于本预设任何建议值）不覆盖。
+function applyPresetToCredForm(): void {
+  const preset = selectedPreset.value
+  if (!preset || isEditingCred.value) return
+  const fmt = normalizeFormat(credFormFormat.value)
+  const suggestedBase = fmt === 'openai' || fmt === 'anthropic' ? preset.apiBase[fmt] : undefined
+  if (suggestedBase) {
+    const untouched =
+      !credFormApiBase.value || Object.values(preset.apiBase).includes(credFormApiBase.value)
+    if (untouched) credFormApiBase.value = suggestedBase
+  }
+  if (fmt === 'anthropic') {
+    if (preset.authStyle) credFormAuthStyle.value = preset.authStyle
+    if (preset.clientIdentity) credFormIdentity.value = preset.clientIdentity
+  }
+}
+
+function handleSelectCredFormat(format: string): void {
+  credFormFormat.value = format
+  applyPresetToCredForm()
+}
+
 function handleCreateCred(): void {
   if (!selectedProvider.value) return
   isEditingCred.value = false
@@ -232,7 +352,10 @@ function handleCreateCred(): void {
   showApiKey.value = false
   maskedApiKey.value = ''
   credFormHeaders.value = []
+  credFormAuthStyle.value = ''
+  credFormIdentity.value = ''
   credError.value = ''
+  applyPresetToCredForm()
   showCredForm.value = true
 }
 
@@ -240,7 +363,7 @@ function handleEditCred(cred: Credential): void {
   isEditingCred.value = true
   editingCredId.value = cred.id
   credFormName.value = cred.credential_name
-  credFormFormat.value = (cred.credential_info?.format as string) || (cred.credential_info?.custom_llm_provider as string) || ''
+  credFormFormat.value = normalizeFormat((cred.credential_info?.format as string) || (cred.credential_info?.custom_llm_provider as string))
   credFormApiBase.value = (cred.credential_info?.api_base as string) || ''
   const storedApiKey = cred.credential_values?.api_key
   credFormApiKey.value = typeof storedApiKey === 'string' ? storedApiKey : ''
@@ -250,6 +373,8 @@ function handleEditCred(cred: Credential): void {
   credFormHeaders.value = typeof storedHeaders === 'object' && storedHeaders !== null
     ? Object.entries(storedHeaders).map(([key, value]) => ({ key, value: String(value) }))
     : []
+  credFormAuthStyle.value = cred.credential_info?.auth_style === 'bearer' ? 'bearer' : ''
+  credFormIdentity.value = cred.credential_info?.client_identity === 'claude_code' ? 'claude_code' : ''
   credError.value = ''
   showCredForm.value = true
 }
@@ -272,8 +397,7 @@ function buildExtraHeaders(): Record<string, string> {
 }
 
 function getLitellmProvider(format: string): string {
-  if (format === 'lmstudio') return 'openai'
-  return format
+  return normalizeFormat(format)
 }
 
 async function handleSubmitCred(): Promise<void> {
@@ -301,10 +425,16 @@ async function handleSubmitCred(): Promise<void> {
     credValues.extra_headers = extraHeaders
   }
 
+  const credFormat = normalizeFormat(credFormFormat.value)
   const credInfo: Record<string, unknown> = {
-    custom_llm_provider: getLitellmProvider(credFormFormat.value),
-    format: credFormFormat.value,
+    custom_llm_provider: getLitellmProvider(credFormat),
+    format: credFormat,
     api_base: credFormApiBase.value,
+  }
+  // anthropic 方言专用扩展：认证风格 / 客户端指纹（默认值不落库，保持 payload 干净）
+  if (credFormat === 'anthropic') {
+    if (credFormAuthStyle.value) credInfo.auth_style = credFormAuthStyle.value
+    if (credFormIdentity.value) credInfo.client_identity = credFormIdentity.value
   }
 
   try {
@@ -418,7 +548,7 @@ onMounted(() => {
             <span class="text-sm font-semibold text-slate-900">{{ selectedProvider.name }}</span>
             <span class="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">{{ getProviderTypeLabel(selectedProvider.provider_type) }}</span>
             <span
-              v-for="fmt in ((selectedProvider.config?.supported_formats as string[]) || [])"
+              v-for="fmt in selectedProviderFormats"
               :key="fmt"
               class="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-600"
             >{{ getFormatLabel(fmt) }}</span>
@@ -538,6 +668,22 @@ onMounted(() => {
         <h3 class="mb-4 text-lg font-semibold text-slate-900">{{ isEditingProvider ? '编辑供应商' : '新建供应商' }}</h3>
         <form @submit.prevent="handleSubmitProvider">
           <div class="mb-3">
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">快速接入</label>
+            <select
+              :value="formPresetId"
+              class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+              @change="handleApplyPreset(($event.target as HTMLSelectElement).value)"
+            >
+              <option value="">手动配置</option>
+              <optgroup v-for="group in groupedPresetOptions" :key="group.key" :label="group.label">
+                <option v-for="preset in group.items" :key="preset.id" :value="preset.id">{{ preset.name }}</option>
+              </optgroup>
+            </select>
+            <p class="mt-1.5 text-xs leading-5 text-slate-500">
+              选择预设自动填充名称、类型与接入格式（端点在凭证表单按方言预填），全部可改。
+            </p>
+          </div>
+          <div class="mb-3">
             <label class="mb-1.5 block text-sm font-medium text-slate-700">名称</label>
             <input v-model="formName" placeholder="如：Anthropic 官方" class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 placeholder:text-slate-400 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
           </div>
@@ -603,13 +749,39 @@ onMounted(() => {
                 type="button"
                 class="rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
                 :class="credFormFormat === fmt.value ? 'border-purple-300 bg-purple-50 text-purple-700' : 'border-slate-200 text-slate-600 hover:bg-slate-50'"
-                @click="credFormFormat = fmt.value"
+                @click="handleSelectCredFormat(fmt.value)"
               >{{ fmt.label }}</button>
             </div>
             <div v-else-if="availableFormats.length === 1" class="rounded-lg bg-purple-50 px-3 py-1.5 text-sm font-medium text-purple-700">
               {{ availableFormats[0].label }}
             </div>
             <div v-else class="text-sm text-slate-400">该供应商未配置接入格式</div>
+          </div>
+          <div v-if="credFormFormat === 'anthropic'" class="mb-3">
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">认证风格</label>
+            <select
+              v-model="credFormAuthStyle"
+              class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+            >
+              <option value="">x-api-key（默认）</option>
+              <option value="bearer">Authorization: Bearer</option>
+            </select>
+            <p class="mt-1.5 text-xs leading-5 text-slate-500">
+              部分上游（如 ollama.com anthropic 端点）只认 Bearer 不认 x-api-key，选 Bearer 自动注入认证头。
+            </p>
+          </div>
+          <div v-if="credFormFormat === 'anthropic'" class="mb-3">
+            <label class="mb-1.5 block text-sm font-medium text-slate-700">客户端指纹</label>
+            <select
+              v-model="credFormIdentity"
+              class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+            >
+              <option value="">默认（不注入）</option>
+              <option value="claude_code">模拟 Claude Code</option>
+            </select>
+            <p class="mt-1.5 text-xs leading-5 text-slate-500">
+              上游做「Claude Code only」客户端指纹检查（User-Agent / x-app）时开启，自动注入指纹头。注：anthropic-beta 的 claude-code 标记会被 LiteLLM 白名单剥除，无法传递。
+            </p>
           </div>
           <div class="mb-3">
             <label class="mb-1.5 block text-sm font-medium text-slate-700">API Base <span class="text-red-400">*</span></label>
