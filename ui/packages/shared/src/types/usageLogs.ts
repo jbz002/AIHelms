@@ -44,7 +44,10 @@ export interface LlmLog {
   user: UsageLogUser | null
   ai_key: UsageLogAiKey | null
   model: string
+  model_group: string | null
   provider: string | null
+  provider_id: number | null
+  provider_name: string | null
   call_type: string | null
   status: string
   prompt_tokens: number

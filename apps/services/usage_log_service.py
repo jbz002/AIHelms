@@ -14,8 +14,16 @@ from exceptions import NotFoundError
 from models.db import Agent, AgentUsageLog, LlmCallLog, McpCallLog, SkillUsageLog
 from repositories import usage_log_repo
 from services.icon_url import resolve_icon_url
+from services.model_service import ANTHROPIC_MODEL_SUFFIX
 
 # ────────────── LLM ──────────────
+
+
+def _display_model_group(value: str | None) -> str | None:
+    """anthropic 方言的 LiteLLM 模型组名带 "(Anthropic)" 路由后缀，展示时剥掉。"""
+    if value and value.endswith(ANTHROPIC_MODEL_SUFFIX):
+        return value[: -len(ANTHROPIC_MODEL_SUFFIX)]
+    return value
 
 
 async def list_llm_logs(
@@ -206,7 +214,10 @@ def _serialize_llm(
         "user": user,
         "ai_key": key,
         "model": log.model,
+        "model_group": _display_model_group(log.model_group),
         "provider": log.provider,
+        "provider_id": log.provider_id,
+        "provider_name": log.provider_name,
         "call_type": log.call_type,
         "status": log.status,
         "prompt_tokens": log.prompt_tokens,

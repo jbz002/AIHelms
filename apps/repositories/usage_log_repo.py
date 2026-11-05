@@ -30,6 +30,24 @@ from models.db import (
 _ANTHROPIC_MODEL_SUFFIX = "(Anthropic)"
 
 
+def _llm_display_model():
+    """日志展示口径的模型名：优先模型组（无路由前缀），存量缺列回落到上游串。
+
+    anthropic 方言部署在 LiteLLM 的模型组名带 "(Anthropic)" 路由后缀，
+    同样属于实现细节，展示时剥掉；方言本身由独立字段表达。
+    """
+    return func.regexp_replace(
+        func.coalesce(LlmCallLog.model_group, LlmCallLog.model),
+        r"\(Anthropic\)$",
+        "",
+    )
+
+
+def _llm_display_provider():
+    """日志展示口径的供应商：优先真实供应商名，存量缺列回落到路由方言。"""
+    return func.coalesce(LlmCallLog.provider_name, LlmCallLog.provider)
+
+
 def _llm_model_lookup_names(model_name: str) -> set[str]:
     names = {model_name}
     if model_name.endswith(_ANTHROPIC_MODEL_SUFFIX):
@@ -110,11 +128,11 @@ def _apply_llm_filters(
     if ai_key_id is not None:
         stmt = stmt.where(LlmCallLog.ai_key_id == ai_key_id)
     if models:
-        stmt = stmt.where(LlmCallLog.model.in_(models))
+        stmt = stmt.where(_llm_display_model().in_(models))
     elif model:
-        stmt = stmt.where(LlmCallLog.model == model)
+        stmt = stmt.where(_llm_display_model() == model)
     if provider:
-        stmt = stmt.where(LlmCallLog.provider == provider)
+        stmt = stmt.where(_llm_display_provider() == provider)
     if status == "success":
         stmt = stmt.where(LlmCallLog.status == "success")
     elif status == "failure":
@@ -192,21 +210,19 @@ async def llm_log_filters(session: AsyncSession) -> dict:
         .scalars()
         .all()
     )
+    display_model = _llm_display_model()
     models = (
-        (
-            await session.execute(
-                select(distinct(LlmCallLog.model)).order_by(LlmCallLog.model)
-            )
-        )
+        (await session.execute(select(distinct(display_model)).order_by(display_model)))
         .scalars()
         .all()
     )
+    display_provider = _llm_display_provider()
     providers = (
         (
             await session.execute(
-                select(distinct(LlmCallLog.provider))
-                .where(LlmCallLog.provider.isnot(None))
-                .order_by(LlmCallLog.provider)
+                select(distinct(display_provider))
+                .where(display_provider.isnot(None))
+                .order_by(display_provider)
             )
         )
         .scalars()
@@ -226,7 +242,7 @@ async def llm_log_filters(session: AsyncSession) -> dict:
     id_active_model_names = set(
         (
             await session.execute(
-                select(distinct(LlmCallLog.model))
+                select(distinct(_llm_display_model()))
                 .join(ModelDeployment, LlmCallLog.deployment_id == ModelDeployment.id)
                 .join(Model, Model.id == ModelDeployment.model_id)
                 .outerjoin(Credential, Credential.id == ModelDeployment.credential_id)

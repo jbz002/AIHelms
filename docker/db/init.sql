@@ -620,8 +620,11 @@ CREATE TABLE IF NOT EXISTS aihelms.llm_call_logs (
     user_id BIGINT,
     ai_key_id BIGINT,
     deployment_id BIGINT,
-    model VARCHAR(128) NOT NULL,
-    provider VARCHAR(50),
+    model VARCHAR(128) NOT NULL,          -- LiteLLM 解析后的上游模型串，可能带路由前缀（openai/xxx）
+    model_group VARCHAR(128),             -- 客户端请求的模型组，无路由前缀（日志展示口径）
+    provider VARCHAR(50),                 -- LiteLLM 路由方言/处理器（openai / anthropic / ...）
+    provider_id BIGINT,                   -- 实际供应商（providers.id）
+    provider_name VARCHAR(100),           -- 供应商名快照（供应商改名/删除后仍可查）
     call_type VARCHAR(50),
     status VARCHAR(20),
     prompt_tokens INT DEFAULT 0,
@@ -649,6 +652,8 @@ CREATE INDEX IF NOT EXISTS idx_llm_logs_started_at ON aihelms.llm_call_logs(star
 CREATE INDEX IF NOT EXISTS idx_llm_logs_user ON aihelms.llm_call_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_llm_logs_ai_key ON aihelms.llm_call_logs(ai_key_id);
 CREATE INDEX IF NOT EXISTS idx_llm_logs_model ON aihelms.llm_call_logs(model);
+CREATE INDEX IF NOT EXISTS idx_llm_logs_model_group ON aihelms.llm_call_logs(model_group);
+CREATE INDEX IF NOT EXISTS idx_llm_logs_provider_name ON aihelms.llm_call_logs(provider_name);
 CREATE INDEX IF NOT EXISTS idx_llm_logs_status ON aihelms.llm_call_logs(status);
 
 -- LiteLLM creates public."LiteLLM_SpendLogs" via its own migrations.

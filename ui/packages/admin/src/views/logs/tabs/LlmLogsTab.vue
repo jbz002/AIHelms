@@ -392,7 +392,7 @@ onUnmounted(() => {
             <td class="px-4 py-2.5 text-xs text-slate-500">{{ formatTime(log.started_at) }}</td>
             <td class="px-4 py-2.5 text-slate-900">{{ userLabel(log) }}</td>
             <td class="px-4 py-2.5 text-slate-700 font-mono text-xs">{{ keyLabel(log) }}</td>
-            <td class="px-4 py-2.5 text-slate-700">{{ log.model }}</td>
+            <td class="px-4 py-2.5 text-slate-700">{{ log.model_group || log.model }}</td>
             <td class="px-4 py-2.5">
               <span
                 class="rounded px-2 py-0.5 text-xs"
@@ -430,7 +430,7 @@ onUnmounted(() => {
     <LogDrawer
       v-if="detail"
       :open="drawerOpen"
-      :title="detail.model"
+      :title="detail.model_group || detail.model"
       :subtitle="detail.request_id"
       :header-tag="{
         text: isSuccess(detail.status) ? '成功' : '失败',
@@ -440,8 +440,10 @@ onUnmounted(() => {
         { label: '时间', value: formatTime(detail.started_at) },
         { label: '操作人', value: detail.is_platform_call ? '平台系统' : (detail.user ? `${detail.user.display_name || detail.user.username} / ${detail.user.department_name || '—'}` : '—') },
         { label: 'Key', value: detail.is_platform_call ? '****' : (detail.ai_key?.key_token || '—') },
-        { label: '模型', value: detail.model },
-        { label: 'Provider', value: detail.provider },
+        { label: '模型', value: detail.model_group || detail.model },
+        { label: '供应商', value: detail.provider_name || '—' },
+        { label: '上游模型', value: detail.model, mono: true },
+        { label: '路由方言', value: detail.provider || '—' },
         { label: 'Call Type', value: detail.call_type },
         { label: 'Tokens', value: `输入 ${detail.prompt_tokens} / 输出 ${detail.completion_tokens} / 合计 ${detail.total_tokens}` },
         { label: '缓存读', value: detail.cache_read_tokens },

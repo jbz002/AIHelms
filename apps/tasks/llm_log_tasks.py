@@ -20,9 +20,11 @@ from core.config import settings
 from core.database import get_worker_session_factory
 from models.db import (
     AiKey,
+    Credential,
     LlmCallLog,
     Model,
     ModelDeployment,
+    Provider,
     SyncState,
     User,
 )
@@ -183,6 +185,15 @@ async def _spend_log_model_id_select(
     return "NULL AS spend_log_model_id"
 
 
+async def _spend_log_model_group_select(
+    session: AsyncSession, table_alias: str = ""
+) -> str:
+    prefix = f"{table_alias}." if table_alias else ""
+    if await _spend_logs_has_column(session, "model_group"):
+        return f"{prefix}model_group AS spend_log_model_group"
+    return "NULL AS spend_log_model_group"
+
+
 async def _spend_logs_has_column(session: AsyncSession, column_name: str) -> bool:
     result = await session.execute(
         text(
@@ -216,6 +227,7 @@ async def _sync() -> None:
                 await session.flush()
 
             spend_log_model_id_select = await _spend_log_model_id_select(session)
+            spend_log_model_group_select = await _spend_log_model_group_select(session)
             cursor_condition = (
                 'AND (COALESCE("endTime", "startTime"), request_id) '
                 "> (:last_time, :last_request_id) "
@@ -228,7 +240,8 @@ async def _sync() -> None:
                 '"startTime", "endTime", "completionStartTime", '
                 "session_id, status, metadata, mcp_namespaced_tool_name, "
                 "messages, response, proxy_server_request, "
-                f"{spend_log_model_id_select} "
+                f"{spend_log_model_id_select}, "
+                f"{spend_log_model_group_select} "
                 'FROM public."LiteLLM_SpendLogs" '
                 "WHERE (mcp_namespaced_tool_name IS NULL "
                 "       OR mcp_namespaced_tool_name = '') "
@@ -295,6 +308,9 @@ async def _reconcile() -> None:
 
             start_time = datetime.now(timezone.utc) - timedelta(days=30)
             spend_log_model_id_select = await _spend_log_model_id_select(session, "s")
+            spend_log_model_group_select = await _spend_log_model_group_select(
+                session, "s"
+            )
             result = await session.execute(
                 text(
                     'SELECT s.request_id, s.api_key, s."user", s.model, '
@@ -303,7 +319,8 @@ async def _reconcile() -> None:
                     's."endTime", s."completionStartTime", s.session_id, '
                     "s.status, s.metadata, s.mcp_namespaced_tool_name, "
                     "s.messages, s.response, s.proxy_server_request, "
-                    f"{spend_log_model_id_select} "
+                    f"{spend_log_model_id_select}, "
+                    f"{spend_log_model_group_select} "
                     'FROM public."LiteLLM_SpendLogs" s '
                     'WHERE s."startTime" >= :start_time '
                     "  AND (s.mcp_namespaced_tool_name IS NULL "
@@ -337,6 +354,7 @@ async def _upsert_spend_log_rows(session: AsyncSession, rows) -> int:
     ai_key_cache: dict[str, AiKey | None] = {}
     user_cache: dict[str, User | None] = {}
     deployment_cache: dict[str, tuple[ModelDeployment, Model] | None] = {}
+    provider_cache: dict[int, Provider | None] = {}
     inserted = 0
 
     for row in rows:
@@ -362,6 +380,7 @@ async def _upsert_spend_log_rows(session: AsyncSession, rows) -> int:
         response_raw = row[18]
         proxy_request_raw = row[19]
         spend_log_model_id = str(row[20]) if row[20] else ""
+        model_group = row[21] or ""
 
         cache_read, cache_creation = _parse_cache_tokens(metadata)
         reasoning_tokens = _parse_reasoning_tokens(metadata)
@@ -405,6 +424,8 @@ async def _upsert_spend_log_rows(session: AsyncSession, rows) -> int:
                 user_id = user.id
 
         deployment_id: int | None = None
+        provider_id: int | None = None
+        provider_name: str | None = None
         internal_cost = Decimal("0")
         external_cost = Decimal("0")
         litellm_model_id = spend_log_model_id or metadata.get("model_id") or ""
@@ -444,6 +465,20 @@ async def _upsert_spend_log_rows(session: AsyncSession, rows) -> int:
         if deployment_pair:
             deployment, _ = deployment_pair
             deployment_id = deployment.id
+            if deployment.credential_id:
+                if deployment.credential_id not in provider_cache:
+                    result = await session.execute(
+                        select(Provider)
+                        .join(Credential, Credential.provider_id == Provider.id)
+                        .where(Credential.id == deployment.credential_id)
+                    )
+                    provider_cache[deployment.credential_id] = (
+                        result.scalar_one_or_none()
+                    )
+                provider_row = provider_cache[deployment.credential_id]
+                if provider_row:
+                    provider_id = provider_row.id
+                    provider_name = provider_row.name
             internal_cost = _calc_internal_cost(
                 deployment,
                 billable_prompt_tokens,
@@ -492,7 +527,10 @@ async def _upsert_spend_log_rows(session: AsyncSession, rows) -> int:
                 ai_key_id=ai_key_id,
                 deployment_id=deployment_id,
                 model=model_name,
+                model_group=model_group or None,
                 provider=provider,
+                provider_id=provider_id,
+                provider_name=provider_name,
                 call_type=call_type,
                 status=status,
                 prompt_tokens=prompt_tokens,

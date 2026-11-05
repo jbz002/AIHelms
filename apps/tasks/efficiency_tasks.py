@@ -76,7 +76,7 @@ async def _aggregate() -> None:
 
             # LLM 日志聚合
             await session.execute(
-                text("""
+                text(r"""
                     INSERT INTO aihelms.cost_summary_daily (
                         summary_date, user_id, ai_key_id, model, provider_id,
                         cost_type, key_type, total_requests, successful_requests,
@@ -89,7 +89,10 @@ async def _aggregate() -> None:
                         date_trunc('day', l.started_at)::date AS summary_date,
                         l.user_id,
                         l.ai_key_id,
-                        l.model,
+                        regexp_replace(
+                            COALESCE(l.model_group, l.model),
+                            '\(Anthropic\)$', ''
+                        ) AS model,
                         d.credential_id AS provider_id,
                         'llm' AS cost_type,
                         k.key_type,

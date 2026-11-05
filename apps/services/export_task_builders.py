@@ -197,9 +197,13 @@ async def _build_usage_log_rows(
                     if item.get("is_platform_call")
                     else _key_name(item.get("ai_key"))
                 ),
-                item["model"],
-                "是" if model_active.get(item["model"], False) else "否",
-                item["provider"],
+                item["model_group"] or item["model"],
+                (
+                    "是"
+                    if model_active.get(item["model_group"] or item["model"], False)
+                    else "否"
+                ),
+                item["provider_name"] or item["provider"],
                 item["status"],
                 item["prompt_tokens"],
                 item["completion_tokens"],
