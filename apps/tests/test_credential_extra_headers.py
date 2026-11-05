@@ -81,3 +81,48 @@ def test_update_credential_rejects_blank_header_name():
         UpdateCredentialRequest(
             credential_values={"extra_headers": {"  ": "v"}},
         )
+
+
+def _anthropic_credential(
+    credential_values: dict, credential_info: dict
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        credential_name="cred-a",
+        credential_values=credential_values,
+        credential_info={"format": "anthropic", **credential_info},
+    )
+
+
+def test_apply_credential_bearer_auth_style_injects_authorization():
+    credential = _anthropic_credential(
+        {"api_key": "secret", "api_base": "https://ollama.com"},
+        {"auth_style": "bearer"},
+    )
+
+    params = _apply_credential_to_litellm_params({"model": "m"}, credential)
+
+    assert params["extra_headers"] == {"authorization": "Bearer secret"}
+
+
+def test_apply_credential_claude_code_identity_injects_fingerprint():
+    credential = _anthropic_credential(
+        {"api_key": "secret", "api_base": "https://gw.example"},
+        {"client_identity": "claude_code"},
+    )
+
+    params = _apply_credential_to_litellm_params({"model": "m"}, credential)
+
+    assert params["extra_headers"]["user-agent"] == "claude-cli/2.1.237 (external, cli)"
+    assert params["extra_headers"]["x-app"] == "cli"
+
+
+def test_apply_credential_openai_format_skips_generated_headers():
+    credential = SimpleNamespace(
+        credential_name="cred-o",
+        credential_values={"api_key": "secret"},
+        credential_info={"format": "openai", "client_identity": "claude_code"},
+    )
+
+    params = _apply_credential_to_litellm_params({"model": "m"}, credential)
+
+    assert "extra_headers" not in params

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.deps import get_current_user, get_db
 from models.db import Model
 from repositories import model_repo
-from services import access_test_service, access_tool_probe
+from services import access_test_service, access_thinking_probe, access_tool_probe
 from services.access_test_error_mapper import build_error_detail, build_failure
 from services.access_test_precheck import precheck_access_test
 from services.model_service import ANTHROPIC_MODEL_SUFFIX
@@ -205,6 +205,53 @@ async def tool_probe(
         protocol=protocol,
     )
     return {"code": 200, "message": "工具探针完成", "data": result}
+
+
+@router.post("/thinking-probe", summary="Thinking 探针")
+async def thinking_probe(
+    req: ToolProbeRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """两轮 thinking 真实请求，校验 thinking 参数与签名在翻译链路上存活（拦签名剥除导致的多轮思考失败）。"""
+    group_name = req.model.strip()
+    if group_name.endswith(ANTHROPIC_MODEL_SUFFIX):
+        bare_name = group_name[: -len(ANTHROPIC_MODEL_SUFFIX)]
+        protocol = "anthropic"
+    else:
+        bare_name = group_name
+        protocol = "openai"
+    model_obj = await model_repo.find_by_model_id(session, bare_name)
+    if model_obj and model_obj.category != "chat":
+        return {
+            "code": 200,
+            "message": "该模型类型不适用 thinking 探针",
+            "data": {"success": False, "protocol": protocol, "verdicts": []},
+        }
+    user_api_key, error_detail = await precheck_access_test(
+        session,
+        current_user["id"],
+        model_obj,
+        bare_name,
+        is_admin=current_user["is_admin"],
+    )
+    if error_detail:
+        return {
+            "code": 200,
+            "message": "Thinking 探针完成",
+            "data": {
+                "success": False,
+                "protocol": protocol,
+                "verdicts": [],
+                "error_detail": error_detail,
+            },
+        }
+    result = await access_thinking_probe.run_thinking_probe(
+        model=group_name,
+        api_key=user_api_key or "",
+        protocol=protocol,
+    )
+    return {"code": 200, "message": "Thinking 探针完成", "data": result}
 
 
 async def _resolve_model(

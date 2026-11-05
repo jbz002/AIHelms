@@ -8,11 +8,19 @@
 --   /v1/messages  + 仅 openai            -> 不改（litellm 自然 403，提示模型不支持 anthropic 入口）
 --   /v1/chat/completions + 仅 anthropic  -> 裸名(Anthropic)（litellm 翻译）
 --   /v1/chat/completions + has_openai    -> 不改（openai 凭证原生）
+--   /v1/responses + 仅 anthropic         -> 裸名(Anthropic)（litellm responses→anthropic 桥接，
+--                                           2026-10-26 dev 实测 v1.103 对 anthropic 前缀部署 200）
+--   /v1/responses + has_openai           -> 不改（litellm 原生 responses 转发）
 --   其他端点                          -> 不改
 
 local _M = {}
 
 local cjson = require "cjson.safe"
+-- lua-cjson decode 后空数组与空对象同表示（均为空 table），re-encode 会把
+-- 客户端的 "tools":[] 变成 {} 破坏请求结构（2026-08-25 生产事故）。
+-- array_mt（cjson 2.1+）给空 table 打数组标记，encode 时还原为 []。
+local cjson_strict = require "cjson"
+local ARRAY_MT = cjson_strict.array_mt or cjson_strict.empty_array
 local SUFFIX = "(Anthropic)"
 local REFRESH_INTERVAL = 30  -- 秒
 
@@ -112,9 +120,57 @@ local function ends_with(s, suffix)
 end
 
 
--- 剥掉请求 messages 里的 image block（非视觉模型不支持图片输入）。
+local function escape_pattern(s)
+    return (s:gsub("([%^%$%(%)%%%.%[%]%*%+%-%?])", "%%%1"))
+end
+
+
+-- lua-cjson 把 "tools":[] 与 {} 都 decode 成空 table，re-encode 时一律变 {}。
+-- 对「raw JSON 里是空数组、decode 后是空 table」的顶层字段打数组标记，encode 还原 []。
+-- 仅在 body 需要改写重编码时调用（未改写的 body 原样透传，无此风险）。
+local function mark_empty_arrays(data, raw)
+    if not ARRAY_MT then return end
+    for k, v in pairs(data) do
+        if type(v) == "table" and next(v) == nil then
+            if raw:find('"' .. escape_pattern(k) .. '"%s*:%s*%[%s*%]') then
+                setmetatable(v, ARRAY_MT)
+            end
+        end
+    end
+end
+
+
+-- 剥掉 content block 数组里的图片块（非视觉模型不支持图片输入）。
 -- 兼容两种方言：OpenAI 的 {type="image_url"} 与 Anthropic 的 {type="image"}。
--- 剥后 content 数组若为空，补一个占位 text，避免空 content 被上游拒绝。
+-- Anthropic 方言工具结果图片嵌在 {type="tool_result", content=[...]} 内层，
+-- 递归处理；剥后数组若为空，补占位 text，避免空 content 被上游拒绝。
+-- 返回 (过滤后数组, 是否发生改动)。
+local function strip_images_from_blocks(blocks)
+    local kept = {}
+    local changed = false
+    for _, block in ipairs(blocks) do
+        local bt = type(block) == "table" and block.type or nil
+        if bt == "image_url" or bt == "image" then
+            changed = true
+        else
+            if bt == "tool_result" and type(block.content) == "table" then
+                local inner, inner_changed = strip_images_from_blocks(block.content)
+                if inner_changed then
+                    block.content = inner
+                    changed = true
+                end
+            end
+            kept[#kept + 1] = block
+        end
+    end
+    if changed and #kept == 0 then
+        kept = { { type = "text", text = "[image removed]" } }
+    end
+    return kept, changed
+end
+
+
+-- 剥掉请求 messages 里的 image block（顶层 content 数组 + tool_result 内层）。
 -- 返回是否发生了改动。
 local function strip_images(data)
     local messages = data.messages
@@ -123,19 +179,11 @@ local function strip_images(data)
     for _, msg in ipairs(messages) do
         local content = msg.content
         if type(content) == "table" then
-            local kept = {}
-            for _, block in ipairs(content) do
-                local bt = type(block) == "table" and block.type or nil
-                if bt == "image_url" or bt == "image" then
-                    changed = true
-                else
-                    kept[#kept + 1] = block
-                end
+            local kept, msg_changed = strip_images_from_blocks(content)
+            if msg_changed then
+                msg.content = kept
+                changed = true
             end
-            if #kept == 0 then
-                kept = { { type = "text", text = "[image removed]" } }
-            end
-            msg.content = kept
         end
     end
     return changed
@@ -189,7 +237,8 @@ function _M.rewrite()
     if ngx.var.request_method ~= "POST" then return end
     local uri = ngx.var.uri
     local is_messages = (uri == "/v1/messages")
-    local is_chat = (uri == "/v1/chat/completions")
+    -- /v1/responses（Codex 等客户端）与 chat 同规则：按模型方言映射决定改写
+    local is_chat = (uri == "/v1/chat/completions" or uri == "/v1/responses")
     if not (is_messages or is_chat) then return end
 
     ngx.req.read_body()
@@ -236,13 +285,14 @@ function _M.rewrite()
                 changed = true
             end
         end
-        -- ② 非视觉模型剥 image block
+        -- ② 非视觉模型剥 image block（含 tool_result 内层）
         if not info.supports_vision and strip_images(data) then
             changed = true
         end
     end
 
     if changed then
+        mark_empty_arrays(data, raw)
         ngx.req.set_body_data(cjson.encode(data))
         ngx.log(ngx.WARN, "C1REWRITE uri=" .. uri .. " orig=" .. orig)
     end

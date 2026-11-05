@@ -123,3 +123,22 @@ export interface ToolProbeResult {
 export interface ToolProbeParams {
   model: string
 }
+
+export interface ThinkingProbeVerdict {
+  turn: number
+  mode: 'nonstream' | 'stream'
+  ok: boolean
+  skipped?: boolean
+  detail: string
+}
+
+export interface ThinkingProbeResult {
+  success: boolean
+  protocol: 'openai' | 'anthropic'
+  verdicts: ThinkingProbeVerdict[]
+  error_detail?: AccessTestErrorDetail
+}
+
+export interface ThinkingProbeParams {
+  model: string
+}

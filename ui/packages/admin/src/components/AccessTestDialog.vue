@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { resyncAnthropicDeployments, testModelAccessStream, toast, toolProbe, usePermission } from '@aihelms/shared'
-import type { AccessTestErrorDetail, ChatContentBlock, ToolProbeResult } from '@aihelms/shared'
+import { resyncAnthropicDeployments, testModelAccessStream, thinkingProbe, toast, toolProbe, usePermission } from '@aihelms/shared'
+import type { AccessTestErrorDetail, ChatContentBlock, ThinkingProbeResult, ToolProbeResult } from '@aihelms/shared'
 
 interface Props {
   visible: boolean
@@ -36,6 +36,9 @@ const MAX_IMAGE_BYTES = 4 * 1024 * 1024
 const probeRunning = ref(false)
 const probeResult = ref<ToolProbeResult | null>(null)
 const probeErrorMsg = ref('')
+const thinkingProbeRunning = ref(false)
+const thinkingProbeResult = ref<ThinkingProbeResult | null>(null)
+const thinkingProbeErrorMsg = ref('')
 
 watch(() => props.visible, (val) => {
   if (val) {
@@ -51,6 +54,9 @@ watch(() => props.visible, (val) => {
     probeRunning.value = false
     probeResult.value = null
     probeErrorMsg.value = ''
+    thinkingProbeRunning.value = false
+    thinkingProbeResult.value = null
+    thinkingProbeErrorMsg.value = ''
     if (fileInput.value) fileInput.value.value = ''
   }
 })
@@ -179,6 +185,21 @@ async function handleToolProbe(): Promise<void> {
 
 function verdictModeLabel(mode: string): string {
   return mode === 'stream' ? '流式' : '非流式'
+}
+
+async function handleThinkingProbe(): Promise<void> {
+  const model = modelInput.value.trim()
+  if (!model || thinkingProbeRunning.value) return
+  thinkingProbeRunning.value = true
+  thinkingProbeResult.value = null
+  thinkingProbeErrorMsg.value = ''
+  try {
+    thinkingProbeResult.value = await thinkingProbe({ model })
+  } catch (e) {
+    thinkingProbeErrorMsg.value = e instanceof Error ? e.message : '探针请求失败'
+  } finally {
+    thinkingProbeRunning.value = false
+  }
 }
 
 function handleFileChange(event: Event): void {
@@ -370,6 +391,20 @@ function setAccessErrorFromStream(payload: string): void {
             </span>
             <span v-else>工具调用探针</span>
           </button>
+          <button
+            :disabled="!modelInput.trim() || thinkingProbeRunning"
+            class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-blue-400 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+            @click="handleThinkingProbe"
+          >
+            <span v-if="thinkingProbeRunning" class="flex items-center gap-2">
+              <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              探测中...
+            </span>
+            <span v-else>Thinking 探针</span>
+          </button>
         </div>
 
         <!-- Tool probe result -->
@@ -387,6 +422,25 @@ function setAccessErrorFromStream(payload: string): void {
             </ul>
             <p v-if="!probeResult.success && !probeResult.error_detail" class="mt-2 text-xs leading-5 text-amber-700">
               工具调用探针未通过：代理类客户端（Claude Code / opencode 等）在此模型上调工具会卡死。常见原因为路由前缀错配走了 litellm 翻译层（对照表 provider_prefix_map 缺行或凭证方言与前缀不符），请核对供应商类型与凭证格式。
+            </p>
+          </template>
+        </div>
+
+        <!-- Thinking probe result -->
+        <div v-if="thinkingProbeResult || thinkingProbeErrorMsg" class="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <label class="mb-2 block text-xs font-medium text-slate-500">Thinking 探针（{{ thinkingProbeResult?.protocol === 'anthropic' ? 'Anthropic' : 'OpenAI' }} 协议）</label>
+          <div v-if="thinkingProbeErrorMsg" class="text-sm text-red-600">{{ thinkingProbeErrorMsg }}</div>
+          <template v-else-if="thinkingProbeResult">
+            <div v-if="thinkingProbeResult.error_detail" class="text-sm text-red-600">{{ thinkingProbeResult.error_detail.title || '探针无法执行' }}</div>
+            <ul v-else class="space-y-1">
+              <li v-for="v in thinkingProbeResult.verdicts" :key="v.turn" class="flex items-start gap-2 text-sm">
+                <span :class="v.ok ? 'text-green-600' : 'text-red-600'">{{ v.ok ? '✓' : '✗' }}</span>
+                <span class="font-medium text-slate-700">第 {{ v.turn }} 轮：</span>
+                <span :class="v.ok ? 'text-slate-600' : 'text-red-600'">{{ v.detail }}</span>
+              </li>
+            </ul>
+            <p v-if="!thinkingProbeResult.success && !thinkingProbeResult.error_detail" class="mt-2 text-xs leading-5 text-amber-700">
+              Thinking 探针未通过：多轮思考对话在此模型上会失败（签名被翻译层剥除或 thinking 参数未被透传）。常见于跨方言翻译路径（anthropic 入口 + openai 方言凭证裸名组），请核对凭证格式与路由前缀。
             </p>
           </template>
         </div>

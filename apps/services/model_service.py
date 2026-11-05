@@ -22,6 +22,7 @@ from services import litellm_client, model_registry
 from services.icon_url import resolve_provider_icon_url
 from services.litellm_credential_payload import (
     build_litellm_credential_values_for_credential,
+    impersonation_headers,
 )
 
 logger = logging.getLogger(__name__)
@@ -987,9 +988,8 @@ def _apply_credential_to_litellm_params(litellm_params: dict, credential) -> dic
     litellm_params.pop("api_key", None)
     litellm_params["litellm_credential_name"] = credential.credential_name
     cred_values = credential.credential_values or {}
-    cred_api_base = cred_values.get("api_base") or (
-        credential.credential_info or {}
-    ).get("api_base")
+    cred_info = credential.credential_info or {}
+    cred_api_base = cred_values.get("api_base") or cred_info.get("api_base")
     if cred_api_base:
         litellm_params["api_base"] = cred_api_base
     else:
@@ -1004,7 +1004,32 @@ def _apply_credential_to_litellm_params(litellm_params: dict, credential) -> dic
             litellm_params["extra_headers"] = dict(extra_headers)
         else:
             litellm_params.pop("extra_headers", None)
+    _apply_credential_generated_headers(litellm_params, credential)
     return litellm_params
+
+
+def _apply_credential_generated_headers(litellm_params: dict, credential) -> None:
+    """部署级注入凭证派生请求头（litellm 出站侧，实测可达上游）。
+
+    认证风格 auth_style=bearer：anthropic 方言上游只认 Authorization Bearer 时注入
+    （2026-08-26 ollama.com 事故曾手工注入部署行，此处固化为凭证字段自动注入）。
+    client_identity=claude_code：注入 Claude Code 指纹头过「Claude Code only」上游闸。
+    凭证派生头不覆盖用户显式 extra_headers 已有同名头。
+    """
+    cred_info = credential.credential_info or {}
+    if (cred_info.get("format") or "openai") != "anthropic":
+        return
+    headers = dict(litellm_params.get("extra_headers") or {})
+    if cred_info.get("auth_style") == "bearer":
+        has_authorization = any(
+            str(name).lower() == "authorization" for name in headers
+        )
+        api_key = (credential.credential_values or {}).get("api_key")
+        if not has_authorization and api_key:
+            headers["authorization"] = f"Bearer {api_key}"
+    headers = impersonation_headers(cred_info, headers)
+    if headers:
+        litellm_params["extra_headers"] = headers
 
 
 async def _sync_published_model_to_main_keys(
