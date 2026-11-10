@@ -9,9 +9,15 @@
     "test": "npm run test --workspaces --if-present",
     "lint": "node scripts/check-i18n-keys.mjs && npm run lint --workspaces --if-present",
     "type-check": "npm run type-check --workspaces --if-present",
-    "check-i18n-keys": "node scripts/check-i18n-keys.mjs"
+    "check-i18n-keys": "node scripts/check-i18n-keys.mjs",
+    "e2e": "playwright test -c e2e/playwright.config.ts",
+    "e2e:headed": "playwright test -c e2e/playwright.config.ts --headed",
+    "e2e:report": "playwright show-report e2e/playwright-report"
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0"
   }
 }
