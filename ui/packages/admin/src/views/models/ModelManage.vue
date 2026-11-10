@@ -9,6 +9,7 @@ import {
   createDeployment,
   updateDeployment,
   deleteDeployment,
+  checkDeploymentsHealth,
   getProviders,
   getCredentials,
   getActiveModels,
@@ -29,6 +30,7 @@ import {
   type AccessGroup,
   type RouterSettings,
   type UpdateRouterSettingsParams,
+  type DeploymentHealthResult,
   type ModelVisibility,
   type RegistryEntry,
   capabilityLabel,
@@ -101,13 +103,17 @@ const routerSettings = ref<RouterSettings>({
   allowed_fails: 3,
   cooldown_time: 60,
   num_retries: 2,
-  timeout: 30,
+  timeout: 600,
+  stream_timeout: 1800,
   config: {},
 })
 const routerSaving = ref(false)
 const routerError = ref('')
+const healthResult = ref<DeploymentHealthResult | null>(null)
+const healthChecking = ref(false)
 const newFallbackFrom = ref('')
 const newFallbackTo = ref('')
+const autoDialectFallback = ref(true)
 
 // Model form
 const formName = ref('')
@@ -409,6 +415,23 @@ async function fetchModelDetail(id: number): Promise<void> {
   const detail = await getModelById(id)
   selectedModel.value = detail
   deployments.value = detail.deployments || []
+  healthResult.value = null
+}
+
+async function handleCheckHealth(): Promise<void> {
+  if (!selectedModel.value || healthChecking.value) return
+  healthChecking.value = true
+  try {
+    healthResult.value = await checkDeploymentsHealth(selectedModel.value.id)
+  } catch (e) {
+    errorMessage.value = e instanceof Error ? e.message : '健康检测失败'
+  } finally {
+    healthChecking.value = false
+  }
+}
+
+function healthOf(deployment: Deployment) {
+  return healthResult.value?.deployments.find(item => item.deployment_id === deployment.id) || null
 }
 
 function handleSelectModel(model: ModelInfo): void {
@@ -985,6 +1008,8 @@ function getModelNameById(modelId: string): string {
 async function fetchRouterSettings(): Promise<void> {
   try {
     routerSettings.value = await getRouterSettings()
+    const flag = routerSettings.value.config?.auto_dialect_fallback
+    autoDialectFallback.value = !(flag === false || flag === 'false' || flag === 'off')
   } catch {
     // First time, no settings yet
   }
@@ -1001,6 +1026,11 @@ async function handleSaveRouterSettings(): Promise<void> {
       cooldown_time: routerSettings.value.cooldown_time,
       num_retries: routerSettings.value.num_retries,
       timeout: routerSettings.value.timeout,
+      stream_timeout: routerSettings.value.stream_timeout,
+      config: {
+        ...routerSettings.value.config,
+        auto_dialect_fallback: autoDialectFallback.value,
+      },
     }
     routerSettings.value = await updateRouterSettings(params)
   } catch (e) {
@@ -1226,6 +1256,13 @@ onMounted(() => {
               路由配置
             </button>
             <button
+              class="rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-100 disabled:opacity-50"
+              :disabled="healthChecking"
+              @click="handleCheckHealth"
+            >
+              {{ healthChecking ? '检测中...' : '健康检测' }}
+            </button>
+            <button
               v-if="hasPermission('user:update')"
               class="rounded-md bg-purple-600 px-2.5 py-1 text-xs font-medium text-white transition-all hover:bg-purple-500"
               @click="handleAddDeployment"
@@ -1269,6 +1306,27 @@ onMounted(() => {
                       :class="d.is_active ? 'bg-green-50 text-green-600' : 'bg-slate-100 text-slate-400'"
                     >
                       {{ d.is_active ? '启用' : '禁用' }}
+                    </span>
+                    <span
+                      v-if="!d.litellm_model_id"
+                      class="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-600"
+                      title="平台已登记但尚未同步到 LiteLLM"
+                    >
+                      未同步
+                    </span>
+                    <span
+                      v-if="healthOf(d)"
+                      class="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                      :class="healthOf(d)?.healthy ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'"
+                      :title="healthOf(d)?.error || ''"
+                    >
+                      {{ healthOf(d)?.healthy ? '健康' : '异常' }}
+                    </span>
+                    <span
+                      v-else-if="healthResult"
+                      class="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-400"
+                    >
+                      未检测到
                     </span>
                   </div>
                   <p class="mt-1 text-xs text-slate-400">{{ d.credential_name || getDeployCredentialName(d) || d.deploy_name || '' }}</p>
@@ -1334,7 +1392,9 @@ onMounted(() => {
     <div v-if="showRouterForm" class="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
       <div class="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-slate-200/60 bg-white p-6 shadow-xl">
         <h3 class="mb-4 text-lg font-semibold text-slate-900">路由配置</h3>
-        <p class="mb-4 text-xs text-slate-400">全局路由策略，同步到 LiteLLM router_settings</p>
+        <p class="mb-4 text-xs text-slate-400">
+          Fallback 链保存后即时生效；路由策略、摘除阈值、冷却、重试、超时写入 LiteLLM 配置，重启 LiteLLM 后生效。
+        </p>
 
         <div class="mb-4">
           <label class="mb-1.5 block text-sm font-medium text-slate-700">路由策略</label>
@@ -1363,6 +1423,12 @@ onMounted(() => {
           <div>
             <label class="mb-1 block text-xs text-slate-500">全局超时 (秒)</label>
             <input v-model.number="routerSettings.timeout" type="number" min="0" class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
+            <p class="mt-1 text-[11px] text-slate-400">非流式请求总超时</p>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs text-slate-500">流式超时 (秒)</label>
+            <input v-model.number="routerSettings.stream_timeout" type="number" min="0" class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-4 text-sm text-slate-900 focus:border-purple-500/50 focus:outline-none focus:ring-2 focus:ring-purple-500/20" />
+            <p class="mt-1 text-[11px] text-slate-400">流式总超时，建议 ≥ 900；网关空闲超时 300s</p>
           </div>
         </div>
 
@@ -1392,6 +1458,17 @@ onMounted(() => {
             <button class="rounded-md bg-slate-100 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-200" @click="handleAddFallback">添加</button>
           </div>
         </div>
+
+        <label class="mb-4 flex items-start gap-2 rounded-lg border border-slate-100 bg-slate-50/50 px-3 py-2">
+          <input v-model="autoDialectFallback" type="checkbox" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500" />
+          <span class="text-xs text-slate-600">
+            自动跨方言兜底
+            <span class="mt-0.5 block text-[11px] text-slate-400">
+              模型同时存在 OpenAI 与 Anthropic 两种凭证时，自动生成 裸名 ⇄ 裸名(Anthropic) 双向 Fallback；
+              一种方言的渠道全部不可用时，翻译走另一种方言。手动 Fallback 链始终优先保留。
+            </span>
+          </span>
+        </label>
 
         <p v-if="routerError" class="mb-3 text-sm text-red-500">{{ routerError }}</p>
         <div class="flex justify-end gap-3">

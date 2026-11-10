@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { resyncAnthropicDeployments, testModelAccessStream, thinkingProbe, toast, toolProbe, usePermission } from '@aihelms/shared'
-import type { AccessTestErrorDetail, ChatContentBlock, ThinkingProbeResult, ToolProbeResult } from '@aihelms/shared'
+import { cacheProbe, historyProbe, resyncAnthropicDeployments, testModelAccessStream, thinkingProbe, toast, toolProbe, usePermission } from '@aihelms/shared'
+import type { AccessTestErrorDetail, CacheProbeResult, ChatContentBlock, HistoryProbeResult, ThinkingProbeResult, ToolProbeResult } from '@aihelms/shared'
 
 interface Props {
   visible: boolean
@@ -39,6 +39,34 @@ const probeErrorMsg = ref('')
 const thinkingProbeRunning = ref(false)
 const thinkingProbeResult = ref<ThinkingProbeResult | null>(null)
 const thinkingProbeErrorMsg = ref('')
+const historyProbeRunning = ref(false)
+const historyProbeResult = ref<HistoryProbeResult | null>(null)
+const historyProbeErrorMsg = ref('')
+const replayModelInput = ref('')
+const cacheProbeRunning = ref(false)
+const cacheProbeResult = ref<CacheProbeResult | null>(null)
+const cacheProbeErrorMsg = ref('')
+
+// 一键检测：五个检查项依次执行，状态条展示（对齐部署健康检测的观感）
+type CheckKey = 'send' | 'tool' | 'thinking' | 'history' | 'cache'
+type CheckState = 'pending' | 'running' | 'pass' | 'fail' | 'skipped'
+type ProbeOutcome = { success: boolean; error_detail?: AccessTestErrorDetail } | null
+
+const CHECK_ITEMS: { key: CheckKey; label: string }[] = [
+  { key: 'send', label: '发送测试' },
+  { key: 'tool', label: '工具调用' },
+  { key: 'thinking', label: 'Thinking' },
+  { key: 'history', label: '历史回放' },
+  { key: 'cache', label: 'Prompt Cache' },
+]
+
+function initialCheckStates(): Record<CheckKey, CheckState> {
+  return { send: 'pending', tool: 'pending', thinking: 'pending', history: 'pending', cache: 'pending' }
+}
+
+const checkStates = ref<Record<CheckKey, CheckState>>(initialCheckStates())
+const checkStarted = computed(() => Object.values(checkStates.value).some((s) => s !== 'pending'))
+const fullCheckRunning = computed(() => Object.values(checkStates.value).some((s) => s === 'running'))
 
 watch(() => props.visible, (val) => {
   if (val) {
@@ -57,6 +85,14 @@ watch(() => props.visible, (val) => {
     thinkingProbeRunning.value = false
     thinkingProbeResult.value = null
     thinkingProbeErrorMsg.value = ''
+    historyProbeRunning.value = false
+    historyProbeResult.value = null
+    historyProbeErrorMsg.value = ''
+    replayModelInput.value = ''
+    cacheProbeRunning.value = false
+    cacheProbeResult.value = null
+    cacheProbeErrorMsg.value = ''
+    checkStates.value = initialCheckStates()
     if (fileInput.value) fileInput.value.value = ''
   }
 })
@@ -200,6 +236,93 @@ async function handleThinkingProbe(): Promise<void> {
   } finally {
     thinkingProbeRunning.value = false
   }
+}
+
+async function handleHistoryProbe(): Promise<void> {
+  const model = modelInput.value.trim()
+  if (!model || historyProbeRunning.value) return
+  historyProbeRunning.value = true
+  historyProbeResult.value = null
+  historyProbeErrorMsg.value = ''
+  try {
+    historyProbeResult.value = await historyProbe({
+      model,
+      replay_model: replayModelInput.value.trim() || undefined,
+    })
+  } catch (e) {
+    historyProbeErrorMsg.value = e instanceof Error ? e.message : '探针请求失败'
+  } finally {
+    historyProbeRunning.value = false
+  }
+}
+
+async function handleCacheProbe(): Promise<void> {
+  const model = modelInput.value.trim()
+  if (!model || cacheProbeRunning.value) return
+  cacheProbeRunning.value = true
+  cacheProbeResult.value = null
+  cacheProbeErrorMsg.value = ''
+  try {
+    cacheProbeResult.value = await cacheProbe({ model })
+  } catch (e) {
+    cacheProbeErrorMsg.value = e instanceof Error ? e.message : '探针请求失败'
+  } finally {
+    cacheProbeRunning.value = false
+  }
+}
+
+function probePassed(result: ProbeOutcome, errMsg: string): boolean {
+  return !errMsg && !!result && !result.error_detail && result.success
+}
+
+async function runCheckStep(key: CheckKey, action: () => Promise<void>, passed: () => boolean): Promise<void> {
+  checkStates.value[key] = 'running'
+  await action()
+  checkStates.value[key] = passed() ? 'pass' : 'fail'
+}
+
+async function handleRunAllChecks(): Promise<void> {
+  if (!modelInput.value.trim() || fullCheckRunning.value) return
+  checkStates.value = initialCheckStates()
+
+  checkStates.value.send = 'running'
+  await handleSend()
+  const sendOk = !errorMsg.value && outputContent.value !== ''
+  checkStates.value.send = sendOk ? 'pass' : 'fail'
+  // 基础连通失败（无权限/未发布/上游不可达）时探针只会重复同样的错误，直接跳过
+  if (!sendOk) {
+    for (const item of CHECK_ITEMS) {
+      if (checkStates.value[item.key] === 'pending') checkStates.value[item.key] = 'skipped'
+    }
+    return
+  }
+
+  await runCheckStep('tool', handleToolProbe, () => probePassed(probeResult.value, probeErrorMsg.value))
+  await runCheckStep('thinking', handleThinkingProbe, () => probePassed(thinkingProbeResult.value, thinkingProbeErrorMsg.value))
+  await runCheckStep('history', handleHistoryProbe, () => probePassed(historyProbeResult.value, historyProbeErrorMsg.value))
+  await runCheckStep('cache', handleCacheProbe, () => probePassed(cacheProbeResult.value, cacheProbeErrorMsg.value))
+}
+
+function checkChipClass(state: CheckState): string {
+  if (state === 'pass') return 'bg-emerald-50 text-emerald-600'
+  if (state === 'fail') return 'bg-red-50 text-red-600'
+  if (state === 'running') return 'bg-blue-50 text-blue-600'
+  return 'bg-slate-100 text-slate-400'
+}
+
+function checkMark(state: CheckState): string {
+  if (state === 'pass') return '✓'
+  if (state === 'fail') return '✗'
+  if (state === 'skipped') return '–'
+  return '·'
+}
+
+function checkStateLabel(state: CheckState): string {
+  if (state === 'running') return '检测中'
+  if (state === 'skipped') return '已跳过'
+  if (state === 'pending') return '未执行'
+  if (state === 'pass') return '通过'
+  return '未通过'
 }
 
 function handleFileChange(event: Event): void {
@@ -361,7 +484,7 @@ function setAccessErrorFromStream(payload: string): void {
           </label>
         </div>
 
-        <!-- Send button -->
+        <!-- 连通测试（轻量）与全量健康检查（五项串行）两个入口 -->
         <div class="mb-4 flex items-center gap-3">
           <button
             :disabled="!canSend"
@@ -378,33 +501,50 @@ function setAccessErrorFromStream(payload: string): void {
             <span v-else>发送测试</span>
           </button>
           <button
-            :disabled="!modelInput.trim() || probeRunning"
-            class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-blue-400 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-            @click="handleToolProbe"
+            :disabled="!modelInput.trim() || fullCheckRunning"
+            class="rounded-lg border border-blue-300 bg-blue-50 px-4 py-2 text-sm font-medium text-blue-600 transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50"
+            @click="handleRunAllChecks"
           >
-            <span v-if="probeRunning" class="flex items-center gap-2">
+            <span v-if="fullCheckRunning" class="flex items-center gap-2">
               <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              探测中...
+              检测中...
             </span>
-            <span v-else>工具调用探针</span>
+            <span v-else>全量健康检查</span>
           </button>
-          <button
-            :disabled="!modelInput.trim() || thinkingProbeRunning"
-            class="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-blue-400 hover:text-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-            @click="handleThinkingProbe"
-          >
-            <span v-if="thinkingProbeRunning" class="flex items-center gap-2">
-              <svg class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+          <span class="text-xs text-slate-400">全量检查依次执行五项；Prompt Cache 探针约 2×3.6k tokens 计费</span>
+        </div>
+
+        <!-- 检测状态条 -->
+        <div v-if="checkStarted" class="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <span
+              v-for="item in CHECK_ITEMS"
+              :key="item.key"
+              class="flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium"
+              :class="checkChipClass(checkStates[item.key])"
+            >
+              <svg v-if="checkStates[item.key] === 'running'" class="h-3.5 w-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" />
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              探测中...
+              <span v-else>{{ checkMark(checkStates[item.key]) }}</span>
+              {{ item.label }}·{{ checkStateLabel(checkStates[item.key]) }}
             </span>
-            <span v-else>Thinking 探针</span>
-          </button>
+          </div>
+          <p v-if="checkStates.send === 'fail'" class="mt-2 text-xs leading-5 text-amber-700">
+            发送测试未通过，其余检测已跳过——请先解决基础连通问题（见下方错误详情）。
+          </p>
+        </div>
+
+        <div class="mb-4">
+          <input
+            v-model="replayModelInput"
+            placeholder="历史回放目标模型（可选；切换模型场景填另一方言组，留空=当前模型）"
+            class="flex h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-blue-500/50 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+          />
         </div>
 
         <!-- Tool probe result -->
@@ -442,6 +582,49 @@ function setAccessErrorFromStream(payload: string): void {
             <p v-if="!thinkingProbeResult.success && !thinkingProbeResult.error_detail" class="mt-2 text-xs leading-5 text-amber-700">
               Thinking 探针未通过：多轮思考对话在此模型上会失败（签名被翻译层剥除或 thinking 参数未被透传）。常见于跨方言翻译路径（anthropic 入口 + openai 方言凭证裸名组），请核对凭证格式与路由前缀。
             </p>
+          </template>
+        </div>
+
+        <!-- History replay probe result -->
+        <div v-if="historyProbeResult || historyProbeErrorMsg" class="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <label class="mb-2 block text-xs font-medium text-slate-500">历史回放探针（{{ historyProbeResult?.protocol === 'anthropic' ? 'Anthropic' : 'OpenAI' }} 协议）</label>
+          <div v-if="historyProbeErrorMsg" class="text-sm text-red-600">{{ historyProbeErrorMsg }}</div>
+          <template v-else-if="historyProbeResult">
+            <div v-if="historyProbeResult.error_detail" class="text-sm text-red-600">{{ historyProbeResult.error_detail.title || '探针无法执行' }}</div>
+            <template v-else>
+              <p class="mb-2 text-xs text-slate-500">回放目标：{{ historyProbeResult.replay_model }}</p>
+              <ul class="space-y-1">
+                <li v-for="v in historyProbeResult.verdicts" :key="v.turn" class="flex items-start gap-2 text-sm">
+                  <span :class="v.ok ? 'text-green-600' : 'text-red-600'">{{ v.ok ? '✓' : '✗' }}</span>
+                  <span class="font-medium text-slate-700">第 {{ v.turn }} 轮：</span>
+                  <span :class="v.ok ? 'text-slate-600' : 'text-red-600'">{{ v.detail }}</span>
+                </li>
+              </ul>
+              <p v-if="!historyProbeResult.success" class="mt-2 text-xs leading-5 text-amber-700">
+                历史回放未通过：携带 thinking / 工具结果的历史在切换模型后可能被拒。网关会对 400/422 自动剥离别家签发的思考状态并重试一次；仍失败请新开会话。
+              </p>
+            </template>
+          </template>
+        </div>
+
+        <!-- Prompt cache probe result -->
+        <div v-if="cacheProbeResult || cacheProbeErrorMsg" class="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <label class="mb-2 block text-xs font-medium text-slate-500">Prompt Cache 探针（{{ cacheProbeResult?.protocol === 'anthropic' ? 'Anthropic' : 'OpenAI' }} 协议）</label>
+          <div v-if="cacheProbeErrorMsg" class="text-sm text-red-600">{{ cacheProbeErrorMsg }}</div>
+          <template v-else-if="cacheProbeResult">
+            <div v-if="cacheProbeResult.error_detail" class="text-sm text-red-600">{{ cacheProbeResult.error_detail.title || '探针无法执行' }}</div>
+            <template v-else>
+              <ul class="space-y-1">
+                <li v-for="v in cacheProbeResult.verdicts" :key="v.turn" class="flex items-start gap-2 text-sm">
+                  <span :class="v.ok ? 'text-green-600' : 'text-red-600'">{{ v.ok ? '✓' : '✗' }}</span>
+                  <span class="font-medium text-slate-700">第 {{ v.turn }} 轮：</span>
+                  <span :class="v.ok ? 'text-slate-600' : 'text-red-600'">{{ v.detail }}</span>
+                </li>
+              </ul>
+              <p v-if="!cacheProbeResult.success" class="mt-2 text-xs leading-5 text-amber-700">
+                缓存未命中：客户端 cache_control 断点可能被翻译层丢弃，或供应商不支持前缀缓存。长时间对话成本会显著上升。
+              </p>
+            </template>
           </template>
         </div>
 

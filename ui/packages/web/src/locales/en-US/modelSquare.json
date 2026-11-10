@@ -23,6 +23,8 @@
   "modelSquare.access.protocolTagAnthropic": "Anthropic",
   "modelSquare.access.curlLabel": "curl example",
   "modelSquare.access.curlHint": "Replace <your-api-key> with your API Key before running",
+  "modelSquare.access.claudeCodeLabel": "Claude Code setup",
+  "modelSquare.access.claudeCodeHint": "Put this in ~/.claude/settings.json and replace <your-api-key>. All default tiers point to the platform model ID so Claude Code does not send hard-coded tier names that would 404.",
   "modelSquare.access.testEndpoint": "Test connection",
   "modelSquare.access.testing": "Testing...",
   "modelSquare.access.testResult": "Result",

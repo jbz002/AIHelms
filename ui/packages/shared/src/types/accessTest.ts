@@ -142,3 +142,36 @@ export interface ThinkingProbeResult {
 export interface ThinkingProbeParams {
   model: string
 }
+
+export interface ReplayProbeVerdict {
+  turn: number
+  ok: boolean
+  skipped?: boolean
+  detail: string
+}
+
+export interface HistoryProbeParams {
+  model: string
+  replay_model?: string
+}
+
+export interface HistoryProbeResult {
+  success: boolean
+  protocol: 'openai' | 'anthropic'
+  model: string
+  replay_model: string
+  verdicts: ReplayProbeVerdict[]
+  error_detail?: AccessTestErrorDetail
+}
+
+export interface CacheProbeParams {
+  model: string
+}
+
+export interface CacheProbeResult {
+  success: boolean
+  protocol: 'openai' | 'anthropic'
+  model: string
+  verdicts: ReplayProbeVerdict[]
+  error_detail?: AccessTestErrorDetail
+}

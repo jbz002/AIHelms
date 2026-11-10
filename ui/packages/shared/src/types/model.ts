@@ -248,6 +248,7 @@ export interface RouterSettings {
   cooldown_time: number
   num_retries: number
   timeout: number
+  stream_timeout: number
   config: Record<string, unknown>
   updated_at?: string | null
 }
@@ -259,7 +260,33 @@ export interface UpdateRouterSettingsParams {
   cooldown_time?: number
   num_retries?: number
   timeout?: number
+  stream_timeout?: number
   config?: Record<string, unknown>
+}
+
+export interface DeploymentHealth {
+  deployment_id: number
+  litellm_model_id: string | null
+  credential_id: number | null
+  credential_name: string | null
+  deploy_name: string
+  is_active: boolean
+  synced: boolean
+  healthy: boolean | null
+  error: string | null
+}
+
+export interface DeploymentHealthGroup {
+  group_name: string
+  healthy: number
+  unhealthy: number
+}
+
+export interface DeploymentHealthResult {
+  model_id: string
+  checked_at: string | null
+  groups: DeploymentHealthGroup[]
+  deployments: DeploymentHealth[]
 }
 
 export interface ModelVisibility {

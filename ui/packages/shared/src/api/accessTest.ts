@@ -1,5 +1,5 @@
 import { request } from './request'
-import type { TestAccessParams, TestAccessResult, TestAudioSpeechParams, TestAudioSpeechResult, TestAudioTranscriptionParams, TestAudioTranscriptionResult, TestEmbeddingParams, TestEmbeddingResult, TestImageGenParams, TestImageGenResult, TestRerankParams, TestRerankResult, ToolProbeParams, ToolProbeResult, ThinkingProbeParams, ThinkingProbeResult } from '../types/accessTest'
+import type { TestAccessParams, TestAccessResult, TestAudioSpeechParams, TestAudioSpeechResult, TestAudioTranscriptionParams, TestAudioTranscriptionResult, TestEmbeddingParams, TestEmbeddingResult, TestImageGenParams, TestImageGenResult, TestRerankParams, TestRerankResult, ToolProbeParams, ToolProbeResult, ThinkingProbeParams, ThinkingProbeResult, HistoryProbeParams, HistoryProbeResult, CacheProbeParams, CacheProbeResult } from '../types/accessTest'
 
 function getToken(): string | null {
   return localStorage.getItem('aihelms_token')
@@ -73,6 +73,20 @@ export function toolProbe(params: ToolProbeParams): Promise<ToolProbeResult> {
 
 export function thinkingProbe(params: ThinkingProbeParams): Promise<ThinkingProbeResult> {
   return request<ThinkingProbeResult>('/api/v1/access-test/thinking-probe', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+export function historyProbe(params: HistoryProbeParams): Promise<HistoryProbeResult> {
+  return request<HistoryProbeResult>('/api/v1/access-test/history-probe', {
+    method: 'POST',
+    body: params,
+  })
+}
+
+export function cacheProbe(params: CacheProbeParams): Promise<CacheProbeResult> {
+  return request<CacheProbeResult>('/api/v1/access-test/cache-probe', {
     method: 'POST',
     body: params,
   })

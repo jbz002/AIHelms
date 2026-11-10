@@ -23,6 +23,8 @@
   "modelSquare.access.protocolTagAnthropic": "Anthropic",
   "modelSquare.access.curlLabel": "curl 示例",
   "modelSquare.access.curlHint": "将 <your-api-key> 替换为你的 API Key 后执行",
+  "modelSquare.access.claudeCodeLabel": "Claude Code 配置",
+  "modelSquare.access.claudeCodeHint": "写入 ~/.claude/settings.json；将 <your-api-key> 替换为你的 API Key。三个默认档位都指向平台模型裸名，避免 Claude Code 发送硬编码档位名导致 404。",
   "modelSquare.access.testEndpoint": "测试连通性",
   "modelSquare.access.testing": "测试中...",
   "modelSquare.access.testResult": "测试结果",

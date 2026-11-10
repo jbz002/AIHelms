@@ -13,6 +13,7 @@ import type {
   UpdateAccessGroupParams,
   RouterSettings,
   UpdateRouterSettingsParams,
+  DeploymentHealthResult,
   ModelVisibility,
   UpdateModelPublishParams,
   ResyncAnthropicResult,
@@ -72,6 +73,12 @@ export function updateDeployment(modelId: number, deploymentId: number, params: 
 
 export function deleteDeployment(modelId: number, deploymentId: number): Promise<null> {
   return request<null>(`/api/v1/models/${modelId}/deployments/${deploymentId}`, { method: 'DELETE' })
+}
+
+export function checkDeploymentsHealth(modelId: number): Promise<DeploymentHealthResult> {
+  return request<DeploymentHealthResult>(`/api/v1/models/${modelId}/deployments/health-check`, {
+    method: 'POST',
+  })
 }
 
 // --- Access Groups ---

@@ -140,6 +140,27 @@ const anthropicCurl = computed(() => {
   return `curl ${props.litellmBaseUrl}/v1/messages \\\n  -H "x-api-key: <your-api-key>" \\\n  -H "anthropic-version: 2023-06-01" \\\n  -H "content-type: application/json" \\\n  -d '{"model": "${m.model_id}", "max_tokens": 100, "messages": [{"role": "user", "content": "hi"}]}'`
 })
 
+// Claude Code 未配置 ANTHROPIC_DEFAULT_*_MODEL 时会发硬编码档位名（claude-sonnet-4-5 等），
+// 平台模型名是真名，必须显式指向裸名；三个档位统一指向当前模型，避免 404。
+const claudeCodeConfig = computed(() => {
+  const m = props.model
+  const u = props.litellmBaseUrl
+  if (!m || !u) return ''
+  return JSON.stringify(
+    {
+      env: {
+        ANTHROPIC_BASE_URL: u,
+        ANTHROPIC_AUTH_TOKEN: '<your-api-key>',
+        ANTHROPIC_DEFAULT_OPUS_MODEL: m.model_id,
+        ANTHROPIC_DEFAULT_SONNET_MODEL: m.model_id,
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: m.model_id,
+      },
+    },
+    null,
+    2,
+  )
+})
+
 async function copyText(text: string, key: string): Promise<void> {
   try {
     if (navigator.clipboard && window.isSecureContext) {
@@ -394,6 +415,20 @@ async function runChatStream(modelId: string, epoch: number): Promise<void> {
             </button>
           </div>
           <p class="mt-1.5 text-xs text-slate-400">{{ t('modelSquare.access.curlHint') }}</p>
+        </div>
+
+        <!-- Claude Code 本地客户端配置：档位名必须映射到平台裸名 -->
+        <div v-if="showAnthropic" class="rounded-lg border border-slate-200/60 p-4">
+          <div class="flex items-start justify-between gap-2">
+            <div>
+              <p class="text-xs font-medium text-slate-500">{{ t('modelSquare.access.claudeCodeLabel') }}</p>
+              <p class="mt-1 text-[11px] text-slate-400">{{ t('modelSquare.access.claudeCodeHint') }}</p>
+            </div>
+            <button class="shrink-0 text-xs text-purple-600 hover:text-purple-700" @click="copyText(claudeCodeConfig, 'claude-code')">
+              {{ copied === 'claude-code' ? t('modelSquare.action.copied') : t('modelSquare.action.copy') }}
+            </button>
+          </div>
+          <pre class="mt-2 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs leading-5 text-slate-100">{{ claudeCodeConfig }}</pre>
         </div>
 
         <div class="rounded-lg border border-slate-200/60 p-4">
