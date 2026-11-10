@@ -453,6 +453,8 @@ async def delete_model(session: AsyncSession, model_id: int) -> None:
     except Exception:
         logger.error("post-delete litellm reconcile failed", exc_info=True)
 
+    await _safe_sync_router_fallbacks(session)
+
 
 async def reconcile_litellm_deployments(session: AsyncSession) -> dict:
     """反向对账清理 LiteLLM 孤儿 deployment。
@@ -590,6 +592,7 @@ async def create_deployment(
     # Sync to LiteLLM
     await _sync_deployment_to_litellm(deployment, model, credential, session)
     await _sync_model_key_access_after_deployment(session, model, credential)
+    await _safe_sync_router_fallbacks(session)
 
     await session.commit()
     await session.refresh(deployment)
@@ -684,6 +687,7 @@ async def update_deployment(
 
     if synced_to_litellm and model:
         await _sync_model_key_access_after_deployment(session, model, credential)
+        await _safe_sync_router_fallbacks(session)
 
     if renamed_from and model:
         await _sync_keys_after_model_rename(session, renamed_from, model.model_id)
@@ -717,7 +721,99 @@ async def delete_deployment(session: AsyncSession, deployment_id: int) -> None:
                 raise ConflictError("LiteLLM 侧删除失败，请稍后重试")
 
     await session.delete(deployment)
+    await _safe_sync_router_fallbacks(session)
     await session.commit()
+
+
+# --- Deployment Health ---
+
+_HEALTH_ERROR_MAX_LEN = 500
+
+
+def _health_error_text(raw: object) -> str:
+    text = raw.strip() if isinstance(raw, str) else ""
+    text = text.split("\nstack trace", 1)[0].strip()
+    return (text or "上游健康检测失败")[:_HEALTH_ERROR_MAX_LEN]
+
+
+def _health_group_names(model: Model, deployments: list[ModelDeployment]) -> list[str]:
+    group_names: list[str] = []
+    for deployment in deployments:
+        if not _deployment_routable(deployment, deployment.credential):
+            continue
+        group_name = _get_litellm_model_name(model, deployment.credential)
+        if group_name not in group_names:
+            group_names.append(group_name)
+    return group_names
+
+
+async def _collect_group_health(
+    group_names: list[str],
+) -> tuple[dict[str, dict], list[dict]]:
+    health_by_litellm_id: dict[str, dict] = {}
+    groups: list[dict] = []
+    for group_name in group_names:
+        detail = await litellm_client.check_health(group_name)
+        healthy = detail.get("healthy_endpoints") or []
+        unhealthy = detail.get("unhealthy_endpoints") or []
+        for endpoint in healthy:
+            if endpoint.get("model_id"):
+                health_by_litellm_id[endpoint["model_id"]] = {
+                    "healthy": True,
+                    "error": None,
+                }
+        for endpoint in unhealthy:
+            if endpoint.get("model_id"):
+                health_by_litellm_id[endpoint["model_id"]] = {
+                    "healthy": False,
+                    "error": _health_error_text(endpoint.get("error")),
+                }
+        groups.append(
+            {
+                "group_name": group_name,
+                "healthy": len([e for e in healthy if e.get("model_id")]),
+                "unhealthy": len([e for e in unhealthy if e.get("model_id")]),
+            }
+        )
+    return health_by_litellm_id, groups
+
+
+def _serialize_deployment_health(
+    deployment: ModelDeployment, health_by_litellm_id: dict[str, dict]
+) -> dict:
+    health = health_by_litellm_id.get(deployment.litellm_model_id or "")
+    return {
+        "deployment_id": deployment.id,
+        "litellm_model_id": deployment.litellm_model_id,
+        "credential_id": deployment.credential_id,
+        "credential_name": (
+            deployment.credential.credential_name if deployment.credential else None
+        ),
+        "deploy_name": deployment.deploy_name,
+        "is_active": deployment.is_active,
+        "synced": bool(deployment.litellm_model_id),
+        "healthy": health["healthy"] if health else None,
+        "error": health["error"] if health else None,
+    }
+
+
+async def check_deployments_health(session: AsyncSession, model_id: int) -> dict:
+    """Actively probe each dialect group and map results back to platform deployments."""
+    model = await model_repo.find_by_id(session, model_id)
+    if not model:
+        raise NotFoundError("model", model_id)
+    deployments = await model_repo.find_deployments_by_model(session, model_id)
+    group_names = _health_group_names(model, deployments)
+    health_by_litellm_id, groups = await _collect_group_health(group_names)
+    return {
+        "model_id": model.model_id,
+        "checked_at": fmt_local_time(datetime.now(timezone.utc)),
+        "groups": groups,
+        "deployments": [
+            _serialize_deployment_health(deployment, health_by_litellm_id)
+            for deployment in deployments
+        ],
+    }
 
 
 # --- Access Groups ---
@@ -795,7 +891,8 @@ async def get_router_settings(session: AsyncSession) -> dict:
             "allowed_fails": 3,
             "cooldown_time": 60,
             "num_retries": 2,
-            "timeout": 30,
+            "timeout": 600,
+            "stream_timeout": 1800,
             "config": {},
         }
     return _serialize_router_settings(settings)
@@ -809,6 +906,7 @@ async def update_router_settings(
     cooldown_time: int | None = None,
     num_retries: int | None = None,
     timeout: int | None = None,
+    stream_timeout: int | None = None,
     config: dict | None = None,
 ) -> dict:
     settings = await model_repo.get_router_settings(session)
@@ -827,28 +925,202 @@ async def update_router_settings(
         settings.num_retries = num_retries
     if timeout is not None:
         settings.timeout = timeout
+    if stream_timeout is not None:
+        settings.stream_timeout = stream_timeout
     if config is not None:
         settings.config = config
 
     settings = await model_repo.upsert_router_settings(session, settings)
 
-    # Sync to LiteLLM
-    litellm_settings = {
-        "routing_strategy": settings.routing_strategy,
-        "allowed_fails": settings.allowed_fails,
-        "cooldown_time": settings.cooldown_time,
-        "num_retries": settings.num_retries,
-        "timeout": settings.timeout,
-    }
-    if settings.fallbacks:
-        litellm_settings["fallbacks"] = settings.fallbacks
-    if settings.config:
-        litellm_settings.update(settings.config)
-    await litellm_client.update_router_settings(litellm_settings)
+    desired_fallbacks = await _compute_desired_fallbacks(session, settings)
+    router_payload = _build_router_settings_payload(settings, desired_fallbacks)
+
+    # 顺序很重要：/fallback 会热更新 LiteLLM 内存并写库；/config/update 只写配置库。
+    # 若先写配置库，再读 /router/settings 做 diff 会拿到“已写入”的假象而跳过热更新。
+    await _push_router_fallbacks(desired_fallbacks, strict=True, force_desired=True)
+    await litellm_client.update_router_config(router_payload)
 
     await session.commit()
     await session.refresh(settings)
     return _serialize_router_settings(settings)
+
+
+_AUTO_DIALECT_FALLBACK_KEY = "auto_dialect_fallback"
+_FALLBACK_TYPES = ("general", "context_window")
+
+
+def _normalize_fallback_map(entries: object) -> dict[str, list[str]]:
+    """Normalize ``[{"source": ["target", ...]}, ...]`` into a deduped map."""
+    result: dict[str, list[str]] = {}
+    if not isinstance(entries, list):
+        return result
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        for source, targets in entry.items():
+            if (
+                not isinstance(source, str)
+                or not source
+                or not isinstance(targets, list)
+            ):
+                continue
+            bucket = result.setdefault(source, [])
+            for target in targets:
+                if (
+                    isinstance(target, str)
+                    and target
+                    and target != source
+                    and target not in bucket
+                ):
+                    bucket.append(target)
+    return {source: targets for source, targets in result.items() if targets}
+
+
+def _append_fallback(desired: dict[str, list[str]], source: str, target: str) -> None:
+    if source == target:
+        return
+    bucket = desired.setdefault(source, [])
+    if target not in bucket:
+        bucket.append(target)
+
+
+def _auto_dialect_fallback_enabled(settings: RouterSettings) -> bool:
+    value = (settings.config or {}).get(_AUTO_DIALECT_FALLBACK_KEY, True)
+    if isinstance(value, str):
+        return value.strip().lower() not in {"", "0", "false", "off", "no"}
+    return bool(value)
+
+
+async def _compute_desired_fallbacks(
+    session: AsyncSession, settings: RouterSettings
+) -> dict[str, dict[str, list[str]]]:
+    """Merge admin fallbacks with auto dialect rescue (X <-> X(Anthropic)).
+
+    Manual entries only drive the general chain; auto entries drive both general and
+    context-window chains so a switch between dialects can also rescue oversized
+    contexts when the other provider accepts a larger window.
+    """
+    desired: dict[str, dict[str, list[str]]] = {
+        "general": _normalize_fallback_map(settings.fallbacks),
+        "context_window": {},
+    }
+    if not _auto_dialect_fallback_enabled(settings):
+        return desired
+
+    models = await model_repo.find_all_active(session)
+    model_ids = [m.model_id for m in models if m.model_id]
+    if not model_ids:
+        return desired
+    anthropic_ids = await model_repo.find_model_ids_with_anthropic_deployments(
+        session, model_ids
+    )
+    openai_ids = await model_repo.find_model_ids_with_openai_deployments(
+        session, model_ids
+    )
+    for mid in model_ids:
+        if mid not in anthropic_ids or mid not in openai_ids:
+            continue
+        dialect_group = f"{mid}{ANTHROPIC_MODEL_SUFFIX}"
+        for chain in (desired["general"], desired["context_window"]):
+            _append_fallback(chain, mid, dialect_group)
+            _append_fallback(chain, dialect_group, mid)
+    return desired
+
+
+def _build_router_settings_payload(
+    settings: RouterSettings, desired_fallbacks: dict[str, dict[str, list[str]]]
+) -> dict:
+    payload: dict = {}
+    for extra_key, extra_value in (settings.config or {}).items():
+        if extra_key != _AUTO_DIALECT_FALLBACK_KEY:
+            payload[extra_key] = extra_value
+    payload.update(
+        {
+            "routing_strategy": settings.routing_strategy,
+            "allowed_fails": settings.allowed_fails,
+            "cooldown_time": settings.cooldown_time,
+            "num_retries": settings.num_retries,
+            "timeout": settings.timeout,
+            "stream_timeout": settings.stream_timeout,
+            "fallbacks": [
+                {source: targets}
+                for source, targets in desired_fallbacks["general"].items()
+            ],
+            "context_window_fallbacks": [
+                {source: targets}
+                for source, targets in desired_fallbacks["context_window"].items()
+            ],
+        }
+    )
+    return payload
+
+
+async def _push_router_fallbacks(
+    desired_by_type: dict[str, dict[str, list[str]]],
+    *,
+    strict: bool,
+    force_desired: bool = False,
+) -> None:
+    for fallback_type in _FALLBACK_TYPES:
+        desired = desired_by_type.get(fallback_type) or {}
+        try:
+            current = await litellm_client.get_fallbacks(fallback_type)
+        except litellm_client.LiteLLMError:
+            if strict:
+                raise
+            logger.error(
+                "read LiteLLM fallbacks failed: type=%s", fallback_type, exc_info=True
+            )
+            continue
+
+        for source, targets in desired.items():
+            if not force_desired and current.get(source) == targets:
+                continue
+            try:
+                await litellm_client.create_fallback(source, targets, fallback_type)
+            except litellm_client.LiteLLMError as e:
+                if strict:
+                    raise ValidationError(
+                        f"Fallback 配置无效：{source} → {', '.join(targets)}（{e}）"
+                    ) from e
+                logger.error(
+                    "create LiteLLM fallback failed: %s -> %s (%s): %s",
+                    source,
+                    targets,
+                    fallback_type,
+                    e,
+                )
+
+        for source in set(current) - set(desired):
+            try:
+                await litellm_client.delete_fallback(source, fallback_type)
+            except litellm_client.LiteLLMError as e:
+                if "404" in str(e):
+                    continue
+                if strict:
+                    raise
+                logger.error(
+                    "delete LiteLLM fallback failed: %s (%s): %s",
+                    source,
+                    fallback_type,
+                    e,
+                )
+
+
+async def sync_router_fallbacks(session: AsyncSession) -> None:
+    """Best-effort fallback resync after deployment/credential changes."""
+    settings = await model_repo.get_router_settings(session)
+    if not settings:
+        return
+    desired = await _compute_desired_fallbacks(session, settings)
+    await _push_router_fallbacks(desired, strict=False)
+
+
+async def _safe_sync_router_fallbacks(session: AsyncSession) -> None:
+    try:
+        await sync_router_fallbacks(session)
+    except Exception:
+        logger.error("router fallback sync failed", exc_info=True)
 
 
 # --- Model Publish / Visibility ---
@@ -1216,6 +1488,7 @@ def _serialize_router_settings(settings: RouterSettings) -> dict:
         "cooldown_time": settings.cooldown_time,
         "num_retries": settings.num_retries,
         "timeout": settings.timeout,
+        "stream_timeout": settings.stream_timeout,
         "config": settings.config,
         "updated_at": fmt_local_time(settings.updated_at),
     }
@@ -1508,6 +1781,7 @@ async def resync_anthropic_deployments(session: AsyncSession) -> dict:
 
     keys_updated = await _sync_keys_anthropic_access(session)
 
+    await _safe_sync_router_fallbacks(session)
     await session.commit()
     return {
         "deployments_synced": synced,
@@ -1552,4 +1826,5 @@ async def sync_credential_routing(session: AsyncSession, credential) -> dict:
                 "credential routing sync failed for deployment %s: %s", deployment.id, e
             )
             errors += 1
+    await _safe_sync_router_fallbacks(session)
     return {"deployments_synced": synced, "deployment_errors": errors}

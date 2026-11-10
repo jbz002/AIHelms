@@ -441,7 +441,8 @@ class RouterSettings(Base):
     allowed_fails: Mapped[int] = mapped_column(Integer, default=3)
     cooldown_time: Mapped[int] = mapped_column(Integer, default=60)
     num_retries: Mapped[int] = mapped_column(Integer, default=2)
-    timeout: Mapped[int] = mapped_column(Integer, default=30)
+    timeout: Mapped[int] = mapped_column(Integer, default=600)
+    stream_timeout: Mapped[int] = mapped_column(Integer, default=1800)
     config: Mapped[dict] = mapped_column(JSONB, default=dict)
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()

@@ -9,10 +9,13 @@
 #   → tar over ssh 是唯一不需装东西、不依赖外网的路径
 #
 # 用法:
-#   bash dev/deploy-prod.sh           # 重建 aihelms（后端 + 前端 dist 改动都够）
-#                                    # 前端 dist 经 named volume 共享：aihelms recreate 时
-#                                    # start.sh 重跑 cp 覆盖 volume，nginx 直读新 dist，不用动 nginx
-#   bash dev/deploy-prod.sh nginx     # 额外 recreate nginx（仅改 docker/nginx/* template 时）
+#   bash dev/deploy-prod.sh            # 重建 aihelms（后端 + 前端 dist 改动都够）
+#                                      # 前端 dist 经 named volume 共享：aihelms recreate 时
+#                                      # start.sh 重跑 cp 覆盖 volume，nginx 直读新 dist，不用动 nginx
+#   bash dev/deploy-prod.sh nginx      # 额外 recreate nginx（仅改 docker/nginx/* template 时）
+#   bash dev/deploy-prod.sh openresty  # 额外 recreate openresty（改 docker/openresty/* 时必须：
+#                                      #   lua/nginx 配置是单文件 bind mount，tar 覆盖换 inode，
+#                                      #   容器仍挂旧 inode，reload 无效，只能 recreate 重新挂载）
 #
 # 排除项说明:
 #   .env       — 服务器有自己的 prod .env，绝不能覆盖
@@ -45,6 +48,8 @@ tar czf - \
   --exclude='fix-ssh.txt' \
   --exclude='./dev/roadmap' \
   --exclude='./dev/resource' \
+  --exclude='./dev/backups' \
+  --exclude='./ui/e2e' \
   --exclude='./ui/packages/*/.env.*.local' \
   . | ssh prod "tar xzf - -C $PROD_DIR"
 echo "   同步完成"
@@ -57,6 +62,7 @@ ssh prod "cd $PROD_DIR && \
 echo "== 3/3 recreate aihelms =="
 SVC="aihelms"
 if [[ "${1:-}" == "nginx" ]]; then SVC="aihelms nginx"; fi
+if [[ "${1:-}" == "openresty" ]]; then SVC="aihelms openresty"; fi
 ssh prod "cd $PROD_DIR && \
   docker compose -p $PROJ -f $COMPOSE up -d --force-recreate $SVC && \
   docker compose -p $PROJ -f $COMPOSE ps"

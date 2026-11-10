@@ -1,5 +1,5 @@
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -160,7 +160,12 @@ async def find_model_ids_by_credential_ids(
 async def find_model_ids_with_anthropic_deployments(
     session: AsyncSession, model_id_strs: list[str]
 ) -> set[str]:
-    """Return the subset of model_id strings that have active anthropic-format deployments."""
+    """Return the subset of model_id strings that have active anthropic-format deployments.
+
+    A deployment only counts when the deployment itself and its credential are both
+    enabled: disabling a credential renames its deployments to ``...__disabled__`` in
+    LiteLLM, so the ``(Anthropic)`` group stops existing and must not be routed to.
+    """
     if not model_id_strs:
         return set()
     result = await session.execute(
@@ -169,7 +174,8 @@ async def find_model_ids_with_anthropic_deployments(
         .join(Credential, Credential.id == ModelDeployment.credential_id)
         .where(
             Model.model_id.in_(model_id_strs),
-            ModelDeployment.is_active == True,
+            ModelDeployment.is_active.is_(True),
+            Credential.is_active.is_(True),
             Credential.credential_info["format"].astext == "anthropic",
         )
         .distinct()
@@ -180,23 +186,31 @@ async def find_model_ids_with_anthropic_deployments(
 async def find_model_ids_with_openai_deployments(
     session: AsyncSession, model_id_strs: list[str]
 ) -> set[str]:
-    """Return the subset of model_id strings that have active non-anthropic (openai-family) deployments.
+    """Return the subset of model_id strings that have active non-anthropic deployments.
 
     与 anthropic 对称：凭证 format 非 anthropic（openai / ollama / lm-studio，含 NULL 兜底）
     即归裸名组。NULL 兜底对应 _get_credential_format 缺失 format 时默认 openai 的语义。
+    凭证被禁用（或部署未绑凭证）时按 ``_deployment_routable`` 口径处理：未绑凭证视为
+    openai 裸名部署仍可路由，绑定但禁用则不计入。
     """
     if not model_id_strs:
         return set()
     result = await session.execute(
         select(Model.model_id)
         .join(ModelDeployment, ModelDeployment.model_id == Model.id)
-        .join(Credential, Credential.id == ModelDeployment.credential_id)
+        .outerjoin(Credential, Credential.id == ModelDeployment.credential_id)
         .where(
             Model.model_id.in_(model_id_strs),
-            ModelDeployment.is_active == True,
+            ModelDeployment.is_active.is_(True),
             or_(
-                Credential.credential_info["format"].astext != "anthropic",
-                Credential.credential_info["format"].astext.is_(None),
+                Credential.id.is_(None),
+                and_(
+                    Credential.is_active.is_(True),
+                    or_(
+                        Credential.credential_info["format"].astext != "anthropic",
+                        Credential.credential_info["format"].astext.is_(None),
+                    ),
+                ),
             ),
         )
         .distinct()

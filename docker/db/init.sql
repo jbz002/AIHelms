@@ -447,7 +447,9 @@ CREATE TABLE IF NOT EXISTS aihelms.router_settings (
     allowed_fails INT DEFAULT 3,
     cooldown_time INT DEFAULT 60,
     num_retries INT DEFAULT 2,
-    timeout INT DEFAULT 30,
+    timeout INT DEFAULT 600,
+    -- 流式总超时（秒）；与 timeout 分离，避免长思考/长工具调用被非流式超时截断
+    stream_timeout INT DEFAULT 1800,
     config JSONB DEFAULT '{}',
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );

@@ -6,7 +6,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.deps import get_current_user, get_db
 from models.db import Model
 from repositories import model_repo
-from services import access_test_service, access_thinking_probe, access_tool_probe
+from services import (
+    access_cache_probe,
+    access_history_probe,
+    access_test_service,
+    access_thinking_probe,
+    access_tool_probe,
+)
 from services.access_test_error_mapper import build_error_detail, build_failure
 from services.access_test_precheck import precheck_access_test
 from services.model_service import ANTHROPIC_MODEL_SUFFIX
@@ -41,6 +47,27 @@ class TestEmbeddingRequest(BaseModel):
 
 
 class ToolProbeRequest(BaseModel):
+    model: str = Field(
+        ...,
+        min_length=1,
+        description="模型路由组名（openai 方言裸名或 anthropic 方言 裸名(Anthropic)）",
+    )
+
+
+class HistoryProbeRequest(BaseModel):
+    model: str = Field(
+        ...,
+        min_length=1,
+        description="模型路由组名（openai 方言裸名或 anthropic 方言 裸名(Anthropic)）",
+    )
+    replay_model: str | None = Field(
+        None,
+        min_length=1,
+        description="第二轮回放的目标路由组（留空则用同一模型；切换模型场景填另一方言组）",
+    )
+
+
+class CacheProbeRequest(BaseModel):
     model: str = Field(
         ...,
         min_length=1,
@@ -252,6 +279,96 @@ async def thinking_probe(
         protocol=protocol,
     )
     return {"code": 200, "message": "Thinking 探针完成", "data": result}
+
+
+def _split_probe_model(group_name: str) -> tuple[str, str]:
+    if group_name.endswith(ANTHROPIC_MODEL_SUFFIX):
+        return group_name[: -len(ANTHROPIC_MODEL_SUFFIX)], "anthropic"
+    return group_name, "openai"
+
+
+async def _probe_access(
+    session: AsyncSession,
+    group_name: str,
+    current_user: dict,
+) -> tuple[str, str, str, str | None, dict | None]:
+    """Resolve model/key for a probe; return (group, bare, protocol, key, error)."""
+    bare_name, protocol = _split_probe_model(group_name)
+    model_obj = await model_repo.find_by_model_id(session, bare_name)
+    if model_obj and model_obj.category != "chat":
+        return (
+            group_name,
+            bare_name,
+            protocol,
+            None,
+            {
+                "success": False,
+                "protocol": protocol,
+                "verdicts": [],
+            },
+        )
+    user_api_key, error_detail = await precheck_access_test(
+        session,
+        current_user["id"],
+        model_obj,
+        bare_name,
+        is_admin=current_user["is_admin"],
+    )
+    if error_detail:
+        return (
+            group_name,
+            bare_name,
+            protocol,
+            None,
+            {
+                "success": False,
+                "protocol": protocol,
+                "verdicts": [],
+                "error_detail": error_detail,
+            },
+        )
+    return group_name, bare_name, protocol, user_api_key, None
+
+
+@router.post("/history-probe", summary="历史回放探针")
+async def history_probe(
+    req: HistoryProbeRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """回放第一轮的 thinking / tool_use / tool_result，校验切换模型后历史仍可继续。"""
+    group_name, _, protocol, user_api_key, error = await _probe_access(
+        session, req.model.strip(), current_user
+    )
+    if error:
+        return {"code": 200, "message": "历史回放探针完成", "data": error}
+    result = await access_history_probe.run_history_probe(
+        model=group_name,
+        api_key=user_api_key or "",
+        protocol=protocol,
+        replay_model=req.replay_model,
+    )
+    return {"code": 200, "message": "历史回放探针完成", "data": result}
+
+
+@router.post("/cache-probe", summary="Prompt Cache 探针")
+async def cache_probe(
+    req: CacheProbeRequest,
+    session: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """两轮同前缀请求，校验 cache_control 断点在链路上存活且第二轮命中缓存。"""
+    group_name, _, protocol, user_api_key, error = await _probe_access(
+        session, req.model.strip(), current_user
+    )
+    if error:
+        return {"code": 200, "message": "Prompt Cache 探针完成", "data": error}
+    result = await access_cache_probe.run_cache_probe(
+        model=group_name,
+        api_key=user_api_key or "",
+        protocol=protocol,
+    )
+    return {"code": 200, "message": "Prompt Cache 探针完成", "data": result}
 
 
 async def _resolve_model(

@@ -101,6 +101,7 @@ class UpdateRouterSettingsRequest(BaseModel):
     cooldown_time: int | None = Field(None, ge=1)
     num_retries: int | None = Field(None, ge=0)
     timeout: int | None = Field(None, ge=1)
+    stream_timeout: int | None = Field(None, ge=1)
     config: dict | None = None
 
 
@@ -468,9 +469,24 @@ async def update_router_settings(
         cooldown_time=req.cooldown_time,
         num_retries=req.num_retries,
         timeout=req.timeout,
+        stream_timeout=req.stream_timeout,
         config=req.config,
     )
-    return {"code": 200, "message": "路由设置更新成功", "data": settings}
+    return {
+        "code": 200,
+        "message": "路由设置已保存，Fallback 链即时生效；冷却/重试/超时（含流式超时）将在 LiteLLM 重启后生效",
+        "data": settings,
+    }
+
+
+@router.post("/{model_id}/deployments/health-check", summary="检测模型部署健康状态")
+async def check_deployments_health(
+    model_id: int,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permission("user:read")),
+):
+    result = await model_service.check_deployments_health(session, model_id)
+    return {"code": 200, "message": "健康检测完成", "data": result}
 
 
 @router.post("/resync-anthropic", summary="重新同步 Anthropic 格式部署")

@@ -11,6 +11,10 @@
 --   /v1/responses + 仅 anthropic         -> 裸名(Anthropic)（litellm responses→anthropic 桥接，
 --                                           2026-10-26 dev 实测 v1.103 对 anthropic 前缀部署 200）
 --   /v1/responses + has_openai           -> 不改（litellm 原生 responses 转发）
+--   /v1/messages/count_tokens            -> 与 messages 同规则（anthropic 部署加后缀）
+--   /v1/responses/compact                -> 与 responses 同规则
+--   模型名 [1m] 标记                     -> 一律剥离（Claude Code 的 1M 上下文标记）
+--   文本模型（supports_vision=false）    -> 剥 image/document/file/input_audio 等媒体块
 --   其他端点                          -> 不改
 
 local _M = {}
@@ -22,6 +26,9 @@ local cjson = require "cjson.safe"
 local cjson_strict = require "cjson"
 local ARRAY_MT = cjson_strict.array_mt or cjson_strict.empty_array
 local SUFFIX = "(Anthropic)"
+-- Claude Code 开启 1M 上下文时会往模型名追加 [1m]；平台模型名不含该标记，
+-- 必须在查映射/转发前剥掉，否则整条链路 404。
+local ONE_M_CONTEXT_MARKER = "[1m]"
 local REFRESH_INTERVAL = 30  -- 秒
 
 -- 映射缓存：model_id -> { has_anthropic, has_openai, supports_vision, inject={能力字段集} }
@@ -140,21 +147,31 @@ local function mark_empty_arrays(data, raw)
 end
 
 
--- 剥掉 content block 数组里的图片块（非视觉模型不支持图片输入）。
--- 兼容两种方言：OpenAI 的 {type="image_url"} 与 Anthropic 的 {type="image"}。
--- Anthropic 方言工具结果图片嵌在 {type="tool_result", content=[...]} 内层，
--- 递归处理；剥后数组若为空，补占位 text，避免空 content 被上游拒绝。
--- 返回 (过滤后数组, 是否发生改动)。
-local function strip_images_from_blocks(blocks)
+-- 剥掉 content block 数组里的非文本媒体块（文本模型不支持时）。
+-- 覆盖 Anthropic(image/document)、OpenAI(image_url/audio/file) 与
+-- Responses(input_image/input_file/input_audio) 的块类型；
+-- tool_result 与嵌套 content 递归处理；全部剥空时补占位 text，避免上游拒绝空 content。
+local MEDIA_BLOCK_TYPES = {
+    image = true,
+    image_url = true,
+    input_image = true,
+    document = true,
+    file = true,
+    input_file = true,
+    input_audio = true,
+    audio = true,
+}
+
+local function strip_media_from_blocks(blocks)
     local kept = {}
     local changed = false
     for _, block in ipairs(blocks) do
         local bt = type(block) == "table" and block.type or nil
-        if bt == "image_url" or bt == "image" then
+        if bt and MEDIA_BLOCK_TYPES[bt] then
             changed = true
         else
-            if bt == "tool_result" and type(block.content) == "table" then
-                local inner, inner_changed = strip_images_from_blocks(block.content)
+            if type(block) == "table" and type(block.content) == "table" then
+                local inner, inner_changed = strip_media_from_blocks(block.content)
                 if inner_changed then
                     block.content = inner
                     changed = true
@@ -164,27 +181,56 @@ local function strip_images_from_blocks(blocks)
         end
     end
     if changed and #kept == 0 then
-        kept = { { type = "text", text = "[image removed]" } }
+        kept = { { type = "text", text = "[media removed]" } }
     end
     return kept, changed
 end
 
 
--- 剥掉请求 messages 里的 image block（顶层 content 数组 + tool_result 内层）。
+-- 剥掉请求 messages 里的媒体 block（顶层 content 数组 + tool_result 内层）。
 -- 返回是否发生了改动。
-local function strip_images(data)
+local function strip_media(data)
     local messages = data.messages
     if type(messages) ~= "table" then return false end
     local changed = false
     for _, msg in ipairs(messages) do
         local content = msg.content
         if type(content) == "table" then
-            local kept, msg_changed = strip_images_from_blocks(content)
+            local kept, msg_changed = strip_media_from_blocks(content)
             if msg_changed then
                 msg.content = kept
                 changed = true
             end
         end
+    end
+    return changed
+end
+
+
+-- /v1/responses 的输入不在 messages 而是一组 input 条目；条目本身可能是媒体块，
+-- 也可能是 message 条目、内部再嵌 content 数组。
+local function strip_media_from_responses(data)
+    local input = data.input
+    if type(input) ~= "table" then return false end
+    local kept = {}
+    local changed = false
+    for _, item in ipairs(input) do
+        local item_type = type(item) == "table" and item.type or nil
+        if item_type and MEDIA_BLOCK_TYPES[item_type] then
+            changed = true
+        else
+            if type(item) == "table" and type(item.content) == "table" then
+                local inner, inner_changed = strip_media_from_blocks(item.content)
+                if inner_changed then
+                    item.content = inner
+                    changed = true
+                end
+            end
+            kept[#kept + 1] = item
+        end
+    end
+    if changed then
+        data.input = kept
     end
     return changed
 end
@@ -236,9 +282,12 @@ end
 function _M.rewrite()
     if ngx.var.request_method ~= "POST" then return end
     local uri = ngx.var.uri
-    local is_messages = (uri == "/v1/messages")
-    -- /v1/responses（Codex 等客户端）与 chat 同规则：按模型方言映射决定改写
-    local is_chat = (uri == "/v1/chat/completions" or uri == "/v1/responses")
+    -- count_tokens 与 messages 同方言（body.model 同样需要按 anthropic 部署改写）
+    local is_messages = (uri == "/v1/messages"
+        or uri == "/v1/messages/count_tokens")
+    -- /v1/responses（Codex 等客户端）与 chat 同规则；compact 与 responses 同族
+    local is_chat = (uri == "/v1/chat/completions" or uri == "/v1/responses"
+        or uri == "/v1/responses/compact")
     if not (is_messages or is_chat) then return end
 
     ngx.req.read_body()
@@ -258,25 +307,36 @@ function _M.rewrite()
     if not data or type(data.model) ~= "string" then return end
 
     local orig = data.model
-    local info = map[orig]
-    -- 带后缀的组名（用户直填）剥后缀查 map，拿 supports_vision 决定是否剥图
-    if not info and ends_with(orig, SUFFIX) then
-        info = map[orig:sub(1, -#SUFFIX - 1)]
+    -- [1m] 是 Claude Code 的客户端标记，不属于平台模型名
+    local lookup = orig
+    if ends_with(lookup, ONE_M_CONTEXT_MARKER) then
+        lookup = lookup:sub(1, -#ONE_M_CONTEXT_MARKER - 1)
+    end
+    local info = map[lookup]
+    -- 带后缀的组名（用户直填）剥后缀查 map，拿 supports_vision 决定是否剥媒体
+    if not info and ends_with(lookup, SUFFIX) then
+        info = map[lookup:sub(1, -#SUFFIX - 1)]
     end
 
     local changed = false
+    local media_changed = false
+    -- [1m] 与方言映射无关：未知模型也要剥，否则上游 404
+    if lookup ~= orig then
+        data.model = lookup
+        changed = true
+    end
     if info then
-        -- ① model 方言改写（仅裸名，带后缀不改）
-        if not ends_with(orig, SUFFIX) then
-            local new_model = orig
+        -- ① model 方言改写（仅裸名，带后缀不改；lookup 已剥 [1m]）
+        if not ends_with(lookup, SUFFIX) then
+            local new_model = lookup
             if is_messages then
                 if info.has_anthropic then
-                    new_model = orig .. SUFFIX
+                    new_model = lookup .. SUFFIX
                 end
                 -- 纯 openai：不改，让 litellm 自然 403
             elseif is_chat then
                 if not info.has_openai and info.has_anthropic then
-                    new_model = orig .. SUFFIX
+                    new_model = lookup .. SUFFIX
                 end
                 -- 有 openai：走裸名原生；均无：不改让 litellm 处理
             end
@@ -285,17 +345,349 @@ function _M.rewrite()
                 changed = true
             end
         end
-        -- ② 非视觉模型剥 image block（含 tool_result 内层）
-        if not info.supports_vision and strip_images(data) then
-            changed = true
+        -- ② 文本模型剥非文本媒体块（image/document/file/audio，含嵌套内容）
+        if not info.supports_vision then
+            if strip_media(data) then media_changed = true end
+            if strip_media_from_responses(data) then media_changed = true end
+            if media_changed then changed = true end
         end
     end
 
+    local forward_body = raw
     if changed then
         mark_empty_arrays(data, raw)
-        ngx.req.set_body_data(cjson.encode(data))
-        ngx.log(ngx.WARN, "C1REWRITE uri=" .. uri .. " orig=" .. orig)
+        forward_body = cjson.encode(data)
+        ngx.req.set_body_data(forward_body)
+        ngx.log(
+            ngx.WARN,
+            "C1REWRITE uri=" .. uri .. " orig=" .. orig
+                .. " new=" .. tostring(data.model)
+                .. " media=" .. tostring(media_changed)
+        )
     end
+    -- 供 @rectify_retry 复用（error_page 内部跳转后请求可能已消费 body buffer）
+    ngx.ctx.al_forward_body = forward_body
+end
+
+
+local SWITCH_HINT =
+    "（AIHelms 提示：该错误常见于切换模型或供应商后——历史会话中的思考签名/加密推理状态由原模型签发，"
+    .. "新模型无法验证。请新开会话后重试。）"
+
+
+local function lower_contains(haystack, needle)
+    return string.find(haystack, needle, 1, true) ~= nil
+end
+
+
+-- 与 cc-switch thinking_rectifier / opaque_state_rectifier 的触发条件对齐。
+-- 错误提示只负责把上游英文报错补充成用户可执行的提示；请求整流见下方
+-- retry_with_rectified_body（由 nginx error_page 触发，整流后重试一次）。
+local function is_switch_related_error(lower)
+    if lower_contains(lower, "invalid signature") then return true end
+    if lower_contains(lower, "must start with a thinking block") then return true end
+    if lower_contains(lower, "redacted_thinking") then return true end
+    if lower_contains(lower, "encrypted_content")
+        or lower_contains(lower, "encrypted content") then
+        return true
+    end
+    if lower_contains(lower, "could not decrypt")
+        or lower_contains(lower, "failed to decrypt")
+        or lower_contains(lower, "decryption failed")
+        or lower_contains(lower, "invalid encrypted") then
+        return true
+    end
+    if lower_contains(lower, "thought signature")
+        and (lower_contains(lower, "not valid") or lower_contains(lower, "invalid")) then
+        return true
+    end
+    if lower_contains(lower, "signature") and lower_contains(lower, "thinking") then
+        return true
+    end
+    return false
+end
+
+
+local function append_hint(value)
+    if type(value) ~= "string" or value == "" then return false, value end
+    local lower = string.lower(value)
+    if lower_contains(lower, "aihelms 提示") then return false, value end
+    if not is_switch_related_error(lower) then return false, value end
+    return true, value .. SWITCH_HINT
+end
+
+
+-- 就地改写错误对象里的 message（兼容 OpenAI / Anthropic / LiteLLM 三种封套）。
+local function annotate_error_data(data)
+    if type(data) ~= "table" then return false end
+    local err = data.error
+    if type(err) == "table" then
+        local changed, value = append_hint(err.message)
+        if changed then
+            err.message = value
+            return true
+        end
+    elseif type(err) == "string" then
+        local changed, value = append_hint(err)
+        if changed then
+            data.error = value
+            return true
+        end
+    end
+    for _, key in ipairs({ "message", "detail" }) do
+        local changed, value = append_hint(data[key])
+        if changed then
+            data[key] = value
+            return true
+        end
+    end
+    return false
+end
+
+
+-- 纯函数：输入原始 JSON 字符串，命中切换模型类错误时返回追加提示后的 JSON，
+-- 否则返回 nil（调用方原样透传）。
+function _M.annotate_error_body(raw)
+    if type(raw) ~= "string" or raw == "" then return nil end
+    local data = cjson.decode(raw)
+    if not data or not annotate_error_data(data) then return nil end
+    mark_empty_arrays(data, raw)
+    local ok, encoded = pcall(cjson.encode, data)
+    if not ok or not encoded then return nil end
+    return encoded
+end
+
+
+-- header_filter: 仅对 JSON 错误响应开启缓冲并清掉 Content-Length（body 可能变长）
+function _M.prepare_error_hint()
+    if ngx.status < 400 then return end
+    local ct = ngx.header["Content-Type"]
+    if type(ct) == "table" then ct = ct[1] end
+    if not ct or not lower_contains(string.lower(tostring(ct)), "json") then return end
+    ngx.ctx.al_error_buffer = ""
+    ngx.header.content_length = nil
+end
+
+
+-- body_filter: 缓冲错误体，EOF 时尝试追加提示后输出
+function _M.annotate_switch_error()
+    local buf = ngx.ctx.al_error_buffer
+    if buf == nil then return end
+    local chunk = ngx.arg[1]
+    if chunk and #chunk > 0 then
+        ngx.ctx.al_error_buffer = buf .. chunk
+    end
+    if not ngx.arg[2] then
+        ngx.arg[1] = nil
+        return
+    end
+    local body = ngx.ctx.al_error_buffer or ""
+    ngx.ctx.al_error_buffer = nil
+    local annotated = _M.annotate_error_body(body)
+    if annotated then
+        ngx.log(ngx.WARN, "C1HINT annotated model-switch error, bytes=" .. #annotated)
+        ngx.arg[1] = annotated
+    else
+        ngx.arg[1] = body
+    end
+end
+
+
+-- ==== 自动整流：切换模型/供应商后重试一次 ====
+-- 触发链：location 匹配三个聊天端点 → proxy_intercept_errors + error_page 400 422
+--        → @rectify_retry → retry_with_rectified_body()。
+-- 规则对齐 cc-switch thinking_rectifier / opaque_state_rectifier 的最小侵入子集：
+--   /v1/messages         去 thinking/redacted_thinking 块与残留 signature；
+--                        顶层 thinking=enabled 且末条 assistant 含 tool_use 时去掉顶层 thinking
+--   /v1/chat/completions 去 reasoning_content / reasoning 字段
+--   /v1/responses        去 reasoning / compaction 条目、去 encrypted_content 片段与字段
+-- 只重试一次；整流后仍失败返回第二次结果，错误提示过滤器照常追加提示。
+-- 整体开关：openresty 进程环境变量 RECTIFY_ENABLED=0 可关闭（无需改代码）。
+
+local RECTIFY_ENABLED = os.getenv("RECTIFY_ENABLED") ~= "0"
+
+
+local function sanitize_anthropic(data)
+    local changed = false
+    local messages = data.messages
+    if type(messages) == "table" then
+        for _, msg in ipairs(messages) do
+            local content = type(msg) == "table" and msg.content or nil
+            if type(content) == "table" then
+                local kept = {}
+                for _, block in ipairs(content) do
+                    local bt = type(block) == "table" and block.type or nil
+                    if bt == "thinking" or bt == "redacted_thinking" then
+                        changed = true
+                    else
+                        if type(block) == "table" and block.signature ~= nil then
+                            block.signature = nil
+                            changed = true
+                        end
+                        kept[#kept + 1] = block
+                    end
+                end
+                if #kept ~= #content then
+                    if #kept == 0 then
+                        kept = { { type = "text", text = "[thinking removed]" } }
+                    end
+                    msg.content = kept
+                end
+            end
+        end
+    end
+
+    -- 与 cc-switch 对齐：thinking 开启但末条 assistant 已不以 thinking 开头且含 tool_use 时，
+    -- 上游会报 "must start with a thinking block"；此时移除顶层 thinking 配置。
+    if type(data.thinking) == "table" and data.thinking.type == "enabled" then
+        local last_assistant
+        if type(messages) == "table" then
+            for i = #messages, 1, -1 do
+                local msg = messages[i]
+                if type(msg) == "table" and msg.role == "assistant" then
+                    last_assistant = msg
+                    break
+                end
+            end
+        end
+        local content = last_assistant and last_assistant.content
+        if type(content) == "table" and #content > 0 then
+            local first_type = type(content[1]) == "table" and content[1].type or nil
+            local has_tool_use = false
+            for _, block in ipairs(content) do
+                if type(block) == "table" and block.type == "tool_use" then
+                    has_tool_use = true
+                    break
+                end
+            end
+            if first_type ~= "thinking" and first_type ~= "redacted_thinking"
+                and has_tool_use then
+                data.thinking = nil
+                changed = true
+            end
+        end
+    end
+    return changed
+end
+
+
+local function sanitize_chat(data)
+    local changed = false
+    local messages = data.messages
+    if type(messages) == "table" then
+        for _, msg in ipairs(messages) do
+            if type(msg) == "table" then
+                if msg.reasoning_content ~= nil then
+                    msg.reasoning_content = nil
+                    changed = true
+                end
+                if msg.reasoning ~= nil then
+                    msg.reasoning = nil
+                    changed = true
+                end
+            end
+        end
+    end
+    return changed
+end
+
+
+local function strip_encrypted_value(value, state)
+    if type(value) ~= "table" then return value end
+    if value.type == "encrypted_content" then
+        state.changed = true
+        return { type = "input_text", text = "[encrypted state removed]" }
+    end
+    if value.encrypted_content ~= nil then
+        value.encrypted_content = nil
+        state.changed = true
+    end
+    for key, item in pairs(value) do
+        if type(item) == "table" then
+            value[key] = strip_encrypted_value(item, state)
+        end
+    end
+    return value
+end
+
+
+local function sanitize_responses(data)
+    local state = { changed = false }
+    local input = data.input
+    if type(input) == "table" then
+        local kept = {}
+        for _, item in ipairs(input) do
+            local item_type = type(item) == "table" and item.type or nil
+            if item_type == "reasoning"
+                or item_type == "compaction"
+                or item_type == "compaction_summary" then
+                state.changed = true
+            else
+                kept[#kept + 1] = strip_encrypted_value(item, state)
+            end
+        end
+        if #kept ~= #input then
+            data.input = kept
+        end
+    end
+    return state.changed
+end
+
+
+function _M.retry_with_rectified_body()
+    if ngx.ctx.al_rectify_done then return end
+    ngx.ctx.al_rectify_done = true
+    if not RECTIFY_ENABLED then
+        ngx.log(ngx.WARN, "C1RECT disabled by RECTIFY_ENABLED")
+        return
+    end
+
+    local uri = ngx.var.uri
+    ngx.req.read_body()
+    local raw = ngx.ctx.al_forward_body
+    if not raw then
+        raw = ngx.req.get_body_data()
+    end
+    if not raw then
+        local body_file = ngx.req.get_body_file()
+        if body_file then
+            local f = io.open(body_file, "rb")
+            if f then
+                raw = f:read("*a")
+                f:close()
+            end
+        end
+    end
+    if not raw or raw == "" then return end
+
+    local data = cjson.decode(raw)
+    local changed = false
+    if data then
+        if uri == "/v1/messages" or uri == "/v1/messages/count_tokens" then
+            changed = sanitize_anthropic(data)
+        elseif uri == "/v1/chat/completions" then
+            changed = sanitize_chat(data)
+        elseif uri == "/v1/responses" or uri == "/v1/responses/compact" then
+            changed = sanitize_responses(data)
+        end
+    end
+
+    local body = raw
+    if changed then
+        mark_empty_arrays(data, raw)
+        local ok, encoded = pcall(cjson.encode, data)
+        if ok and encoded then
+            body = encoded
+        end
+    end
+    ngx.req.set_body_data(body)
+    ngx.req.set_header("Content-Length", tostring(#body))
+    ngx.req.clear_header("Transfer-Encoding")
+    ngx.log(
+        ngx.WARN,
+        "C1RECT uri=" .. uri .. " changed=" .. tostring(changed)
+            .. " in=" .. #raw .. " out=" .. #body
+    )
 end
 
 

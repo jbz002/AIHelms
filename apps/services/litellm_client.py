@@ -400,15 +400,96 @@ async def get_provider_fields() -> list[dict]:
         return []
 
 
-# --- Router Settings ---
+# --- Router Settings / Fallbacks ---
+#
+# LiteLLM v1.103 移除了 POST /router/settings（实测 405），全局路由参数只保留：
+#   - POST /config/update  : 写入 LiteLLM 配置库，进程启动时加载（重启生效）
+#   - POST /fallback       : 按模型设置 fallback，写库 + 内存热生效
+# 平台据此拆分：fallback 链走 /fallback，其余参数走 /config/update。
 
 
 async def get_router_settings() -> dict:
     return await _request("GET", "/router/settings")
 
 
-async def update_router_settings(settings: dict) -> dict:
-    return await _request("POST", "/router/settings", json_data=settings)
+async def check_health(model_name: str | None = None, timeout: float = 120.0) -> dict:
+    """Actively probe deployments (optionally one model group) and return health detail.
+
+    LiteLLM answers 503 when any probed endpoint is unhealthy, but the body still
+    carries healthy_endpoints/unhealthy_endpoints; only >=400 other than 503 is an error.
+    """
+    url = f"{settings.litellm_url}/health"
+    params = {"model": model_name} if model_name else None
+    headers = {"Authorization": f"Bearer {settings.litellm_master_key}"}
+    try:
+        async with httpx.AsyncClient(timeout=timeout, proxy=None) as client:
+            response = await client.get(url, headers=headers, params=params)
+    except httpx.HTTPError as e:
+        logger.error("litellm health check connection error: %s", str(e))
+        raise LiteLLMError(f"LiteLLM GET /health connection error: {e}") from e
+    if response.status_code >= 400 and response.status_code != 503:
+        logger.error(
+            "litellm health check failed",
+            extra={"status": response.status_code, "body": response.text},
+        )
+        raise LiteLLMError(f"LiteLLM GET /health failed: {response.status_code}")
+    try:
+        return response.json()
+    except ValueError as e:
+        raise LiteLLMError("LiteLLM GET /health returned non-JSON body") from e
+
+
+async def update_router_config(router_settings: dict) -> dict:
+    """Persist global router settings; applied when LiteLLM restarts."""
+    return await _request(
+        "POST", "/config/update", json_data={"router_settings": router_settings}
+    )
+
+
+async def get_fallbacks(fallback_type: str = "general") -> dict[str, list[str]]:
+    """Read the current fallback map: source model group -> ordered targets."""
+    payload = await get_router_settings()
+    current_values = (payload or {}).get("current_values") or {}
+    field = {
+        "general": "fallbacks",
+        "context_window": "context_window_fallbacks",
+        "content_policy": "content_policy_fallbacks",
+    }.get(fallback_type, "fallbacks")
+    entries = current_values.get(field) or []
+    result: dict[str, list[str]] = {}
+    if not isinstance(entries, list):
+        return result
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        for source, targets in entry.items():
+            if isinstance(source, str) and isinstance(targets, list):
+                result[source] = [t for t in targets if isinstance(t, str)]
+    return result
+
+
+async def create_fallback(
+    model: str,
+    fallback_models: list[str],
+    fallback_type: str = "general",
+) -> dict:
+    return await _request(
+        "POST",
+        "/fallback",
+        json_data={
+            "model": model,
+            "fallback_models": fallback_models,
+            "fallback_type": fallback_type,
+        },
+    )
+
+
+async def delete_fallback(model: str, fallback_type: str = "general") -> dict:
+    return await _request(
+        "DELETE",
+        f"/fallback/{quote(model, safe='')}",
+        params={"fallback_type": fallback_type},
+    )
 
 
 # --- MCP Server Management ---
