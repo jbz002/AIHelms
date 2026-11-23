@@ -106,6 +106,7 @@ async def create_server(
     visible_department_id: int | None = None,
     requires_approval: bool = False,
     created_by: int | None = None,
+    sync_to_litellm: bool = True,
 ) -> dict:
     if transport not in ("sse", "http", "streamable_http", "streamableHttp"):
         raise ValidationError("transport 只支持 sse 或 streamableHttp")
@@ -173,6 +174,7 @@ async def create_server(
         visible_department_id=visible_department_id,
         requires_approval=requires_approval,
         created_by=created_by,
+        sync_to_litellm=sync_to_litellm,
     )
     server = await mcp_repo.create_server(session, server)
     await session.flush()
@@ -181,21 +183,23 @@ async def create_server(
     if submit_review_flag and created_by:
         await _prs.submit_review(session, _prs.ENTITY_MCP, server.id, created_by)
 
-    try:
-        await _sync_server_to_litellm(server)
-    except LiteLLMError as e:
-        await session.rollback()
-        logger.error("sync mcp server to litellm failed: %s", str(e))
-        raise ValidationError("保存失败，服务器内部错误")
+    if server.sync_to_litellm:
+        try:
+            await _sync_server_to_litellm(server)
+        except LiteLLMError as e:
+            await session.rollback()
+            logger.error("sync mcp server to litellm failed: %s", str(e))
+            raise ValidationError("保存失败，服务器内部错误")
 
     await session.commit()
     await session.refresh(server)
 
-    # 创建后自动同步工具列表
-    try:
-        await refresh_tools(session, server.id)
-    except (ValidationError, LiteLLMError):
-        pass  # 工具同步失败不影响创建
+    # 创建后自动同步工具列表（目录登记型无数据面，拉了也没有可调用通道）
+    if server.sync_to_litellm:
+        try:
+            await refresh_tools(session, server.id)
+        except (ValidationError, LiteLLMError):
+            pass  # 工具同步失败不影响创建
 
     # 为新 Server 种入 v1 active 版本（与存量回填一致）
     v1 = McpServerVersion(
@@ -353,12 +357,15 @@ async def update_server(
 
     await session.flush()
 
-    try:
-        await _sync_server_to_litellm(server)
-    except LiteLLMError as e:
-        await session.rollback()
-        logger.error("sync mcp server to litellm failed: %s", str(e))
-        raise ValidationError("保存失败，服务器内部错误")
+    # 目录登记型（含被切换为目录型的存量）更新后不写 LiteLLM；
+    # 从目录型切回同步型时，本次更新即完成补登记（走 update 分支幂等）。
+    if server.sync_to_litellm:
+        try:
+            await _sync_server_to_litellm(server)
+        except LiteLLMError as e:
+            await session.rollback()
+            logger.error("sync mcp server to litellm failed: %s", str(e))
+            raise ValidationError("保存失败，服务器内部错误")
 
     await session.commit()
     await session.refresh(server)
@@ -390,8 +397,9 @@ async def delete_server(session: AsyncSession, server_id: int) -> None:
     await mcp_repo.delete_server(session, server_id)
     await session.commit()
 
-    # 在 LiteLLM 侧禁用而非删除
-    if litellm_server_id:
+    # 在 LiteLLM 侧禁用而非删除（目录登记型从未写入 LiteLLM，无行可禁；
+    # 曾同步过的目录型仍禁用，避免留下无人管理的活行）
+    if litellm_server_id and (server.sync_to_litellm or server.litellm_synced):
         try:
             await litellm_client.update_mcp_server(
                 server_id=litellm_server_id,
@@ -484,7 +492,11 @@ async def activate_version(
             server,
             version.server_id,
             mcp_version_repo,
-            on_sync=_sync_version_to_litellm,
+            on_sync=(
+                _sync_version_to_litellm
+                if server.sync_to_litellm
+                else _noop_version_sync
+            ),
             apply_snapshot=_apply_version_snapshot_to_server,
         )
     except LiteLLMError as e:
@@ -671,6 +683,12 @@ async def health_check_server(session: AsyncSession, server_id: int) -> dict:
     if not server:
         raise NotFoundError("mcp_server", server_id)
 
+    if not server.sync_to_litellm:
+        # 目录登记型不在 LiteLLM 数据面（按人 OAuth 在消费端），探测无意义
+        raise ValidationError(
+            "目录登记型 MCP 不经平台网关，无健康检查（调用面在消费端）"
+        )
+
     litellm_transport = to_litellm_transport(server.transport)
     try:
         await litellm_client.test_mcp_connection(
@@ -745,6 +763,10 @@ async def _push_server_config_to_litellm(
 
 async def _sync_server_to_litellm(server: McpServer) -> None:
     await _push_server_config_to_litellm(server, server)
+
+
+async def _noop_version_sync(server: McpServer, version: McpServerVersion) -> None:
+    """目录登记型激活版本的 on_sync 占位：快照只进 DB，不触 LiteLLM。"""
 
 
 async def _sync_version_to_litellm(
@@ -842,6 +864,7 @@ def _serialize_server(server: McpServer) -> dict:
         "health_check_error": server.health_check_error,
         "litellm_synced": server.litellm_synced,
         "litellm_sync_error": server.litellm_sync_error,
+        "sync_to_litellm": server.sync_to_litellm,
         "security_status": server.security_status,
         "security_decision": server.security_decision,
         "security_severity": server.security_severity,

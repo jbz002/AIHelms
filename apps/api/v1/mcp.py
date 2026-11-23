@@ -51,6 +51,8 @@ class CreateServerRequest(BaseModel):
     visibility_type: str = Field("all", pattern=r"^(all|department)$")
     visible_department_id: int | None = Field(None, ge=1)
     requires_approval: bool = False
+    # False = 仅目录登记（市场可见），数据面不经 LiteLLM（钉钉 OAuth 类按人授权）
+    sync_to_litellm: bool = True
 
 
 class UpdateServerRequest(BaseModel):
@@ -84,6 +86,7 @@ class UpdateServerRequest(BaseModel):
     visibility_type: str | None = Field(None, pattern=r"^(all|department)$")
     visible_department_id: int | None = Field(None, ge=0)  # 0 = 清空部门归属
     requires_approval: bool | None = None
+    sync_to_litellm: bool | None = None
 
 
 class UpdateToolBillingRequest(BaseModel):
@@ -254,6 +257,7 @@ async def create_server(
             visible_department_id=req.visible_department_id,
             requires_approval=req.requires_approval,
             created_by=current_user["id"],
+            sync_to_litellm=req.sync_to_litellm,
         )
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))

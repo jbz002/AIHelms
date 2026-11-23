@@ -582,6 +582,10 @@ class McpServer(Base):
     litellm_synced: Mapped[bool] = mapped_column(Boolean, default=False)
     litellm_sync_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     litellm_synced_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # 目录登记开关：False = 仅目录登记（市场可见、可管理），数据面不经 LiteLLM
+    # 网关（钉钉 OAuth 类按人授权的 MCP，token 在消费端，网关委托不了）。
+    # 生命周期内保持 FALSE 的 server 从不写 LiteLLM；存量默认 TRUE 行为不变。
+    sync_to_litellm: Mapped[bool] = mapped_column(Boolean, default=True)
     current_version_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("aihelms.mcp_server_versions.id", ondelete="SET NULL"),

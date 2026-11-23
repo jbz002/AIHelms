@@ -1,0 +1,14 @@
+# 热补丁构建：依赖（uv.lock）与前端（ui/）未变时使用，绕过 prod build 的
+# uv sync 挂死点（2026-10-07 实测 aliyun/tuna pypi 均挂）。
+# merge 语义：COPY apps/ 只覆盖同名文件，镜像内 .venv 保留。
+#
+# 用法（prod 上，同步代码后）：
+#   docker buildx build --load --network host \
+#     -t aihelms:prod-new -f dev/Dockerfile.hotpatch .
+#   docker tag aihelms:prod-new aihelms:prod
+#   docker compose -f docker-compose.prod.yml up -d --no-deps aihelms
+# （新 tag 构建成功后再 retag，防 FROM 基镜像自引用）
+FROM aihelms:prod
+
+COPY apps/ /app/apps/
+COPY docker/db/migrations/ /app/docker/db/migrations/
