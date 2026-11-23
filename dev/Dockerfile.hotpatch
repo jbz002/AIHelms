@@ -1,5 +1,7 @@
-# 热补丁构建：依赖（uv.lock）与前端（ui/）未变时使用，绕过 prod build 的
-# uv sync 挂死点（2026-10-07 实测 aliyun/tuna pypi 均挂）。
+# 热补丁构建：依赖（uv.lock）未变时使用，绕过 prod build 的 uv sync 挂死点
+# （2026-10-07 实测 aliyun/tuna pypi 均挂）。前端照常重建（node:18 + npmmirror
+# 在 prod 正常）。纯后端改动想跳过前端重建时，注释掉 frontend stage 与两个
+# COPY --from=frontend 即可（注意：跳过 = 沿用镜像内旧 dist，改过 ui/ 就别跳）。
 # merge 语义：COPY apps/ 只覆盖同名文件，镜像内 .venv 保留。
 #
 # 用法（prod 上，同步代码后）：
@@ -8,7 +10,38 @@
 #   docker tag aihelms:prod-new aihelms:prod
 #   docker compose -f docker-compose.prod.yml up -d --no-deps aihelms
 # （新 tag 构建成功后再 retag，防 FROM 基镜像自引用）
+
+FROM node:18-alpine AS frontend
+
+ARG NPM_MIRROR=https://registry.npmmirror.com
+
+WORKDIR /ui
+
+COPY ui/package.json ui/package-lock.json ./
+COPY ui/packages/shared/package.json ./packages/shared/
+COPY ui/packages/admin/package.json ./packages/admin/
+COPY ui/packages/web/package.json ./packages/web/
+COPY ui/packages/cli/package.json ./packages/cli/
+
+RUN npm config set registry ${NPM_MIRROR} && npm install
+
+COPY ui/ ./
+
+# Resolve symlinks that point to absolute paths (web/assets/providers -> admin/assets/providers)
+RUN if [ -L packages/web/src/assets/providers ]; then \
+      rm packages/web/src/assets/providers && \
+      cp -r packages/admin/src/assets/providers packages/web/src/assets/providers; \
+    fi
+
+RUN npm run build --workspace=@aihelms/shared \
+    && cd packages/admin && npx vite build && cd ../.. \
+    && cd packages/web && npx vite build
+
 FROM aihelms:prod
 
 COPY apps/ /app/apps/
 COPY docker/db/migrations/ /app/docker/db/migrations/
+
+# Copy built frontend from stage 1
+COPY --from=frontend /ui/packages/web/dist ./ui/packages/web/dist/
+COPY --from=frontend /ui/packages/admin/dist ./ui/packages/admin/dist/
