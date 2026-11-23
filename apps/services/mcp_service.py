@@ -578,6 +578,13 @@ async def refresh_tools(session: AsyncSession, server_id: int) -> list[dict]:
     if not server:
         raise NotFoundError("mcp_server", server_id)
 
+    if not server.sync_to_litellm:
+        # 按人 OAuth 类（钉钉）：网关无票连 initialize 都 401，平台永远枚举不了
+        # 工具面；静默空列表会被误读成"没有工具"，显式说明。
+        raise ValidationError(
+            "目录登记型 MCP 工具按人授权，平台无法枚举（用户在消费端连接后可见）"
+        )
+
     creds = server.credentials if server.credentials else None
     litellm_transport = to_litellm_transport(server.transport)
     try:

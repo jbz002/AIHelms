@@ -48,6 +48,8 @@ export interface McpServer {
   health_check_error: string | null
   litellm_synced: boolean
   litellm_sync_error: string | null
+  /** false = 仅目录登记：市场可见但数据面不经 LiteLLM（按人 OAuth 类） */
+  sync_to_litellm: boolean
   current_version_id: number | null
   active_version: McpServerVersion | null
   created_by: number | null

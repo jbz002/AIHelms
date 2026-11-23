@@ -12,6 +12,8 @@ import { RefreshCw, Settings, ChevronDown, ChevronRight } from 'lucide-vue-next'
 interface Props {
   serverId: number | null
   serverBillingType: string
+  /** false = 目录登记型：工具按人授权，平台不枚举，隐藏同步入口 */
+  serverSyncToLitellm: boolean
 }
 
 const props = defineProps<Props>()
@@ -129,6 +131,7 @@ function effectiveBilling(tool: McpTool): { type: string; internal: number; exte
     <div class="mb-3 flex items-center justify-between">
       <h3 class="text-sm font-semibold text-slate-900">工具列表（{{ tools.length }}）</h3>
       <button
+        v-if="serverSyncToLitellm"
         class="flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-purple-500 disabled:opacity-50"
         :disabled="refreshing || !serverId"
         @click="handleRefresh"
@@ -139,6 +142,9 @@ function effectiveBilling(tool: McpTool): { type: string; internal: number; exte
     </div>
 
     <div v-if="loading" class="py-8 text-center text-sm text-slate-500">加载中...</div>
+    <div v-else-if="!serverSyncToLitellm" class="py-8 text-center text-sm text-slate-500">
+      目录登记型 MCP：工具按人授权，用户在消费端（如新世纪AI助手）连接后可见，平台不枚举工具面。
+    </div>
     <div v-else-if="tools.length === 0" class="py-8 text-center text-sm text-slate-500">
       暂无工具，点击「同步工具」获取
     </div>

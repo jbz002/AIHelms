@@ -371,7 +371,14 @@ onMounted(loadDepartments)
                 {{ statusLabel(selectedServer.status) }}
               </span>
               <span
-                v-if="!selectedServer.litellm_synced"
+                v-if="selectedServer.sync_to_litellm === false"
+                class="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500"
+                title="市场目录登记；数据面不经平台网关（按人授权类 MCP）"
+              >
+                目录登记
+              </span>
+              <span
+                v-else-if="!selectedServer.litellm_synced"
                 class="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-600"
                 :title="selectedServer.litellm_sync_error || ''"
               >
@@ -380,6 +387,7 @@ onMounted(loadDepartments)
             </div>
             <div class="flex gap-1.5">
               <button
+                v-if="selectedServer.sync_to_litellm !== false"
                 class="flex items-center gap-1 rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium transition-colors hover:bg-slate-200"
                 :class="healthIconColor(selectedServer.status)"
                 @click="handleHealthCheck"
@@ -493,6 +501,7 @@ onMounted(loadDepartments)
             <McpToolPanel
               :server-id="selectedServer.id"
               :server-billing-type="selectedServer.billing_type"
+              :server-sync-to-litellm="selectedServer.sync_to_litellm !== false"
             />
 
             <!-- 使用统计 -->

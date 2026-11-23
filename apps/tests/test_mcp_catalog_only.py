@@ -219,3 +219,11 @@ async def test_synced_name_hyphen_still_rejected(monkeypatch):
                 transport="streamableHttp",
             )
     await _cleanup(["bad-hyphen-server"])
+
+
+async def test_refresh_tools_rejected_for_catalog_only(catalog_server):
+    """手动同步工具对目录型显式拒绝（按人授权平台无法枚举），不再静默 0。"""
+    _, row_id = catalog_server
+    async with _session() as session:
+        with pytest.raises(ValidationError, match="按人授权"):
+            await mcp_service.refresh_tools(session, row_id)
