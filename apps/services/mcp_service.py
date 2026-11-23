@@ -115,7 +115,9 @@ async def create_server(
         session, visibility_type, visible_department_id
     )
 
-    if "-" in server_name:
+    # 连字符禁令源自 LiteLLM 网关路由；目录登记型不进网关，不受此限
+    # （钉钉 OAuth 类条目沿用消费端 LibreChat 的连字符命名，便于两侧对读）。
+    if sync_to_litellm and "-" in server_name:
         raise ValidationError(
             "server_name 不能包含 '-'（LiteLLM 限制），请使用 '_' 替代"
         )
@@ -285,7 +287,9 @@ async def update_server(
         raise ValidationError("transport 只支持 sse 或 streamableHttp")
 
     if "server_name" in kwargs and kwargs["server_name"] != server.server_name:
-        if "-" in kwargs["server_name"]:
+        # 连字符禁令仅约束同步型（LiteLLM 路由限制）；目录登记型不进网关
+        target_sync = kwargs.get("sync_to_litellm", server.sync_to_litellm)
+        if target_sync and "-" in kwargs["server_name"]:
             raise ValidationError(
                 "server_name 不能包含 '-'（LiteLLM 限制），请使用 '_' 替代"
             )

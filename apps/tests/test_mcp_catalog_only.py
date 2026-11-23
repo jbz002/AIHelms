@@ -187,3 +187,35 @@ async def test_flip_back_to_sync_registers(monkeypatch):
         await mcp_service.update_server(session, row_id, sync_to_litellm=True)
         assert len(calls["create"]) == 1
     await _cleanup(["flip_probe_server"])
+
+
+async def test_catalog_only_allows_hyphen_name(monkeypatch):
+    """目录型不进 LiteLLM，server_name 可用连字符（对齐消费端 LibreChat 命名）。"""
+    calls = _stub_litellm(monkeypatch)
+    async with _session() as session:
+        data = await mcp_service.create_server(
+            session,
+            name="连字符合法探针",
+            server_name="dingtalk-probe",
+            url="https://mcp-gw.dingtalk.com/oauth/server/oa",
+            transport="streamableHttp",
+            sync_to_litellm=False,
+        )
+        assert data["server_name"] == "dingtalk-probe"
+    assert calls["create"] == []
+    await _cleanup(["dingtalk-probe"])
+
+
+async def test_synced_name_hyphen_still_rejected(monkeypatch):
+    """同步型连字符禁令不放松（LiteLLM 路由限制）。"""
+    _stub_litellm(monkeypatch)
+    async with _session() as session:
+        with pytest.raises(ValidationError, match="LiteLLM"):
+            await mcp_service.create_server(
+                session,
+                name="同步型连字符",
+                server_name="bad-hyphen-server",
+                url="https://sync.example.com/mcp",
+                transport="streamableHttp",
+            )
+    await _cleanup(["bad-hyphen-server"])
