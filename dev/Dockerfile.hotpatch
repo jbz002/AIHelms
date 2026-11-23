@@ -43,5 +43,7 @@ COPY apps/ /app/apps/
 COPY docker/db/migrations/ /app/docker/db/migrations/
 
 # Copy built frontend from stage 1
-COPY --from=frontend /ui/packages/web/dist ./ui/packages/web/dist/
-COPY --from=frontend /ui/packages/admin/dist ./ui/packages/admin/dist/
+# ⚠️ 目标必须绝对路径：基镜像 aihelms:prod 的 WORKDIR 是 /app/apps（原 Dockerfile
+# 末尾改的），相对 ./ 会落到 /app/apps/ui/... 没人读的错路径（2026-11-23 踩过）。
+COPY --from=frontend /ui/packages/web/dist /app/ui/packages/web/dist/
+COPY --from=frontend /ui/packages/admin/dist /app/ui/packages/admin/dist/
