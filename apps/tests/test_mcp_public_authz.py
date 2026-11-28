@@ -193,7 +193,12 @@ async def test_build_object_permission_unions_public_and_skips_catalog(monkeypat
     )
 
     result = await ai_key_service.build_object_permission(None, [2, 4])
-    assert result == {"mcp_servers": ["supply_cloud", "docs_mcp_server"]}
+    # mcp_tool_permissions 必须显式出现（空 dict）：LiteLLM 把「字段缺席」当「不修改」，
+    # 省略会让工具级收窄无法撤销（2026-11-28 prod 实测）
+    assert result == {
+        "mcp_servers": ["supply_cloud", "docs_mcp_server"],
+        "mcp_tool_permissions": {},
+    }
 
 
 @pytest.mark.asyncio
@@ -205,7 +210,36 @@ async def test_build_object_permission_empty_grant_still_sees_public(monkeypatch
         ai_key_service.mcp_repo, "find_public_server_names", fake_public_names
     )
     result = await ai_key_service.build_object_permission(None, [])
-    assert result == {"mcp_servers": ["docs_mcp_server"]}
+    assert result == {
+        "mcp_servers": ["docs_mcp_server"],
+        "mcp_tool_permissions": {},
+    }
+
+
+@pytest.mark.asyncio
+async def test_build_object_permission_clears_tool_restriction(monkeypatch):
+    """曾经收窄过的 key 再次下发时必须带空 dict，否则网关会保留旧的工具级限制。"""
+
+    async def fake_find_server_by_id(session, sid):
+        return SimpleNamespace(server_name="supply_cloud", sync_to_litellm=True)
+
+    async def fake_public_names(session):
+        return []
+
+    monkeypatch.setattr(
+        ai_key_service.mcp_repo, "find_server_by_id", fake_find_server_by_id
+    )
+    monkeypatch.setattr(
+        ai_key_service.mcp_repo, "find_public_server_names", fake_public_names
+    )
+
+    narrowed = await ai_key_service.build_object_permission(
+        None, [2], mcp_tools={"supply_cloud": ["supplier_search", "supplier_search"]}
+    )
+    assert narrowed["mcp_tool_permissions"] == {"supply_cloud": ["supplier_search"]}
+
+    cleared = await ai_key_service.build_object_permission(None, [2], mcp_tools={})
+    assert cleared["mcp_tool_permissions"] == {}
 
 
 class _FakeSession:

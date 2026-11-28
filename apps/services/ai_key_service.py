@@ -441,18 +441,20 @@ async def build_object_permission(
     explicit = await _resolve_mcp_server_names(session, mcp_ids or [])
     public = await mcp_repo.find_public_server_names(session)
     servers = _dedupe_preserve_order([*explicit, *public])
-    payload: dict = {"mcp_servers": servers}
+    # 工具级限制（P1 编译产物）：裸名，且只对本次下发的 server 生效。
+    # 缺省的 server = 该 server 不做工具级限制；显式空列表 = 全拒。
+    per_server: dict = {}
     if mcp_tools:
-        # 工具级限制（P1 编译产物）：裸名，且只对本次下发的 server 生效。
-        # 缺省的 server = 该 server 不做工具级限制；显式空列表 = 全拒。
         per_server = {
             name: sorted(set(mcp_tools[name]))
             for name in servers
             if isinstance(mcp_tools.get(name), list) and mcp_tools[name]
         }
-        if per_server:
-            payload["mcp_tool_permissions"] = per_server
-    return payload
+    # ⚠️ 必须始终显式下发，哪怕为空字典：LiteLLM `/key/update` 把「字段缺席」当成
+    # 「保持不变」，省略会让工具级收窄**无法撤销**（2026-11-28 prod 实测：撤销授权后
+    # ai_keys.mcp_tools 已清空，网关仍保留旧的 mcp_tool_permissions，越界工具继续被拒）。
+    # 空字典 = 无工具级限制（同实测）。
+    return {"mcp_servers": servers, "mcp_tool_permissions": per_server}
 
 
 async def _expand_models_with_anthropic(
