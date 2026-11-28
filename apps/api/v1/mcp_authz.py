@@ -360,6 +360,20 @@ async def update_tool_metadata(
     if tool is None or tool.server_id != server_id:
         raise HTTPException(status_code=404, detail="工具不存在或不属于该 Server")
 
+    # 公共 server 对所有 Key 无条件放行：把其中任一工具标成非只读等于绕过授权矩阵。
+    # 必须在改动之前判（改动后再 rollback 会让 ORM 实例过期，读属性触发 MissingGreenlet）。
+    new_risk = req.risk_level if req.risk_level is not None else tool.risk_level
+    if (new_risk or "read") != "read":
+        server = await mcp_repo.find_server_by_id(session, server_id)
+        if server is not None and server.is_public:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"该 Server 已开启公共授权（全员可用），工具「{tool.tool_name}」"
+                    "不能标记为非只读。请先关闭公共授权，改用授权矩阵按人/角色授权"
+                ),
+            )
+
     changes = []
     for field in (
         "risk_level",
@@ -376,19 +390,6 @@ async def update_tool_metadata(
     if "review_status" in changes:
         tool.reviewed_by = current_user["id"]
         tool.reviewed_at = datetime.now()
-
-    # 公共 server 对所有 Key 无条件放行：把其中任一工具标成非只读等于绕过授权矩阵
-    if (tool.risk_level or "read") != "read":
-        server = await mcp_repo.find_server_by_id(session, server_id)
-        if server is not None and server.is_public:
-            await session.rollback()
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"该 Server 已开启公共授权（全员可用），工具「{tool.tool_name}」"
-                    "不能标记为非只读。请先关闭公共授权，改用授权矩阵按人/角色授权"
-                ),
-            )
 
     await session.flush()
 
