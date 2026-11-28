@@ -267,6 +267,17 @@ async def apply_compiled(
         )
         return result
 
+    # 幂等：编译输入与上次下发一致、且状态健康 → 不重复推网关
+    state = await mcp_authz_repo.get_sync_state(session, key.id)
+    if (
+        not changed
+        and state is not None
+        and state.status == "synced"
+        and state.applied_hash == compiled.policy_hash
+    ):
+        result["skipped"] = True
+        return result
+
     payload = await ai_key_service.build_object_permission(
         session, compiled.server_ids, compiled.tool_permissions
     )
