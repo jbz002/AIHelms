@@ -41,6 +41,7 @@ R_MACHINE_SELF = "machine_self_no_grant"
 R_MACHINE_NOT_ALLOWED = "machine_delegation_disabled"
 R_DELEGATION_MISSING = "delegation_missing"
 R_DELEGATION_EXPIRED = "delegation_expired"
+R_DELEGATION_REVOKED = "delegation_revoked"
 
 ACTOR_HUMAN = "human"
 ACTOR_SERVICE = "service"
@@ -204,18 +205,20 @@ async def _decide(
         if not await service_account_service.delegation_allows(
             session, actor_service_account_id, subject_id, server.id, tool_name
         ):
-            expired = await service_account_repo.find_any_delegation(
+            stale = await service_account_repo.find_any_delegation(
                 session,
                 actor_service_account_id,
                 subject_id,
                 server_id=server.id,
                 tool_name=tool_name,
             )
-            return deny(
-                R_DELEGATION_EXPIRED if expired else R_DELEGATION_MISSING,
-                server_id=server.id,
-                tool_key=tool_key,
-            )
+            if stale is None:
+                reason = R_DELEGATION_MISSING
+            elif stale.revoked_at is not None:
+                reason = R_DELEGATION_REVOKED
+            else:
+                reason = R_DELEGATION_EXPIRED
+            return deny(reason, server_id=server.id, tool_key=tool_key)
 
     reason = R_PUBLIC_SERVER if server.is_public else R_GRANTED
     return Decision(

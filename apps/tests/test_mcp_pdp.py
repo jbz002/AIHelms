@@ -62,7 +62,11 @@ def _env(
         return machine_ok
 
     async def any_delegation(session, sa_id, user_id, *, server_id, tool_name):
-        return SimpleNamespace(id=1) if has_expired else None
+        if not has_expired:
+            return None
+        if has_expired == "revoked":
+            return SimpleNamespace(id=1, revoked_at=object())
+        return SimpleNamespace(id=1, revoked_at=None)
 
     async def policy_version(session):
         return 11
@@ -169,6 +173,10 @@ async def test_machine_delegation_reasons(monkeypatch):
     )
     d = await _decide(monkeypatch, actor_kind="service", actor_service_account_id=5)
     assert d.reason_code == mcp_pdp.R_DELEGATION_EXPIRED
+
+    _env(monkeypatch, server=server, authorized=(2,), machine_ok=False, has_expired="revoked")
+    d = await _decide(monkeypatch, actor_kind="service", actor_service_account_id=5)
+    assert d.reason_code == mcp_pdp.R_DELEGATION_REVOKED
 
     # 服务账号身份缺失（actor=service 但没带 sa_id）
     _env(monkeypatch, server=server, authorized=(2,))
