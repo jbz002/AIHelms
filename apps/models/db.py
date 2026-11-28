@@ -2016,3 +2016,24 @@ class AuthzDecisionLog(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+class CredentialExchangeLog(Base):
+    """Token Broker 换票审计：只记主体/目标/结果码，**不记票**。"""
+
+    __tablename__ = "credential_exchange_logs"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    subject_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    subject_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    actor_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    target: Mapped[str] = mapped_column(String(64), nullable=False)
+    provider: Mapped[str] = mapped_column(String(32), nullable=False)
+    result: Mapped[str] = mapped_column(String(10), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    cached: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    expires_in: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

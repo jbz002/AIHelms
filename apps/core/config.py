@@ -62,6 +62,20 @@ class Settings(BaseSettings):
     # 部门读取接口不限绑定 app_code，可与 ai-assistant 等其他子应用共用一把 key
     ai_hub_app_key: str = ""
 
+    # P2-F4 Token Broker：把「钉钉身份 → 全域委托票」的换票从 ai-assistant 收归到这里。
+    # 凭据提供方是抽象接口（CredentialProvider），首个实现 quanyu。
+    mcp_credential_broker_enabled: bool = False
+    quanyu_auth_url: str = ""  # 全域认证中心（.../aiIdentity/exchange 所在服务）
+    quanyu_app_id: str = ""  # 本应用在全域注册的 appId
+    quanyu_app_secret: str = ""  # 与密钥同级保管：只进请求体，绝不落日志
+    quanyu_target_app_id: str = ""  # 单目标形态（target_app_ids 为空时使用）
+    # "server_name:appId,..." 按 MCP server 分目标；配置后按白名单严格匹配，
+    # 未命中的 server 视为 target_unknown（docs 检索这类不需要全域身份）
+    quanyu_target_app_ids: str = ""
+    quanyu_bind_url: str = ""  # 未绑定全域账号时给用户看的扫码地址
+    quanyu_timeout_seconds: float = 5.0
+    quanyu_token_refresh_margin_seconds: int = 60  # 缓存 TTL = expires_in − margin
+
     # 成本计算
     usd_to_cny_rate: float = 7.0  # LiteLLM spend(美元) → 人民币汇率
 
