@@ -13,8 +13,13 @@ export interface McpGrant {
   effect: GrantEffect
   expires_at: string | null
   granted_by: number | null
+  /** 授予人姓名（后端按 id 批量解析；脚本写入时为空） */
+  granted_by_name?: string | null
   reason: string | null
   revoked_at: string | null
+  revoked_by: number | null
+  /** 撤销人姓名 */
+  revoked_by_name?: string | null
   created_at: string | null
 }
 

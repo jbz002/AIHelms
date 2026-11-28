@@ -70,28 +70,64 @@ async def test_create_mcp_server_allow_all_keys_follows_flag(monkeypatch):
 
 
 def _server(**kw):
-    base = dict(is_public=False, sync_to_litellm=True, public_reason=None)
+    base = dict(id=None, is_public=False, sync_to_litellm=True, public_reason=None)
     base.update(kw)
     return SimpleNamespace(**base)
 
 
-def test_public_flag_requires_reason():
+@pytest.mark.asyncio
+async def test_public_flag_requires_reason():
     with pytest.raises(ValidationError):
-        mcp_service._validate_public_flag(_server(is_public=True))
+        await mcp_service._validate_public_flag(None, _server(is_public=True))
 
 
-def test_public_flag_rejects_catalog_only():
+@pytest.mark.asyncio
+async def test_public_flag_rejects_catalog_only():
     with pytest.raises(ValidationError):
-        mcp_service._validate_public_flag(
-            _server(is_public=True, public_reason="理由", sync_to_litellm=False)
+        await mcp_service._validate_public_flag(
+            None, _server(is_public=True, public_reason="理由", sync_to_litellm=False)
         )
 
 
-def test_public_flag_accepts_reasoned_gateway_server():
-    mcp_service._validate_public_flag(
-        _server(is_public=True, public_reason="只读文档检索")
+@pytest.mark.asyncio
+async def test_public_flag_accepts_reasoned_gateway_server():
+    await mcp_service._validate_public_flag(
+        None, _server(is_public=True, public_reason="只读文档检索")
     )
-    mcp_service._validate_public_flag(_server(is_public=False))
+    await mcp_service._validate_public_flag(None, _server(is_public=False))
+
+
+@pytest.mark.asyncio
+async def test_public_flag_rejects_non_readonly_tools(monkeypatch):
+    """公共 server 对所有 Key 无条件放行，写工具公共化等于绕过授权矩阵。"""
+
+    async def fake_tools(session, server_id):
+        return [
+            SimpleNamespace(tool_name="search", risk_level="read"),
+            SimpleNamespace(tool_name="refund", risk_level="write"),
+            SimpleNamespace(tool_name="drop_all", risk_level="destructive"),
+        ]
+
+    monkeypatch.setattr(mcp_service.mcp_repo, "find_tools_by_server", fake_tools)
+    with pytest.raises(ValidationError) as ei:
+        await mcp_service._validate_public_flag(
+            None, _server(id=7, is_public=True, public_reason="理由")
+        )
+    assert "refund" in str(ei.value) and "drop_all" in str(ei.value)
+
+
+@pytest.mark.asyncio
+async def test_public_flag_accepts_all_readonly_tools(monkeypatch):
+    async def fake_tools(session, server_id):
+        return [
+            SimpleNamespace(tool_name="search", risk_level="read"),
+            SimpleNamespace(tool_name="legacy", risk_level=None),
+        ]
+
+    monkeypatch.setattr(mcp_service.mcp_repo, "find_tools_by_server", fake_tools)
+    await mcp_service._validate_public_flag(
+        None, _server(id=7, is_public=True, public_reason="理由")
+    )
 
 
 @pytest.mark.asyncio

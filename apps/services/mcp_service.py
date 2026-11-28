@@ -182,7 +182,7 @@ async def create_server(
         is_public=is_public,
         public_reason=(public_reason or None),
     )
-    _validate_public_flag(server)
+    await _validate_public_flag(session, server)
     server = await mcp_repo.create_server(session, server)
     await session.flush()
 
@@ -240,12 +240,13 @@ async def create_server(
     return _serialize_server(server)
 
 
-def _validate_public_flag(server: McpServer) -> None:
+async def _validate_public_flag(session: AsyncSession, server: McpServer) -> None:
     """公共授权（is_public）的形态校验。
 
     - 只有进网关的 server 才有公共授权语义（目录登记型的调用面在消费端，按人 OAuth）；
-    - 置 TRUE 必须填理由，进策略变更审计。
-    工具级只读校验依赖 mcp_tools.risk_level，P1 授权中心落地后补（P0 无该元数据）。
+    - 置 TRUE 必须填理由，进策略变更审计；
+    - 置 TRUE 要求**全部在册工具只读**（risk_level=read）——公共 server 对所有 Key
+      无条件放行，写/敏感/破坏性工具一旦公共就等于绕过了授权矩阵。
     """
     if not server.is_public:
         return
@@ -255,6 +256,16 @@ def _validate_public_flag(server: McpServer) -> None:
         )
     if not (server.public_reason or "").strip():
         raise ValidationError("公共授权必须填写理由（public_reason）")
+    if not server.id:
+        return
+    tools = await mcp_repo.find_tools_by_server(session, server.id)
+    risky = sorted(t.tool_name for t in tools if (t.risk_level or "read") != "read")
+    if risky:
+        shown = "、".join(risky[:5]) + ("…" if len(risky) > 5 else "")
+        raise ValidationError(
+            f"公共授权要求全部工具只读，以下工具不是只读：{shown}"
+            f"（共 {len(risky)} 个）。请先把它们改为只读，或关闭公共授权改用授权矩阵"
+        )
 
 
 async def _validate_department_visibility(
@@ -383,7 +394,7 @@ async def update_server(
     await _validate_department_visibility(
         session, server.visibility_type, server.visible_department_id
     )
-    _validate_public_flag(server)
+    await _validate_public_flag(session, server)
 
     # 发布门控：False→True 变更且门控开启时，转提交申请，保持未发布。
     # admin 豁免：管理员的发布动作直接生效（同 skill，9a6b523）

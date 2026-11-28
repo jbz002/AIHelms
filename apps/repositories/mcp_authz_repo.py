@@ -101,8 +101,11 @@ async def create_grant(session: AsyncSession, grant: McpGrant) -> McpGrant:
     return grant
 
 
-async def revoke_grant(session: AsyncSession, grant: McpGrant) -> None:
+async def revoke_grant(
+    session: AsyncSession, grant: McpGrant, revoked_by: int | None = None
+) -> None:
     grant.revoked_at = _now()
+    grant.revoked_by = revoked_by
     await session.flush()
 
 

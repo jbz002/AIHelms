@@ -47,6 +47,7 @@ const userOptions = ref<User[]>([])
 const userKeyword = ref('')
 
 const subjectFilter = ref<GrantSubjectType | ''>('')
+const includeRevoked = ref(false)
 
 const grantDialog = ref(false)
 const grantForm = ref({
@@ -118,6 +119,15 @@ function subjectLabel(grant: McpGrant): string {
   return `用户：${userMap.value.get(id) ?? `#${id}`}`
 }
 
+function operatorLabel(grant: McpGrant): string {
+  const name = grant.revoked_at ? grant.revoked_by_name : grant.granted_by_name
+  const id = grant.revoked_at ? grant.revoked_by : grant.granted_by
+  const action = grant.revoked_at ? '撤销' : '授予'
+  if (name) return `${action}：${name}`
+  if (id) return `${action}：#${id}`
+  return `${action}：脚本`
+}
+
 function targetLabel(grant: McpGrant): string {
   if (grant.target_type === 'toolset') {
     return `工具束：${toolsetName.value.get(grant.target_id) ?? `#${grant.target_id}`}`
@@ -130,7 +140,7 @@ async function loadAll(): Promise<void> {
   try {
     const [serverPage, grantRes, toolsetRes, roleList, deptList] = await Promise.all([
       getMcpServers(1, 200),
-      listMcpGrants(),
+      listMcpGrants({ include_revoked: includeRevoked.value }),
       listMcpToolsets(),
       getRoles(),
       getAllDepartments(),
@@ -429,6 +439,15 @@ onMounted(loadAll)
           <option value="dept">部门</option>
           <option value="user">用户</option>
         </select>
+        <label class="ml-2 flex cursor-pointer items-center gap-1.5 text-xs text-slate-500">
+          <input
+            v-model="includeRevoked"
+            type="checkbox"
+            class="rounded border-slate-300"
+            @change="loadAll"
+          />
+          显示已撤销（审计记录）
+        </label>
       </div>
 
       <div v-if="filteredGrants.length === 0" class="rounded-xl border border-dashed border-slate-200 py-12 text-center text-sm text-slate-500">
@@ -442,6 +461,7 @@ onMounted(loadAll)
               <th class="px-4 py-2.5 font-medium">主体</th>
               <th class="px-4 py-2.5 font-medium">目标</th>
               <th class="px-4 py-2.5 font-medium">效果</th>
+              <th class="px-4 py-2.5 font-medium">操作人</th>
               <th class="px-4 py-2.5 font-medium">理由</th>
               <th class="px-4 py-2.5 font-medium">过期</th>
               <th class="px-4 py-2.5 font-medium">创建时间</th>
@@ -449,7 +469,12 @@ onMounted(loadAll)
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100">
-            <tr v-for="grant in filteredGrants" :key="grant.id" class="hover:bg-slate-50/60">
+            <tr
+              v-for="grant in filteredGrants"
+              :key="grant.id"
+              class="hover:bg-slate-50/60"
+              :class="grant.revoked_at ? 'text-slate-400' : ''"
+            >
               <td class="px-4 py-2.5 text-slate-800">{{ subjectLabel(grant) }}</td>
               <td class="px-4 py-2.5 font-mono text-xs text-slate-700">{{ targetLabel(grant) }}</td>
               <td class="px-4 py-2.5">
@@ -459,7 +484,14 @@ onMounted(loadAll)
                 >
                   {{ grant.effect === 'deny' ? '拒绝' : '允许' }}
                 </span>
+                <span
+                  v-if="grant.revoked_at"
+                  class="ml-1 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] text-slate-500"
+                >
+                  已撤销
+                </span>
               </td>
+              <td class="px-4 py-2.5 text-xs text-slate-500">{{ operatorLabel(grant) }}</td>
               <td class="max-w-[16rem] truncate px-4 py-2.5 text-xs text-slate-500" :title="grant.reason || ''">
                 {{ grant.reason || '—' }}
               </td>
@@ -467,7 +499,7 @@ onMounted(loadAll)
               <td class="px-4 py-2.5 text-xs text-slate-500">{{ grant.created_at ? grant.created_at.slice(0, 16).replace('T', ' ') : '—' }}</td>
               <td class="px-4 py-2.5 text-right">
                 <button
-                  v-if="canEdit"
+                  v-if="canEdit && !grant.revoked_at"
                   class="rounded p-1 text-slate-400 hover:bg-red-50 hover:text-red-600"
                   title="撤销授权"
                   @click="askRevoke(grant)"

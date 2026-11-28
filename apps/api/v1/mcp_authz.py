@@ -9,6 +9,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
@@ -56,7 +57,25 @@ class ToolMetadataRequest(BaseModel):
     review_status: str | None = Field(None, pattern="^(pending|approved|rejected)$")
 
 
-def _serialize_grant(grant: McpGrant) -> dict:
+async def _operator_names(
+    session: AsyncSession, grants: list[McpGrant]
+) -> dict[int, str]:
+    """一次查出本页涉及的授予人/撤销人姓名，供审计列展示。"""
+    ids = {g.granted_by for g in grants if g.granted_by} | {
+        g.revoked_by for g in grants if g.revoked_by
+    }
+    if not ids:
+        return {}
+    rows = (
+        await session.execute(
+            select(User.id, User.display_name, User.username).where(User.id.in_(ids))
+        )
+    ).all()
+    return {row[0]: (row[1] or row[2] or str(row[0])) for row in rows}
+
+
+def _serialize_grant(grant: McpGrant, operators: dict[int, str] | None = None) -> dict:
+    operators = operators or {}
     return {
         "id": grant.id,
         "subject_type": grant.subject_type,
@@ -66,8 +85,11 @@ def _serialize_grant(grant: McpGrant) -> dict:
         "effect": grant.effect,
         "expires_at": grant.expires_at.isoformat() if grant.expires_at else None,
         "granted_by": grant.granted_by,
+        "granted_by_name": operators.get(grant.granted_by) if grant.granted_by else None,
         "reason": grant.reason,
         "revoked_at": grant.revoked_at.isoformat() if grant.revoked_at else None,
+        "revoked_by": grant.revoked_by,
+        "revoked_by_name": operators.get(grant.revoked_by) if grant.revoked_by else None,
         "created_at": grant.created_at.isoformat() if grant.created_at else None,
     }
 
@@ -149,7 +171,9 @@ async def list_grants(
         target_id=target_id,
         include_revoked=include_revoked,
     )
-    return {"code": 200, "data": {"items": [_serialize_grant(g) for g in grants]}}
+    operators = await _operator_names(session, grants)
+    items = [_serialize_grant(g, operators) for g in grants]
+    return {"code": 200, "data": {"items": items}}
 
 
 @router.post("/grants", summary="新增授权")
@@ -213,10 +237,10 @@ async def revoke_grant(
         raise HTTPException(status_code=404, detail="授权记录不存在")
     if grant.revoked_at is not None:
         return {"code": 200, "message": "该授权已撤销", "data": None}
-    await mcp_authz_repo.revoke_grant(session, grant)
+    await mcp_authz_repo.revoke_grant(session, grant, revoked_by=current_user["id"])
     summary = (
         f"撤销授权 {grant.subject_type}:{grant.subject_id} -> "
-        f"{grant.target_type}:{grant.target_id}"
+        f"{grant.target_type}:{grant.target_id}（{grant.effect}）"
     )
     result = await _after_grant_change(
         session, grant.subject_type, grant.subject_id, current_user, summary
@@ -352,6 +376,20 @@ async def update_tool_metadata(
     if "review_status" in changes:
         tool.reviewed_by = current_user["id"]
         tool.reviewed_at = datetime.now()
+
+    # 公共 server 对所有 Key 无条件放行：把其中任一工具标成非只读等于绕过授权矩阵
+    if (tool.risk_level or "read") != "read":
+        server = await mcp_repo.find_server_by_id(session, server_id)
+        if server is not None and server.is_public:
+            await session.rollback()
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"该 Server 已开启公共授权（全员可用），工具「{tool.tool_name}」"
+                    "不能标记为非只读。请先关闭公共授权，改用授权矩阵按人/角色授权"
+                ),
+            )
+
     await session.flush()
 
     sync = {"mode": "skipped", "reason": "元数据未变化"}
