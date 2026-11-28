@@ -195,6 +195,14 @@ def _patch_key_env(
     monkeypatch.setattr(
         ai_key_service.litellm_client, "create_key", fake_litellm_create_key
     )
+
+    async def fake_object_permission(session, mcp_ids, mcp_tools=None):
+        # 本文件只测预算/限流默认值，MCP 授权载荷与断言无关（P0 起建 Key 会算它）
+        return {"mcp_servers": []}
+
+    monkeypatch.setattr(
+        ai_key_service, "build_object_permission", fake_object_permission
+    )
     return created
 
 

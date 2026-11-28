@@ -272,7 +272,23 @@ async def _validate_department_visibility(
 
 
 async def _sync_mcp_visibility(session: AsyncSession, server: McpServer) -> None:
-    """按可见性同步 MCP 到主 Key：all 广播全体；department 仅部门成员；其余移除。"""
+    """按可见性同步 MCP 到主 Key：all 广播全体；department 仅部门成员；其余移除。
+
+    授权中心（P1）开启后，这里不再直接改 key.mcps：发布/下线只触发全量重编译，
+    新发布的 server 默认无人可用，直到被显式授权（E6「注册 ≠ 授权」）。
+    """
+    from core.config import settings
+
+    if settings.mcp_authz_compile_enabled:
+        from services import mcp_authz_service
+
+        await mcp_authz_service.sync_all_keys(
+            session,
+            push=True,
+            summary=f"MCP Server {server.server_name} 可见性/发布状态变更",
+        )
+        return
+
     from services import ai_key_service
 
     if server.is_published and not server.requires_approval:
@@ -602,6 +618,20 @@ def _serialize_version(v: McpServerVersion) -> dict:
 # ─── MCP Tools ───────────────────────────────────────────────────────────────
 
 
+def _tool_schema_hash(tool_data: dict) -> str:
+    """工具定义摘要：名称 + 描述 + 入参 schema（决定工具语义的最小集）。"""
+    import hashlib
+    import json
+
+    payload = {
+        "name": tool_data.get("name", ""),
+        "description": tool_data.get("description", ""),
+        "inputSchema": tool_data.get("inputSchema", tool_data.get("input_schema", {})),
+    }
+    canonical = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
 async def refresh_tools(session: AsyncSession, server_id: int) -> list[dict]:
     server = await mcp_repo.find_server_by_id(session, server_id)
     if not server:
@@ -627,16 +657,9 @@ async def refresh_tools(session: AsyncSession, server_id: int) -> list[dict]:
         logger.error("failed to fetch tools from mcp server: %s", str(e))
         raise ValidationError(f"无法从 MCP Server 获取工具列表: {e}")
 
-    # 保留已有 tool 的计费信息
-    existing_tools = await mcp_repo.find_tools_by_server(session, server_id)
-    billing_map = {
-        t.tool_name: {
-            "billing_type": t.billing_type,
-            "internal_cost_per_call": t.internal_cost_per_call,
-            "external_cost_per_call": t.external_cost_per_call,
-        }
-        for t in existing_tools
-        if t.billing_type or t.internal_cost_per_call or t.external_cost_per_call
+    # 保留已有 tool 的计费与授权元数据（刷新是「整表重建」，不保留就会丢）
+    existing_tools = {
+        t.tool_name: t for t in await mcp_repo.find_tools_by_server(session, server_id)
     }
 
     await mcp_repo.delete_tools_by_server(session, server_id)
@@ -645,7 +668,14 @@ async def refresh_tools(session: AsyncSession, server_id: int) -> list[dict]:
     for tool_data in remote_tools:
         tool_name = tool_data.get("name", "")
         namespaced = f"{server.server_name}_{tool_name}"
-        billing = billing_map.get(tool_name, {})
+        previous = existing_tools.get(tool_name)
+        schema_hash = _tool_schema_hash(tool_data)
+        # 定义变了 → 回到待审核（可能被换成写工具/换了参数语义）；新工具沿用默认已审
+        schema_changed = bool(
+            previous is not None
+            and previous.schema_hash
+            and previous.schema_hash != schema_hash
+        )
         tool = McpTool(
             server_id=server_id,
             tool_name=tool_name,
@@ -655,9 +685,29 @@ async def refresh_tools(session: AsyncSession, server_id: int) -> list[dict]:
             input_schema=tool_data.get(
                 "inputSchema", tool_data.get("input_schema", {})
             ),
-            billing_type=billing.get("billing_type"),
-            internal_cost_per_call=billing.get("internal_cost_per_call"),
-            external_cost_per_call=billing.get("external_cost_per_call"),
+            billing_type=previous.billing_type if previous else None,
+            internal_cost_per_call=(
+                previous.internal_cost_per_call if previous else None
+            ),
+            external_cost_per_call=(
+                previous.external_cost_per_call if previous else None
+            ),
+            # ── P1 授权中心：稳定键与元数据随刷新保留 ──
+            tool_key=f"{server.server_name}.{tool_name}",
+            risk_level=previous.risk_level if previous else "read",
+            data_classification=(
+                previous.data_classification if previous else "internal"
+            ),
+            permission_key=previous.permission_key if previous else None,
+            fields_allowlist=previous.fields_allowlist if previous else None,
+            output_schema=previous.output_schema if previous else None,
+            annotations=tool_data.get("annotations"),
+            schema_hash=schema_hash,
+            review_status=(
+                "pending"
+                if schema_changed
+                else (previous.review_status if previous else "approved")
+            ),
         )
         new_tools.append(tool)
 
@@ -665,7 +715,25 @@ async def refresh_tools(session: AsyncSession, server_id: int) -> list[dict]:
         await mcp_repo.bulk_create_tools(session, new_tools)
     await session.commit()
 
+    await _recompile_if_authz_enabled(
+        session, f"MCP Server {server.server_name} 工具清单刷新"
+    )
     return [_serialize_tool(t) for t in new_tools]
+
+
+async def _recompile_if_authz_enabled(session: AsyncSession, summary: str) -> None:
+    """授权中心开启时，工具清单/元数据变化要重编译（工具限制与审核状态相关）。"""
+    from core.config import settings
+
+    if not settings.mcp_authz_compile_enabled:
+        return
+    from services import mcp_authz_service
+
+    try:
+        await mcp_authz_service.sync_all_keys(session, push=True, summary=summary)
+        await session.commit()
+    except Exception:  # noqa: BLE001
+        logger.warning("mcp authz recompile failed: %s", summary, exc_info=True)
 
 
 async def get_tools(session: AsyncSession, server_id: int) -> list[dict]:
@@ -942,6 +1010,18 @@ def _serialize_tool(tool: McpTool) -> dict:
             else None
         ),
         "is_active": tool.is_active,
+        # ── P1 授权中心：工具成为可授权资源 ──
+        "tool_key": tool.tool_key,
+        "risk_level": tool.risk_level,
+        "data_classification": tool.data_classification,
+        "permission_key": tool.permission_key,
+        "annotations": tool.annotations,
+        "output_schema": tool.output_schema,
+        "fields_allowlist": tool.fields_allowlist,
+        "schema_hash": tool.schema_hash,
+        "review_status": tool.review_status,
+        "reviewed_by": tool.reviewed_by,
+        "reviewed_at": (fmt_local_time(tool.reviewed_at) if tool.reviewed_at else None),
     }
 
 

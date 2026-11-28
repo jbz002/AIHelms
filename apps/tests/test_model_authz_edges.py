@@ -86,6 +86,11 @@ async def test_disabled_user_created_with_disabled_deny_all_key(monkeypatch):
     monkeypatch.setattr(ai_key_repo, "create", create)
     remote = AsyncMock(return_value={"key": "sk-synthetic"})
     monkeypatch.setattr(ai_key_service.litellm_client, "create_key", remote)
+    monkeypatch.setattr(
+        ai_key_service,
+        "build_object_permission",
+        AsyncMock(return_value={"mcp_servers": []}),
+    )
     key = await ai_key_service.create_personal_main_key(AsyncMock(), 1, "test-user")
     assert key.is_active is False
     assert key.models == []

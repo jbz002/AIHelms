@@ -31,6 +31,10 @@ class Settings(BaseSettings):
     # env 仅作 bootstrap；运行时被 platform_settings 单例覆盖。
     # 见 services/platform_settings_service.py。
     platform_default_model_id: int | None = None
+    # MCP 授权中心（P1）编译器开关：关闭时授权变更只记策略版本、不下发（观察模式）；
+    # 打开后 mcp_grants 变更即重编译受影响 key 并下发网关。
+    mcp_authz_compile_enabled: bool = False
+
     # 对外暴露给用户客户端的 LiteLLM 地址
     # （自动由 NGINX_SERVER_NAME + LITELLM_PORT 拼接）
     litellm_public_url: str = ""

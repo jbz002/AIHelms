@@ -199,11 +199,36 @@ async def create_key(
 
     await session.commit()
     await session.refresh(ai_key)
+    await _apply_authz_compile(session, ai_key)
+    await session.commit()
 
     data = _serialize_key(ai_key)
     # Return full key value only on creation
     data["key_value"] = result.get("key") if ai_key.litellm_key_id else None
     return data
+
+
+async def _apply_authz_compile(session: AsyncSession, key) -> None:
+    """授权中心开启时，新建的 key 直接按 grants 编译（而不是按公共资源列表）。
+
+    失败不影响建 Key（登录关键路径）——记录告警，下一轮对账会补齐。
+    """
+    from core.config import settings
+
+    if not settings.mcp_authz_compile_enabled:
+        return
+    if key.key_type not in ("personal_main", "dept_main", "project_main"):
+        return
+    if not key.litellm_key_id:
+        return
+    from services import mcp_authz_service
+
+    try:
+        await mcp_authz_service.sync_key(session, key)
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "mcp authz compile on key create failed: key=%s", key.id, exc_info=True
+        )
 
 
 async def update_key(
@@ -401,7 +426,11 @@ async def _resolve_mcp_server_names(
     return names
 
 
-async def build_object_permission(session: AsyncSession, mcp_ids: list[int]) -> dict:
+async def build_object_permission(
+    session: AsyncSession,
+    mcp_ids: list[int],
+    mcp_tools: dict | None = None,
+) -> dict:
     """key 的网关 MCP 授权载荷：显式授权 ∪ 全部公共 server。
 
     公共 server（is_public=TRUE → LiteLLM allow_all_keys）本身对所有 key 可见
@@ -411,7 +440,19 @@ async def build_object_permission(session: AsyncSession, mcp_ids: list[int]) -> 
     """
     explicit = await _resolve_mcp_server_names(session, mcp_ids or [])
     public = await mcp_repo.find_public_server_names(session)
-    return {"mcp_servers": _dedupe_preserve_order([*explicit, *public])}
+    servers = _dedupe_preserve_order([*explicit, *public])
+    payload: dict = {"mcp_servers": servers}
+    if mcp_tools:
+        # 工具级限制（P1 编译产物）：裸名，且只对本次下发的 server 生效。
+        # 缺省的 server = 该 server 不做工具级限制；显式空列表 = 全拒。
+        per_server = {
+            name: sorted(set(mcp_tools[name]))
+            for name in servers
+            if isinstance(mcp_tools.get(name), list) and mcp_tools[name]
+        }
+        if per_server:
+            payload["mcp_tool_permissions"] = per_server
+    return payload
 
 
 async def _expand_models_with_anthropic(
@@ -482,7 +523,9 @@ async def _sync_key_to_litellm(
     # Resolve MCP permission payload from IDs
     object_permission: dict | None = None
     if mcps_changed and session:
-        object_permission = await build_object_permission(session, key.mcps or [])
+        object_permission = await build_object_permission(
+            session, key.mcps or [], getattr(key, "mcp_tools", None)
+        )
 
     if models_changed or mcps_changed or rate_limits_changed:
         metadata = None
@@ -757,6 +800,7 @@ async def create_personal_main_key(
     )
     ai_key.litellm_key_id = result.get("key")
     ai_key.litellm_key_alias = key_alias
+    await _apply_authz_compile(session, ai_key)
 
     return ai_key
 

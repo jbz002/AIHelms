@@ -44,6 +44,37 @@ def health_check_all_servers():
     _run_async(_health_check_all())
 
 
+@celery_app.task(name="mcp.reconcile_authz")
+def reconcile_mcp_authz():
+    """每日对账：AIHelms 期望 vs LiteLLM 现状，有漂移只告警不自动改。
+
+    自动改会把「有人在 LiteLLM 侧临时放开」也一并抹掉，留人工确认；
+    需要立即纠正时用 POST /api/v1/mcp/reconcile {mode: apply} 或脚本 --apply。
+    """
+    _run_async(_reconcile_authz())
+
+
+async def _reconcile_authz():
+    from services import mcp_authz_service
+
+    try:
+        async with get_worker_session_factory()() as session:
+            result = await mcp_authz_service.reconcile_all(session, apply=False)
+            await session.rollback()
+            if result["drift"] or result["errors"]:
+                logger.warning(
+                    "mcp authz drift: keys=%d drift=%d errors=%d items=%s",
+                    result["keys"],
+                    result["drift"],
+                    result["errors"],
+                    result["items"][:5],
+                )
+            else:
+                logger.info("mcp authz reconcile clean: keys=%d", result["keys"])
+    except Exception as e:  # noqa: BLE001
+        logger.error("mcp authz reconcile failed: %s", str(e), exc_info=True)
+
+
 async def _sync_call_logs():
     try:
         from sqlalchemy import text
@@ -339,5 +370,9 @@ celery_app.conf.beat_schedule = {
     "mcp-health-check-all": {
         "task": "mcp.health_check_all",
         "schedule": 600.0,
+    },
+    "mcp-reconcile-authz": {
+        "task": "mcp.reconcile_authz",
+        "schedule": 86400.0,
     },
 }

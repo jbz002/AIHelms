@@ -257,6 +257,13 @@ class AiKey(Base):
     token_hash: Mapped[str] = mapped_column(String(64), default="")
     token_prefix: Mapped[str] = mapped_column(String(16), default="")
     scope_json: Mapped[list] = mapped_column(JSONB, default=list)
+    # ── P1 授权中心：编译产物（事实源是 mcp_grants，这里是物化结果）──
+    # mcp_tools: {server_name: [tool_name, ...]}；缺该 server = 不做工具级限制
+    mcp_tools: Mapped[dict] = mapped_column(JSONB, default=dict)
+    # mcp_toolsets: [toolset_name, ...]（审计/UI 用，下发仍走 mcp_tools）
+    mcp_toolsets: Mapped[list] = mapped_column(JSONB, default=list)
+    # 最近一次编译输入的摘要，用于幂等
+    mcp_policy_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class Provider(Base):
@@ -649,6 +656,24 @@ class McpTool(Base):
         Numeric(10, 6), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # ── P1 授权中心：工具成为可授权资源 ──
+    # tool_key 是跨版本稳定的键（server_name.tool_name），授权矩阵与审计都引用它。
+    tool_key: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # read / write / sensitive / destructive —— is_public 的硬校验依赖它
+    risk_level: Mapped[str] = mapped_column(String(16), default="read")
+    data_classification: Mapped[str] = mapped_column(String(16), default="internal")
+    # 申报的业务权限键（仅登记，网关不解释）
+    permission_key: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    annotations: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    output_schema: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    fields_allowlist: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # 工具定义摘要：刷新工具清单时变化 → 回到 pending（重审）
+    schema_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    review_status: Mapped[str] = mapped_column(String(16), default="approved")
+    reviewed_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         server_default=func.now(), onupdate=func.now()
@@ -1808,5 +1833,91 @@ class PlatformSettings(Base):
         BigInteger, ForeignKey("aihelms.users.id", ondelete="SET NULL"), nullable=True
     )
     updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+# ─── P1 授权中心 ─────────────────────────────────────────────────────────────
+
+
+class McpGrant(Base):
+    """授权矩阵：主体（人/部门/角色/公共）× 目标（server/toolset）× effect。"""
+
+    __tablename__ = "mcp_grants"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    subject_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    subject_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    target_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    target_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    effect: Mapped[str] = mapped_column(String(10), default="allow")
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    granted_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class McpToolset(Base):
+    """跨 server 的工具束（如「采购只读」「仓库只读」）。"""
+
+    __tablename__ = "mcp_toolsets"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+    items: Mapped[list] = mapped_column(JSONB, default=list)
+    created_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.now(), onupdate=func.now()
+    )
+
+
+class McpSyncState(Base):
+    """每把 key 的编译/下发状态：幂等判断 + 漂移可见。"""
+
+    __tablename__ = "mcp_sync_state"
+    __table_args__ = {"schema": "aihelms"}
+
+    ai_key_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("aihelms.ai_keys.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    input_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    applied_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending")
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    synced_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class McpPolicyVersion(Base):
+    """策略版本：每次授权变更递增，供决策日志与缓存失效比对。"""
+
+    __tablename__ = "mcp_policy_versions"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    version: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    changed_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    change_summary: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
