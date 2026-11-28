@@ -39,6 +39,9 @@ const form = ref({
   external_cost_per_call: 0,
   icon_url: '/icons/v1/default.svg',
   documentation_url: '',
+  // P1：网关公共开关（仅进网关的 server 有意义；置 true 必须填理由）
+  is_public: false,
+  public_reason: '',
 })
 
 const error = ref('')
@@ -87,6 +90,8 @@ watch(
           external_cost_per_call: s.external_cost_per_call,
           icon_url: s.icon_url,
           documentation_url: s.documentation_url,
+          is_public: Boolean(s.is_public),
+          public_reason: s.public_reason ?? '',
         }
       } else {
         form.value = {
@@ -105,6 +110,8 @@ watch(
           external_cost_per_call: 0,
           icon_url: '/icons/v1/default.svg',
           documentation_url: '',
+          is_public: false,
+          public_reason: '',
         }
       }
     }
@@ -124,6 +131,10 @@ async function handleSubmit(): Promise<void> {
   }
   if (form.value.server_name.includes('-')) {
     error.value = '唯一标识不能包含横杠（-），请使用下划线（_）替代'
+    return
+  }
+  if (form.value.is_public && !form.value.public_reason.trim()) {
+    error.value = '公共授权必须填写理由（进策略变更审计）'
     return
   }
   saving.value = true
@@ -148,6 +159,8 @@ async function handleSubmit(): Promise<void> {
       external_cost_per_call: Number(form.value.external_cost_per_call),
       icon_url: form.value.icon_url,
       documentation_url: form.value.documentation_url,
+      is_public: form.value.is_public,
+      public_reason: form.value.is_public ? form.value.public_reason.trim() : null,
     }
     if (props.editing) {
       await updateMcpServer(props.editing.id, payload)
@@ -316,6 +329,21 @@ async function handleSubmit(): Promise<void> {
             v-model="form.instructions"
             rows="3"
             class="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
+          />
+        </div>
+        <div class="col-span-2 rounded-lg border border-slate-200 p-3">
+          <label class="flex items-center gap-2 text-sm font-medium text-slate-700">
+            <input v-model="form.is_public" type="checkbox" class="h-4 w-4 rounded border-slate-300" />
+            网关公共授权（allow_all_keys：所有 Key 无需单独授权即可用）
+          </label>
+          <p class="mt-1 text-[11px] text-slate-400">
+            只适用于只读目录类 server；目录登记型（不进网关）不支持。授权中心开启后，其余 server 一律按授权矩阵编译。
+          </p>
+          <input
+            v-if="form.is_public"
+            v-model="form.public_reason"
+            class="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-purple-500 focus:outline-none"
+            placeholder="公共开放的理由（必填，进策略变更审计）"
           />
         </div>
         <div class="col-span-2 flex items-center gap-2 rounded-lg border border-slate-200 p-3">

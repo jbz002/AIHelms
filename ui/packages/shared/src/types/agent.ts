@@ -64,7 +64,7 @@ export interface CreateAgentParams {
   tags?: string[]
   is_published?: boolean
   visibility_type?: string
-  visible_department_id?: number
+  visible_department_id?: number | null
   requires_approval?: boolean
   status?: string
 }
@@ -85,7 +85,7 @@ export interface UpdateAgentParams {
   is_active?: boolean
   is_published?: boolean
   visibility_type?: string
-  visible_department_id?: number
+  visible_department_id?: number | null
   requires_approval?: boolean
   status?: string
 }

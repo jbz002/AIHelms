@@ -77,6 +77,7 @@ const menuGroups = ref<{ title: string; icon?: Component; items: MenuItem[] }[]>
     items: [
       { label: 'Skill管理', icon: Zap, path: '/skills', permission: 'skill:read' },
       { label: 'MCP管理', icon: Plug, path: '/mcp', permission: 'mcp:read' },
+      { label: 'MCP授权中心', icon: ShieldCheck, path: '/mcp/authz', permission: 'mcp:read' },
       { label: '智能体管理', icon: Bot, path: '/agents', permission: 'agent:read' },
     ],
   },

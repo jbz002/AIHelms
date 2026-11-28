@@ -93,6 +93,12 @@ const router = createRouter({
           meta: { permission: 'mcp:read' },
         },
         {
+          path: 'mcp/authz',
+          name: 'McpAuthz',
+          component: () => import('../views/mcp/McpAuthz.vue'),
+          meta: { permission: 'mcp:read' },
+        },
+        {
           path: 'skills',
           name: 'SkillManage',
           component: () => import('../views/skills/SkillManage.vue'),

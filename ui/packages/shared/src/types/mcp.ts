@@ -50,6 +50,10 @@ export interface McpServer {
   litellm_sync_error: string | null
   /** false = 仅目录登记：市场可见但数据面不经 LiteLLM（按人 OAuth 类） */
   sync_to_litellm: boolean
+  /** true = 网关 allow_all_keys（全员可用），仅限只读目录类 */
+  is_public: boolean
+  /** 置公共的理由（审计） */
+  public_reason: string | null
   current_version_id: number | null
   active_version: McpServerVersion | null
   created_by: number | null
@@ -108,6 +112,18 @@ export interface McpTool {
   internal_cost_per_call: number | null
   external_cost_per_call: number | null
   is_active: boolean
+  // ── P1 授权中心：工具是可授权资源 ──
+  tool_key: string | null
+  risk_level: 'read' | 'write' | 'sensitive' | 'destructive'
+  data_classification: 'public' | 'internal' | 'confidential' | 'secret'
+  permission_key: string | null
+  annotations: Record<string, unknown> | null
+  output_schema: Record<string, unknown> | null
+  fields_allowlist: string[] | null
+  schema_hash: string | null
+  review_status: 'pending' | 'approved' | 'rejected'
+  reviewed_by: number | null
+  reviewed_at: string | null
 }
 
 export interface McpServerListResult {
@@ -145,6 +161,8 @@ export interface CreateMcpServerParams {
   visibility_type?: string
   visible_department_id?: number
   requires_approval?: boolean
+  is_public?: boolean
+  public_reason?: string | null
 }
 
 export interface UpdateMcpServerParams {
@@ -176,10 +194,22 @@ export interface UpdateMcpServerParams {
   visibility_type?: string
   visible_department_id?: number
   requires_approval?: boolean
+  is_public?: boolean
+  public_reason?: string | null
 }
 
 export interface UpdateToolBillingParams {
   billing_type?: string
   internal_cost_per_call?: number
   external_cost_per_call?: number
+}
+
+/** P1 工具授权元数据（风险级 / 数据分级 / 字段白名单 / 审核状态） */
+export interface UpdateToolMetadataParams {
+  risk_level?: 'read' | 'write' | 'sensitive' | 'destructive'
+  data_classification?: 'public' | 'internal' | 'confidential' | 'secret'
+  permission_key?: string | null
+  fields_allowlist?: string[] | null
+  annotations?: Record<string, unknown> | null
+  review_status?: 'pending' | 'approved' | 'rejected'
 }
