@@ -60,6 +60,7 @@ class Decision:
     latency_ms: int = 0
     server_id: int | None = None
     tool_key: str | None = None
+    tool_risk: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -70,6 +71,8 @@ class Decision:
             "decision_id": self.decision_id,
             "cached": self.cached,
             "latency_ms": self.latency_ms,
+            # 供 mcp_proxy 在 PDP 不可用时判断「已知只读 → 放行」
+            "tool_risk": self.tool_risk,
         }
 
 
@@ -151,7 +154,10 @@ async def _decide(
     tool_name: str | None,
     policy_version: int | None,
 ) -> Decision:
+    tool_risk: str | None = None
+
     def deny(reason: str, **kw) -> Decision:
+        kw.setdefault("tool_risk", tool_risk)
         return Decision(
             decision="deny",
             reason_code=reason,
@@ -181,6 +187,8 @@ async def _decide(
             return deny(R_TOOL_NOT_APPROVED, server_id=server.id, tool_key=tool.tool_key)
 
     tool_key = tool.tool_key if tool is not None else None
+    if tool is not None:
+        tool_risk = tool.risk_level or "read"
 
     # 没有数据主体：机器自身（P2 v1 没有服务账号自有授权的模型，一律拒）或匿名人类
     if subject_id is None:
@@ -229,6 +237,7 @@ async def _decide(
         decision_id=str(uuid.uuid4()),
         server_id=server.id,
         tool_key=tool_key,
+        tool_risk=tool_risk,
     )
 
 
