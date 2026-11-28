@@ -53,6 +53,9 @@ class CreateServerRequest(BaseModel):
     requires_approval: bool = False
     # False = 仅目录登记（市场可见），数据面不经 LiteLLM（钉钉 OAuth 类按人授权）
     sync_to_litellm: bool = True
+    # True = 网关 allow_all_keys（全员可用），仅限只读目录类；置 True 必须填理由
+    is_public: bool = False
+    public_reason: str | None = Field(None, max_length=500)
 
 
 class UpdateServerRequest(BaseModel):
@@ -87,6 +90,8 @@ class UpdateServerRequest(BaseModel):
     visible_department_id: int | None = Field(None, ge=0)  # 0 = 清空部门归属
     requires_approval: bool | None = None
     sync_to_litellm: bool | None = None
+    is_public: bool | None = None
+    public_reason: str | None = Field(None, max_length=500)
 
 
 class UpdateToolBillingRequest(BaseModel):
@@ -258,6 +263,8 @@ async def create_server(
             requires_approval=req.requires_approval,
             created_by=current_user["id"],
             sync_to_litellm=req.sync_to_litellm,
+            is_public=req.is_public,
+            public_reason=req.public_reason,
         )
     except ConflictError as e:
         raise HTTPException(status_code=409, detail=str(e))

@@ -181,7 +181,7 @@ async def create_key(
     # 会导致带预算的 key 在一个预算周期后被 LiteLLM 判过期（401 expired_key）
     litellm_models, _ = await _expand_models_with_anthropic(session, models or [], None)
     litellm_models = _to_litellm_models(litellm_models)
-    mcp_server_names = await _resolve_mcp_server_names(session, mcps or [])
+    object_permission = await build_object_permission(session, mcps or [])
     result = await litellm_client.create_key(
         key_alias=key_alias,
         user_id=litellm_user_id,
@@ -189,7 +189,7 @@ async def create_key(
         models=litellm_models,
         metadata=await _build_key_metadata(session, ai_key),
         duration=duration,
-        allowed_mcp_servers=mcp_server_names if mcp_server_names else None,
+        object_permission=object_permission,
         tpm_limit=ai_key.tpm_limit,
         rpm_limit=ai_key.rpm_limit,
         max_parallel_requests=ai_key.max_parallel_requests,
@@ -386,15 +386,32 @@ def _merge_delta(current: list, add: list | None, remove: list | None) -> list:
 async def _resolve_mcp_server_names(
     session: AsyncSession, mcp_ids: list[int]
 ) -> list[str]:
-    """Convert MCP server IDs to server_name list for LiteLLM."""
+    """Convert MCP server IDs to gateway server_name list for LiteLLM.
+
+    目录登记型（sync_to_litellm=False，钉钉 OAuth 类）从不进网关，其工具在消费端
+    按人授权，写进 object_permission 只会引入网关不认识的 server 名。
+    """
     if not mcp_ids:
         return []
     names = []
     for mcp_id in mcp_ids:
         server = await mcp_repo.find_server_by_id(session, mcp_id)
-        if server:
+        if server and server.sync_to_litellm:
             names.append(server.server_name)
     return names
+
+
+async def build_object_permission(session: AsyncSession, mcp_ids: list[int]) -> dict:
+    """key 的网关 MCP 授权载荷：显式授权 ∪ 全部公共 server。
+
+    公共 server（is_public=TRUE → LiteLLM allow_all_keys）本身对所有 key 可见
+    （PoC-0 K1 实测：并集，不会被 key 的 object_permission 收掉）；这里仍显式列进去，
+    是为了让载荷自描述、与 P1 编译产物口径一致，并在将来关掉 allow_all_keys 时
+    不发生行为跳变。
+    """
+    explicit = await _resolve_mcp_server_names(session, mcp_ids or [])
+    public = await mcp_repo.find_public_server_names(session)
+    return {"mcp_servers": _dedupe_preserve_order([*explicit, *public])}
 
 
 async def _expand_models_with_anthropic(
@@ -462,10 +479,10 @@ async def _sync_key_to_litellm(
     if models_changed:
         litellm_models = _to_litellm_models(litellm_models)
 
-    # Resolve MCP server names from IDs
-    mcp_server_names: list[str] | None = None
+    # Resolve MCP permission payload from IDs
+    object_permission: dict | None = None
     if mcps_changed and session:
-        mcp_server_names = await _resolve_mcp_server_names(session, key.mcps or [])
+        object_permission = await build_object_permission(session, key.mcps or [])
 
     if models_changed or mcps_changed or rate_limits_changed:
         metadata = None
@@ -475,7 +492,7 @@ async def _sync_key_to_litellm(
             key_id=key.litellm_key_id,
             models=litellm_models if models_changed else None,
             metadata=metadata,
-            allowed_mcp_servers=mcp_server_names,
+            object_permission=object_permission,
             tpm_limit=key.tpm_limit,
             rpm_limit=key.rpm_limit,
             max_parallel_requests=key.max_parallel_requests,
@@ -730,6 +747,9 @@ async def create_personal_main_key(
         user_id=user.litellm_user_id,
         models=litellm_models,
         metadata={"aihelms_key_id": ai_key.id, "key_type": KEY_TYPE_PERSONAL_MAIN},
+        object_permission=await build_object_permission(
+            session, public_resources["mcps"]
+        ),
         tpm_limit=defaults.tpm_limit if defaults else None,
         rpm_limit=defaults.rpm_limit if defaults else None,
         max_parallel_requests=defaults.max_parallel_requests if defaults else None,

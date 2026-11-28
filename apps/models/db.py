@@ -586,6 +586,11 @@ class McpServer(Base):
     # 网关（钉钉 OAuth 类按人授权的 MCP，token 在消费端，网关委托不了）。
     # 生命周期内保持 FALSE 的 server 从不写 LiteLLM；存量默认 TRUE 行为不变。
     sync_to_litellm: Mapped[bool] = mapped_column(Boolean, default=True)
+    # 公共授权开关：TRUE = LiteLLM allow_all_keys（全员可用），仅限只读目录类
+    # server；FALSE（默认）= 只给 object_permission 里显式授权的 key 用。
+    # 置 TRUE 必须填 public_reason（进策略变更审计）。
+    is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    public_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_version_id: Mapped[int | None] = mapped_column(
         BigInteger,
         ForeignKey("aihelms.mcp_server_versions.id", ondelete="SET NULL"),

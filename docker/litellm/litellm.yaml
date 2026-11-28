@@ -4,6 +4,10 @@ general_settings:
   enable_mcp_server: true
   store_model_in_db: true
   store_prompts_in_spend_logs: true
+  # MCP 授权撤销的传播上限（秒）。/key/update 不会失效 user_api_key_cache
+  # （只有 /key/delete 会），默认 TTL 60s 意味着「收回某人的 MCP 授权」最长
+  # 60 秒才生效（PoC-0 实测：默认 ≈60s，设 5 后实测 5.5s）。
+  user_api_key_cache_ttl: 5
 
 litellm_settings:
   drop_params: true

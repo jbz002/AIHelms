@@ -50,6 +50,8 @@ class CreateMcpServerInput(BaseModel):
     visibility_type: str = "all"
     visible_department_id: int | None = Field(None, ge=1)
     requires_approval: bool = False
+    is_public: bool = Field(False, description="网关全员可用（仅只读目录类）")
+    public_reason: str | None = Field(None, max_length=500)
 
 
 class UpdateMcpServerInput(BaseModel):
@@ -68,6 +70,8 @@ class UpdateMcpServerInput(BaseModel):
     visibility_type: str | None = None
     visible_department_id: int | None = Field(None, ge=0)
     requires_approval: bool | None = None
+    is_public: bool | None = None
+    public_reason: str | None = Field(None, max_length=500)
 
 
 class McpBoolInput(BaseModel):
@@ -139,6 +143,8 @@ async def admin_create_mcp_server(params: CreateMcpServerInput) -> str:
                 visible_department_id=params.visible_department_id,
                 requires_approval=params.requires_approval,
                 created_by=created_by,
+                is_public=params.is_public,
+                public_reason=params.public_reason,
             )
         except (NotFoundError, ConflictError, ValidationError) as e:
             return error_text(e)

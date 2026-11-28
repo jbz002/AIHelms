@@ -35,7 +35,9 @@ async def rebuild(session, key_id: int) -> bool:
     litellm_models, _ = await ai_key_service._expand_models_with_anthropic(
         session, key.models or [], None
     )
-    mcp_names = await ai_key_service._resolve_mcp_server_names(session, key.mcps or [])
+    object_permission = await ai_key_service.build_object_permission(
+        session, key.mcps or []
+    )
     metadata = await ai_key_service._build_key_metadata(session, key)
 
     result = await litellm_client.create_key(
@@ -44,7 +46,7 @@ async def rebuild(session, key_id: int) -> bool:
         team_id=team_id,
         models=litellm_models,
         metadata=metadata,
-        allowed_mcp_servers=mcp_names if mcp_names else None,
+        object_permission=object_permission,
         tpm_limit=key.tpm_limit,
         rpm_limit=key.rpm_limit,
         max_parallel_requests=key.max_parallel_requests,

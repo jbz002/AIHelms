@@ -228,7 +228,7 @@ async def create_key(
     max_budget: float | None = None,
     metadata: dict | None = None,
     duration: str | None = None,
-    allowed_mcp_servers: list[str] | None = None,
+    object_permission: dict | None = None,
     tpm_limit: int | None = None,
     rpm_limit: int | None = None,
     max_parallel_requests: int | None = None,
@@ -245,8 +245,10 @@ async def create_key(
         data["metadata"] = metadata
     if duration:
         data["duration"] = duration
-    if allowed_mcp_servers is not None:
-        data["allowed_mcp_servers"] = allowed_mcp_servers
+    if object_permission is not None:
+        # LiteLLM 只认 object_permission.mcp_servers / mcp_tool_permissions；
+        # 旧字段 allowed_mcp_servers 网关完全忽略（PoC-0 实测），是授权失真的根因。
+        data["object_permission"] = object_permission
     if tpm_limit is not None:
         data["tpm_limit"] = tpm_limit
     if rpm_limit is not None:
@@ -265,7 +267,7 @@ async def update_key(
     models: list[str] | None = None,
     max_budget: float | None = None,
     metadata: dict | None = None,
-    allowed_mcp_servers: list[str] | None = None,
+    object_permission: dict | None = None,
     tpm_limit: int | None = None,
     rpm_limit: int | None = None,
     max_parallel_requests: int | None = None,
@@ -278,8 +280,9 @@ async def update_key(
         data["max_budget"] = max_budget
     if metadata is not None:
         data["metadata"] = metadata
-    if allowed_mcp_servers is not None:
-        data["allowed_mcp_servers"] = allowed_mcp_servers
+    if object_permission is not None:
+        # None = 不改（LiteLLM 语义）；显式 {"mcp_servers": []} = 除公共 server 外全拒。
+        data["object_permission"] = object_permission
     if sync_rate_limits or tpm_limit is not None:
         data["tpm_limit"] = tpm_limit
     if sync_rate_limits or rpm_limit is not None:
@@ -507,6 +510,7 @@ async def create_mcp_server(
     allowed_tools: list[str] | None = None,
     extra_headers: list[str] | None = None,
     mcp_info: dict | None = None,
+    allow_all_keys: bool = False,
 ) -> dict:
     data: dict = {
         "server_name": server_name,
@@ -529,7 +533,9 @@ async def create_mcp_server(
         data["extra_headers"] = extra_headers
     if mcp_info:
         data["mcp_info"] = mcp_info
-    data["allow_all_keys"] = True
+    # 公共开放由平台按 mcp_servers.is_public 决定，永不无条件置 TRUE
+    # （曾无条件置 TRUE，令 key 侧的 object_permission 形同虚设）。
+    data["allow_all_keys"] = allow_all_keys
     return await _request("POST", "/v1/mcp/server", json_data=data)
 
 

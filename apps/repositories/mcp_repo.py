@@ -38,6 +38,18 @@ async def find_server_by_name(
     return result.scalar_one_or_none()
 
 
+async def find_public_server_names(session: AsyncSession) -> list[str]:
+    """所有公共且已发布、进网关的 server_name（object_permission 的公共并集）。"""
+    result = await session.execute(
+        select(McpServer.server_name).where(
+            McpServer.is_public == True,  # noqa: E712
+            McpServer.is_published == True,  # noqa: E712
+            McpServer.sync_to_litellm == True,  # noqa: E712
+        )
+    )
+    return list(result.scalars().all())
+
+
 async def find_server_by_url_and_transport(
     session: AsyncSession,
     url: str,

@@ -107,6 +107,8 @@ async def create_server(
     requires_approval: bool = False,
     created_by: int | None = None,
     sync_to_litellm: bool = True,
+    is_public: bool = False,
+    public_reason: str | None = None,
 ) -> dict:
     if transport not in ("sse", "http", "streamable_http", "streamableHttp"):
         raise ValidationError("transport 只支持 sse 或 streamableHttp")
@@ -177,7 +179,10 @@ async def create_server(
         requires_approval=requires_approval,
         created_by=created_by,
         sync_to_litellm=sync_to_litellm,
+        is_public=is_public,
+        public_reason=(public_reason or None),
     )
+    _validate_public_flag(server)
     server = await mcp_repo.create_server(session, server)
     await session.flush()
 
@@ -192,6 +197,12 @@ async def create_server(
             await session.rollback()
             logger.error("sync mcp server to litellm failed: %s", str(e))
             raise ValidationError("保存失败，服务器内部错误")
+
+    # 「创建即发布」同样要把 server 广播到存量 key。update_server / set_published
+    # 早就有这一步，create 路径曾漏掉——11-23 之后发布的 server 只出现在当时之后
+    # 新建的 key 上（现网 39/46 把 key 缺 supply_cloud/product_order 即此因）。
+    if server.is_published and not server.requires_approval:
+        await _sync_mcp_visibility(session, server)
 
     await session.commit()
     await session.refresh(server)
@@ -227,6 +238,23 @@ async def create_server(
     await session.refresh(server)
 
     return _serialize_server(server)
+
+
+def _validate_public_flag(server: McpServer) -> None:
+    """公共授权（is_public）的形态校验。
+
+    - 只有进网关的 server 才有公共授权语义（目录登记型的调用面在消费端，按人 OAuth）；
+    - 置 TRUE 必须填理由，进策略变更审计。
+    工具级只读校验依赖 mcp_tools.risk_level，P1 授权中心落地后补（P0 无该元数据）。
+    """
+    if not server.is_public:
+        return
+    if not server.sync_to_litellm:
+        raise ValidationError(
+            "目录登记型 MCP（不进网关）没有公共授权语义，请关闭 is_public"
+        )
+    if not (server.public_reason or "").strip():
+        raise ValidationError("公共授权必须填写理由（public_reason）")
 
 
 async def _validate_department_visibility(
@@ -339,6 +367,7 @@ async def update_server(
     await _validate_department_visibility(
         session, server.visibility_type, server.visible_department_id
     )
+    _validate_public_flag(server)
 
     # 发布门控：False→True 变更且门控开启时，转提交申请，保持未发布。
     # admin 豁免：管理员的发布动作直接生效（同 skill，9a6b523）
@@ -752,7 +781,7 @@ async def _push_server_config_to_litellm(
             instructions=snapshot.instructions,
             mcp_info=mcp_info,
             extra_headers=headers,
-            allow_all_keys=True,
+            allow_all_keys=server.is_public,
         )
     else:
         await litellm_client.create_mcp_server(
@@ -766,6 +795,7 @@ async def _push_server_config_to_litellm(
             instructions=snapshot.instructions,
             mcp_info=mcp_info,
             extra_headers=headers,
+            allow_all_keys=server.is_public,
         )
     server.litellm_synced = True
     server.litellm_sync_error = None
@@ -876,6 +906,8 @@ def _serialize_server(server: McpServer) -> dict:
         "litellm_synced": server.litellm_synced,
         "litellm_sync_error": server.litellm_sync_error,
         "sync_to_litellm": server.sync_to_litellm,
+        "is_public": bool(server.is_public),
+        "public_reason": server.public_reason,
         "security_status": server.security_status,
         "security_decision": server.security_decision,
         "security_severity": server.security_severity,
