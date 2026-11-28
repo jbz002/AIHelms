@@ -29,6 +29,7 @@ from api.v1.internal import router as internal_router
 from api.v1.key_scenarios import router as key_scenarios_router
 from api.v1.mcp import router as mcp_router
 from api.v1.mcp_authz import router as mcp_authz_router
+from api.v1.mcp_pdp import router as mcp_pdp_router
 from api.v1.service_accounts import delegation_router as delegation_router
 from api.v1.service_accounts import router as service_accounts_router
 from api.v1.models import router as models_router
@@ -66,6 +67,7 @@ router.include_router(models_router, tags=["模型纳管"])
 router.include_router(access_test_router, tags=["模型纳管"])
 router.include_router(mcp_router, tags=["AI 市场"])
 router.include_router(mcp_authz_router, tags=["AI 市场"])
+router.include_router(mcp_pdp_router)
 router.include_router(service_accounts_router)
 router.include_router(delegation_router)
 router.include_router(skills_router, tags=["AI 市场"])

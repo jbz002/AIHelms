@@ -597,6 +597,9 @@ class McpServer(Base):
     # server；FALSE（默认）= 只给 object_permission 里显式授权的 key 用。
     # 置 TRUE 必须填 public_reason（进策略变更审计）。
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
+    allow_machine_delegation: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
     public_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_version_id: Mapped[int | None] = mapped_column(
         BigInteger,
@@ -1986,4 +1989,30 @@ class DelegationGrant(Base):
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
+class AuthzDecisionLog(Base):
+    """PDP 决策日志：只记标识与判定，不记工具入参/业务返回体。"""
+
+    __tablename__ = "authz_decision_logs"
+    __table_args__ = {"schema": "aihelms"}
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    subject_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    subject_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    actor_kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    actor_service_account_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True
+    )
+    server_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    tool_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    tool_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    decision: Mapped[str] = mapped_column(String(10), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    policy_version: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
     )

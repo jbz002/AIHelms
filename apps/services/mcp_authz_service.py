@@ -136,23 +136,28 @@ def compile_grants(
     return compiled
 
 
-async def _subjects_for_key(session: AsyncSession, key) -> set[tuple[str, int | None]]:
-    subjects: set[tuple[str, int | None]] = {("public", None)}
-    if key.owner_type == "user":
-        subjects.add(("user", key.owner_id))
-        roles = await session.execute(
-            select(UserRole.role_id).where(UserRole.user_id == key.owner_id)
-        )
-        subjects.update(("role", rid) for (rid,) in roles.all())
-        depts = await session.execute(
-            select(UserDepartment.department_id).where(
-                UserDepartment.user_id == key.owner_id
-            )
-        )
-        subjects.update(("dept", did) for (did,) in depts.all())
-    elif key.owner_type == "department":
-        subjects.add(("dept", key.owner_id))
+async def subjects_for_user(
+    session: AsyncSession, user_id: int
+) -> set[tuple[str, int | None]]:
+    """用户在授权矩阵里的主体集合：public + 本人 + 所属角色 + 所属部门。"""
+    subjects: set[tuple[str, int | None]] = {("public", None), ("user", user_id)}
+    roles = await session.execute(
+        select(UserRole.role_id).where(UserRole.user_id == user_id)
+    )
+    subjects.update(("role", rid) for (rid,) in roles.all())
+    depts = await session.execute(
+        select(UserDepartment.department_id).where(UserDepartment.user_id == user_id)
+    )
+    subjects.update(("dept", did) for (did,) in depts.all())
     return subjects
+
+
+async def _subjects_for_key(session: AsyncSession, key) -> set[tuple[str, int | None]]:
+    if key.owner_type == "user":
+        return await subjects_for_user(session, key.owner_id)
+    if key.owner_type == "department":
+        return {("public", None), ("dept", key.owner_id)}
+    return {("public", None)}
 
 
 @dataclass

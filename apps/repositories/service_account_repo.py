@@ -134,3 +134,39 @@ async def revoke_delegation(
     grant.revoked_at = _now()
     grant.revoked_by = revoked_by
     await session.flush()
+
+
+async def find_any_delegation(
+    session: AsyncSession,
+    service_account_id: int,
+    user_id: int,
+    *,
+    server_id: int,
+    tool_name: str | None,
+) -> DelegationGrant | None:
+    """是否存在曾覆盖该 (server, tool) 的委托——含已过期/已撤销。
+
+    只用于把「从来没有委托」和「有过但已失效」区分成不同原因码；判定本身仍看生效记录。
+    """
+    from repositories import mcp_authz_repo
+
+    result = await session.execute(
+        select(DelegationGrant).where(
+            DelegationGrant.service_account_id == service_account_id,
+            DelegationGrant.user_id == user_id,
+        )
+    )
+    for grant in result.scalars().all():
+        if grant.target_type == "server" and grant.target_id == server_id:
+            return grant
+        if grant.target_type != "toolset":
+            continue
+        toolset = await mcp_authz_repo.find_toolset_by_id(session, grant.target_id)
+        for item in list(toolset.items or []) if toolset else []:
+            if not isinstance(item, dict):
+                continue
+            if item.get("server_id") != server_id:
+                continue
+            if tool_name is None or item.get("tool_name") == tool_name:
+                return grant
+    return None
